@@ -10,8 +10,9 @@ services:
   - type: web
     name: cargox-backend
     env: python
-    buildCommand: "cd backend && pip install -r requirements.txt"
-    startCommand: "cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -20,7 +21,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: PYTHON_VERSION
-        value: 3.12.0
+        value: 3.12
       - key: CLERK_ISSUER_URL
         value: https://gentle-hamster-3926.clerk.accounts.dev
       - key: CLERK_JWKS_URL

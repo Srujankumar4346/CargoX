@@ -32,7 +32,7 @@ export default function AdminDashboard() {
   // Compliance Filters
   const [compStatusFilter, setCompStatusFilter] = useState<string>("ALL");
   const [compOwnerFilter, setCompOwnerFilter] = useState<string>("ALL");
-  const [compTypeFilter, setCompTypeFilter] = useState<string>("ALL");
+  const [_compTypeFilter, _setCompTypeFilter] = useState<string>("ALL");
   
   // Rejection Modal
   const [rejectingDocId, setRejectingDocId] = useState<string | null>(null);

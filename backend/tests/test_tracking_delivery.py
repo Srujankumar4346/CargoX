@@ -11,6 +11,8 @@ def cleanup_database():
     db = SessionLocal()
     yield
     try:
+        db.execute(text("DELETE FROM payments"))
+        db.execute(text("DELETE FROM invoices"))
         db.execute(text("DELETE FROM location_histories"))
         db.execute(text("DELETE FROM proof_of_deliveries"))
         db.execute(text("DELETE FROM vehicle_assignments"))

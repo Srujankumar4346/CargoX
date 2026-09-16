@@ -43,15 +43,20 @@ class TrackingDeliveryService:
                 detail=f"Cannot submit POD for request in status '{request.status if request else 'None'}'. Must be in ARRIVED status."
             )
 
+        # Coerce AnyHttpUrl to str (Pydantic v2 AnyHttpUrl is not a plain str)
+        pod_photo = str(pod_in.pod_photo_url) if pod_in.pod_photo_url else None
+        pod_sig = str(pod_in.pod_signature_url) if pod_in.pod_signature_url else None
+
         # Create POD record
         pod = ProofOfDelivery(
             id=uuid.uuid4(),
             trip_id=trip.id,
-            file_url=pod_in.pod_photo_url or pod_in.pod_signature_url or "https://storage.cargox.com/default_pod.png",
+            file_url=pod_photo or pod_sig or "https://storage.cargox.com/default_pod.png",
             notes=pod_in.notes,
             submitted_at=datetime.now(timezone.utc),
             submitted_by=driver_user.id
         )
+
         db.add(pod)
 
         # Transition request status ARRIVED -> POD_SUBMITTED

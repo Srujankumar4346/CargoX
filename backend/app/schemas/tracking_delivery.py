@@ -1,12 +1,21 @@
 from typing import Optional, List
-from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
+from pydantic import BaseModel, AnyHttpUrl, field_validator
+
 
 class PODSubmission(BaseModel):
-    pod_signature_url: Optional[str] = None
-    pod_photo_url: Optional[str] = None
+    pod_signature_url: Optional[AnyHttpUrl] = None
+    pod_photo_url: Optional[AnyHttpUrl] = None
     notes: Optional[str] = None
+
+    @field_validator("pod_signature_url", "pod_photo_url", mode="before")
+    @classmethod
+    def validate_https(cls, value):
+        if value is not None and not str(value).startswith("https://"):
+            raise ValueError("URL must use HTTPS scheme")
+        return value
+
 
 class PODRead(BaseModel):
     id: uuid.UUID

@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit', system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border-theme: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fade-in 0.3s ease forwards;
+  --animate-slide-up: slide-up 0.4s ease-out forwards;
+  --animate-pulse-slow: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scale-in: scale-in 0.2s ease-out forwards;
+}
+
+@layer base {
+  :root {
+    --background: #020617; /* Slate 950 */
+    --surface: #0f172a;    /* Slate 900 */
+    --surface-elevated: #1e293b; /* Slate 800 */
+    --border: #334155;     /* Slate 700 */
+    --foreground: #f8fafc; /* Slate 50 */
+    --muted: #94a3b8;      /* Slate 400 */
+    --primary: #6366f1;    /* Indigo 500 */
+    --primary-hover: #818cf8; /* Indigo 400 */
+    --accent: #3b82f6;     /* Blue 500 */
+    --success: #10b981;    /* Emerald 500 */
+    --warning: #f59e0b;    /* Amber 500 */
+    --danger: #ef4444;     /* Red 500 */
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  @keyframes slide-in-right {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+@layer components {
+  /* Selective Glassmorphism */
+  .glass-panel {
+    @apply bg-surface/80 backdrop-blur-md border border-border-theme shadow-xl rounded-2xl;
+  }
+  
+  /* Standard Base Card (Solid, not glass) */
+  .card {
+    @apply bg-surface border border-border-theme rounded-xl shadow-sm p-6;
+  }
+  .card-elevated {
+    @apply bg-surface-elevated border border-border-theme rounded-xl shadow-md p-6;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-hover px-4 py-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0;
+  }
+  
+  .btn-secondary {
+    @apply bg-transparent text-foreground border border-border-theme hover:bg-surface-elevated px-4 py-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-danger {
+    @apply bg-danger text-white hover:bg-red-400 px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+  }
+  
+  .btn-success {
+    @apply bg-success text-white hover:bg-emerald-400 px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+  }
+
+  /* Inputs */
+  .input-field {
+    @apply w-full rounded-lg border border-border-theme bg-surface px-4 py-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors;
+  }
+}

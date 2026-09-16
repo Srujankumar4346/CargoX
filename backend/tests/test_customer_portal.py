@@ -43,6 +43,11 @@ def setup_auth():
     yield
     
     # Cleanup
+    db.execute(text("DELETE FROM trip_expenses"))
+    db.execute(text("DELETE FROM vehicle_maintenance"))
+    db.execute(text("DELETE FROM notifications"))
+    db.execute(text("DELETE FROM payments"))
+    db.execute(text("DELETE FROM invoices"))
     db.execute(text("DELETE FROM location_histories"))
     db.execute(text("DELETE FROM proof_of_deliveries"))
     db.execute(text("DELETE FROM vehicle_assignments"))

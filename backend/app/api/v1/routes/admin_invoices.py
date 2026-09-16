@@ -101,6 +101,12 @@ def list_payments(
     Lists all payments recorded against a specific invoice.
     Requires Admin privileges.
     """
-    from app.models.finance import Payment
+    from app.models.finance import Payment, Invoice
+    from fastapi import HTTPException, status
+    
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+        
     payments = db.query(Payment).filter(Payment.invoice_id == invoice_id).all()
     return payments

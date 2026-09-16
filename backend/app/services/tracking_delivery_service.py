@@ -10,6 +10,8 @@ from app.models.fleet import Vehicle, Driver, VehicleAssignment
 from app.models.enums import DeliveryRequestStatus, VehicleStatus, DriverStatus
 from app.schemas.tracking_delivery import PODSubmission, CustomerTrackingRead, LocationBreadcrumbRead
 from app.services.authorization import AuthorizationService
+from app.services.notification_service import NotificationService
+from app.models.notifications import NotificationChannel
 
 class TrackingDeliveryService:
     @staticmethod
@@ -61,7 +63,22 @@ class TrackingDeliveryService:
 
         # Transition request status ARRIVED -> POD_SUBMITTED
         request.status = DeliveryRequestStatus.POD_SUBMITTED
+        
+        # Notification: POD_SUBMITTED (to Admins)
+        admin_users = NotificationService.resolve_admin_recipients(db)
+        for admin in admin_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"POD_SUBMITTED:{trip.id}:ADMIN:{admin.id}",
+                event_type="POD_SUBMITTED",
+                recipient_user_id=admin.id,
+                channel=NotificationChannel.IN_APP,
+                title="POD Submitted",
+                message=f"POD submitted for request {request.request_number} and needs verification."
+            )
+            
         db.commit()
+        NotificationService.process_pending_notifications(db)
         db.refresh(pod)
         return pod
 
@@ -91,7 +108,21 @@ class TrackingDeliveryService:
         trip.delivered_at = now
         request.status = DeliveryRequestStatus.DELIVERED
 
+        # Notification: TRIP_DELIVERED (to Customer)
+        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        for cust_user in customer_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"TRIP_DELIVERED:{trip.id}:CUST:{cust_user.id}",
+                event_type="TRIP_DELIVERED",
+                recipient_user_id=cust_user.id,
+                channel=NotificationChannel.IN_APP,
+                title="Trip Delivered",
+                message=f"Request {request.request_number} has been delivered."
+            )
+
         db.commit()
+        NotificationService.process_pending_notifications(db)
         db.refresh(pod)
         return pod
 
@@ -139,7 +170,21 @@ class TrackingDeliveryService:
         if driver:
             driver.status = DriverStatus.AVAILABLE
 
+        # Notification: TRIP_COMPLETED (to Customer)
+        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        for cust_user in customer_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"TRIP_COMPLETED:{trip.id}:CUST:{cust_user.id}",
+                event_type="TRIP_COMPLETED",
+                recipient_user_id=cust_user.id,
+                channel=NotificationChannel.IN_APP,
+                title="Trip Completed",
+                message=f"Request {request.request_number} trip is now completed."
+            )
+
         db.commit()
+        NotificationService.process_pending_notifications(db)
         db.refresh(trip)
         return trip
 

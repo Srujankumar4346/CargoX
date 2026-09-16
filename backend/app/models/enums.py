@@ -58,3 +58,54 @@ class PaymentMethod(str, enum.Enum):
     CASH = "CASH"
     UPI = "UPI"
     OTHER = "OTHER"
+
+class ExpenseCategory(str, enum.Enum):
+    FUEL = "FUEL"
+    TOLL = "TOLL"
+    DRIVER_ALLOWANCE = "DRIVER_ALLOWANCE"
+    MAINTENANCE_INCIDENTAL = "MAINTENANCE_INCIDENTAL"
+    OTHER = "OTHER"
+
+class ExpensePayer(str, enum.Enum):
+    CARGOX = "CARGOX"
+    DRIVER = "DRIVER"
+
+class ExpenseStatus(str, enum.Enum):
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+class MaintenanceType(str, enum.Enum):
+    ROUTINE = "ROUTINE"
+    REPAIR = "REPAIR"
+    INSPECTION = "INSPECTION"
+
+class MaintenanceStatus(str, enum.Enum):
+    SCHEDULED = "SCHEDULED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+class SettlementStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    PENDING_PAYMENT = "PENDING_PAYMENT"
+    PAID = "PAID"
+    CANCELLED = "CANCELLED"
+
+class DocumentOwnerType(str, enum.Enum):
+    VEHICLE = "VEHICLE"
+    DRIVER = "DRIVER"
+
+class DocumentType(str, enum.Enum):
+    DRIVING_LICENSE = "DRIVING_LICENSE"
+    MEDICAL_CERTIFICATE = "MEDICAL_CERTIFICATE"
+    REGISTRATION = "REGISTRATION"
+    INSURANCE = "INSURANCE"
+    PUC = "PUC"
+    PERMIT = "PERMIT"
+
+class DocumentVerificationStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+    ARCHIVED = "ARCHIVED"

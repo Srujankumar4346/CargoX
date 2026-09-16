@@ -11,6 +11,8 @@ from app.models.user import User
 from app.models.enums import DeliveryRequestStatus, UserRole
 from app.schemas.driver_pwa import LocationUpdate, DriverTripRead
 from app.services.authorization import AuthorizationService
+from app.services.notification_service import NotificationService
+from app.models.notifications import NotificationChannel
 
 class DriverService:
     @staticmethod
@@ -181,7 +183,21 @@ class DriverService:
         request.status = DeliveryRequestStatus.PICKUP_IN_PROGRESS
         trip.pickup_started_at = now
 
+        # Notification: TRIP_PICKUP_STARTED
+        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        for cust_user in customer_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"TRIP_PICKUP_STARTED:{trip.id}:CUST:{cust_user.id}",
+                event_type="TRIP_PICKUP_STARTED",
+                recipient_user_id=cust_user.id,
+                channel=NotificationChannel.IN_APP,
+                title="Pickup Started",
+                message=f"Driver is on the way to pick up request {request.request_number}."
+            )
+
         db.commit()
+        NotificationService.process_pending_notifications(db)
         db.refresh(trip)
         db.refresh(request)
         return DriverService._build_driver_trip_read(trip, request, vehicle, assignment)
@@ -227,7 +243,21 @@ class DriverService:
         trip.picked_up_at = now
         trip.started_at = now
 
+        # Notification: TRIP_IN_TRANSIT
+        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        for cust_user in customer_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"TRIP_IN_TRANSIT:{trip.id}:CUST:{cust_user.id}",
+                event_type="TRIP_IN_TRANSIT",
+                recipient_user_id=cust_user.id,
+                channel=NotificationChannel.IN_APP,
+                title="Trip In Transit",
+                message=f"Request {request.request_number} has been picked up and is in transit."
+            )
+
         db.commit()
+        NotificationService.process_pending_notifications(db)
         db.refresh(trip)
         db.refresh(request)
         return DriverService._build_driver_trip_read(trip, request, vehicle, assignment)
@@ -272,7 +302,21 @@ class DriverService:
         request.status = DeliveryRequestStatus.ARRIVED
         trip.arrived_at = now
 
+        # Notification: TRIP_ARRIVED
+        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        for cust_user in customer_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"TRIP_ARRIVED:{trip.id}:CUST:{cust_user.id}",
+                event_type="TRIP_ARRIVED",
+                recipient_user_id=cust_user.id,
+                channel=NotificationChannel.IN_APP,
+                title="Driver Arrived",
+                message=f"Driver has arrived at the destination for request {request.request_number}."
+            )
+
         db.commit()
+        NotificationService.process_pending_notifications(db)
         db.refresh(trip)
         db.refresh(request)
         return DriverService._build_driver_trip_read(trip, request, vehicle, assignment)

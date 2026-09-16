@@ -16,6 +16,7 @@ class Vehicle(Base):
     
     # Relationships
     assignments = relationship("VehicleAssignment", back_populates="vehicle")
+    maintenance_records = relationship("VehicleMaintenance", back_populates="vehicle")
 
 class Driver(Base):
     __tablename__ = "drivers"

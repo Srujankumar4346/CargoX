@@ -10,6 +10,9 @@ from app.models.fleet import Vehicle, Driver, VehicleAssignment
 from app.models.user import User
 from app.models.enums import DeliveryRequestStatus, VehicleStatus, DriverStatus, UserRole
 from app.schemas.dispatch import DispatchRequest
+from app.services.notification_service import NotificationService
+from app.models.notifications import NotificationChannel
+from app.services.compliance_service import ComplianceService
 
 class DispatchService:
     @staticmethod
@@ -25,6 +28,9 @@ class DispatchService:
         Atomically updates request, vehicle, and driver statuses and creates Trip + VehicleAssignment.
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Verify Compliance before anything
+        ComplianceService.validate_dispatch_eligibility(db, dispatch_in.vehicle_id, dispatch_in.driver_id)
 
         # 1. Lock and validate DeliveryRequest
         request = db.query(DeliveryRequest).filter(
@@ -117,7 +123,36 @@ class DispatchService:
         vehicle.status = VehicleStatus.ASSIGNED
         driver.status = DriverStatus.ON_TRIP
 
+        # Notification: TRIP_DISPATCHED
+        # Driver notification
+        NotificationService.create_notification(
+            db=db,
+            event_id=f"TRIP_DISPATCHED:{trip.id}:DRIVER",
+            event_type="TRIP_DISPATCHED",
+            recipient_user_id=driver_user.id,
+            channel=NotificationChannel.IN_APP,
+            title="Trip Dispatched",
+            message=f"You have been assigned to trip {trip.id} for request {request.request_number}."
+        )
+        
+        # Customer notification
+        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        for cust_user in customer_users:
+            NotificationService.create_notification(
+                db=db,
+                event_id=f"TRIP_DISPATCHED:{trip.id}:CUST:{cust_user.id}",
+                event_type="TRIP_DISPATCHED",
+                recipient_user_id=cust_user.id,
+                channel=NotificationChannel.IN_APP,
+                title="Trip Dispatched",
+                message=f"Your request {request.request_number} has been dispatched."
+            )
+
         db.commit()
+        
+        # Process notifications after commit
+        NotificationService.process_pending_notifications(db)
+        
         db.refresh(trip)
         db.refresh(assignment)
 
@@ -143,6 +178,9 @@ class DispatchService:
         Preserves assignment history by setting released_at on the previous assignment.
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Verify Compliance before anything
+        ComplianceService.validate_dispatch_eligibility(db, dispatch_in.vehicle_id, dispatch_in.driver_id)
 
         # 1. Lock DeliveryRequest & Trip
         request = db.query(DeliveryRequest).filter(

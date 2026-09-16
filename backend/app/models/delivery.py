@@ -70,11 +70,16 @@ class Trip(Base):
     current_lat = Column(Float, nullable=True)
     current_lng = Column(Float, nullable=True)
     
+    # Settlement
+    settlement_id = Column(UUID(as_uuid=True), ForeignKey("driver_settlements.id"), nullable=True, index=True)
+
     # Relationships
     delivery_request = relationship("DeliveryRequest", back_populates="trip")
     assignment = relationship("VehicleAssignment", back_populates="trip", uselist=False)
     proof_of_delivery = relationship("ProofOfDelivery", back_populates="trip")
     location_history = relationship("LocationHistory", back_populates="trip")
+    expenses = relationship("TripExpense", back_populates="trip")
+    settlement = relationship("DriverSettlement", back_populates="trips")
 
 class ProofOfDelivery(Base):
     __tablename__ = "proof_of_deliveries"

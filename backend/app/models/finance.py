@@ -1,7 +1,7 @@
-from sqlalchemy import Column, String, Numeric, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, String, Numeric, DateTime, Enum, ForeignKey, CheckConstraint
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from app.models.enums import InvoiceStatus, PaymentMethod
+from app.models.enums import InvoiceStatus, PaymentMethod, SettlementStatus
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -10,8 +10,8 @@ class Invoice(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     invoice_number = Column(String, unique=True, index=True, nullable=False)
-    request_id = Column(UUID(as_uuid=True), ForeignKey("delivery_requests.id"), nullable=False)
-    customer_company_id = Column(UUID(as_uuid=True), ForeignKey("customer_companies.id"), nullable=False)
+    request_id = Column(UUID(as_uuid=True), ForeignKey("delivery_requests.id"), unique=True, nullable=False)
+    customer_company_id = Column(UUID(as_uuid=True), ForeignKey("customer_companies.id"), index=True, nullable=False)
     quotation_id = Column(UUID(as_uuid=True), ForeignKey("quotations.id"), nullable=False)
     
     # Financials
@@ -23,7 +23,7 @@ class Invoice(Base):
     amount_due = Column(Numeric(12, 2), nullable=False)
     
     # Status
-    status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID, nullable=False)
+    status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID, index=True, nullable=False)
     
     # Timestamps
     issued_at = Column(DateTime, nullable=False)
@@ -52,3 +52,36 @@ class Payment(Base):
     
     # Relationships
     invoice = relationship("Invoice", back_populates="payments")
+
+class DriverSettlement(Base):
+    __tablename__ = "driver_settlements"
+    __table_args__ = (
+        CheckConstraint("base_pay >= 0", name="chk_settlement_base_pay"),
+        CheckConstraint("reimbursements >= 0", name="chk_settlement_reimbursements"),
+        CheckConstraint("deductions >= 0", name="chk_settlement_deductions"),
+        CheckConstraint("total_payout >= 0", name="chk_total_payout"),
+        CheckConstraint("deductions = 0 OR deduction_reason IS NOT NULL", name="chk_deduction_reason"),
+    )
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    driver_id = Column(UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False, index=True)
+    
+    period_start = Column(DateTime, nullable=False)
+    period_end = Column(DateTime, nullable=False)
+    
+    base_pay = Column(Numeric(12, 2), nullable=False, default=0.00)
+    reimbursements = Column(Numeric(12, 2), nullable=False, default=0.00)
+    deductions = Column(Numeric(12, 2), nullable=False, default=0.00)
+    total_payout = Column(Numeric(12, 2), nullable=False, default=0.00)
+    
+    deduction_reason = Column(String, nullable=True)
+    
+    status = Column(Enum(SettlementStatus), nullable=False, default=SettlementStatus.DRAFT, index=True)
+    paid_at = Column(DateTime, nullable=True)
+    reference_number = Column(String, unique=True, nullable=True)
+    
+    generated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    
+    # Relationships
+    driver = relationship("Driver")
+    trips = relationship("Trip", back_populates="settlement")

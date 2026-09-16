@@ -5,13 +5,45 @@ import uuid
 from app.api.deps import get_current_admin
 from app.db.database import get_db
 from app.models.user import User
-from app.models.delivery import Trip
+from app.models.delivery import Trip, DeliveryRequest
+from app.models.enums import DeliveryRequestStatus
 from app.schemas.dispatch import DispatchRequest, DispatchRead
+from app.schemas.delivery_request import DeliveryRequestRead
 from app.schemas.tracking_delivery import PODRead
 from app.services.dispatch_service import DispatchService
 from app.services.tracking_delivery_service import TrackingDeliveryService
 
 router = APIRouter()
+
+@router.get("/requests", response_model=list[DeliveryRequestRead])
+def list_requests(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    List all delivery requests for admin dashboard.
+    """
+    return db.query(DeliveryRequest).order_by(DeliveryRequest.created_at.desc()).all()
+
+@router.post("/requests/{request_id}/approve", response_model=DeliveryRequestRead)
+def approve_request(
+    request_id: uuid.UUID,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Approves a delivery request, transitioning it from SUBMITTED to ACCEPTED.
+    """
+    req = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+    if req.status != DeliveryRequestStatus.SUBMITTED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot approve request in {req.status} status")
+    
+    req.status = DeliveryRequestStatus.ACCEPTED
+    db.commit()
+    db.refresh(req)
+    return req
 
 @router.post("/requests/{request_id}/dispatch", response_model=DispatchRead, status_code=status.HTTP_201_CREATED)
 def dispatch_request(

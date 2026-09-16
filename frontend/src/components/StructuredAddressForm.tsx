@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import AddressAutocomplete from "./AddressAutocomplete";
+import { useState, useEffect } from "react";
 
 export interface AddressData {
   company: string;
@@ -51,12 +50,7 @@ export default function StructuredAddressForm({ title, onChange }: Props) {
     setData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleAutocompleteSelect = (selectedPlace: any) => {
-    // If using Nominatim, it passes back the place name. 
-    // We can't perfectly parse address details into mandal/district without full API response,
-    // so we'll just set it as landmark for now if we use the simple component.
-    // However, if we change the AddressAutocomplete to pass the whole object, we can extract lat/lon!
-  };
+
 
   return (
     <div className="bg-[var(--bg-secondary)] p-4 rounded-lg border border-[var(--border-color)] mb-4 shadow-sm">

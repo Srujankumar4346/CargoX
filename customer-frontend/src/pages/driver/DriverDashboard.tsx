@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
-import { MapPin, Navigation, Phone, AlertTriangle, Wifi, WifiOff, CheckCircle, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
+import { MapPin, Navigation, Phone, WifiOff, CheckCircle, Clock } from "lucide-react";
 
 interface DriverTrip {
   trip_id: string;
   request_id: string;
-  request_number: str;
+  request_number: string;
   status: string;
   goods_type: string;
   goods_description?: string;

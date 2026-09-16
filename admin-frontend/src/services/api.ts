@@ -41,9 +41,10 @@ export const api = {
     if (!res.ok) throw new Error("Invalid credentials");
     return res.json();
   },
-  // Bookings
+  // Bookings (Requests)
   createBooking: async (data: any) => {
-    const res = await authFetch(`${API_URL}/bookings/`, {
+    // Admins usually don't create bookings directly, but keeping it if needed
+    const res = await authFetch(`${API_URL}/customer/requests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -52,24 +53,24 @@ export const api = {
     return res.json();
   },
   getBookings: async () => {
-    const res = await authFetch(`${API_URL}/bookings/`);
+    const res = await authFetch(`${API_URL}/admin/dispatch/requests`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  cancelBooking: async (id: number) => {
-    const res = await authFetch(`${API_URL}/bookings/${id}/cancel`, { method: "PUT" });
+  cancelBooking: async (id: string) => {
+    const res = await authFetch(`${API_URL}/admin/dispatch/requests/${id}/cancel`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
 
   // Vehicles
   getVehicles: async () => {
-    const res = await authFetch(`${API_URL}/vehicles/`);
+    const res = await authFetch(`${API_URL}/admin/fleet/vehicles`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
   createVehicle: async (data: any) => {
-    const res = await authFetch(`${API_URL}/vehicles/`, {
+    const res = await authFetch(`${API_URL}/admin/fleet/vehicles`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -80,12 +81,12 @@ export const api = {
 
   // Drivers
   getDrivers: async () => {
-    const res = await authFetch(`${API_URL}/drivers/`);
+    const res = await authFetch(`${API_URL}/admin/fleet/drivers`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
   createDriver: async (data: any) => {
-    const res = await authFetch(`${API_URL}/drivers/`, {
+    const res = await authFetch(`${API_URL}/admin/fleet/drivers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -96,7 +97,9 @@ export const api = {
 
   // Trips
   createTrip: async (data: any) => {
-    const res = await authFetch(`${API_URL}/trips/`, {
+    // The backend dispatch route expects request_id in path and dispatch payload in body
+    const requestId = data.booking_id || data.request_id;
+    const res = await authFetch(`${API_URL}/admin/dispatch/requests/${requestId}/dispatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -112,12 +115,12 @@ export const api = {
 
   // Financials
   getInvoices: async () => {
-    const res = await authFetch(`${API_URL}/financials/invoices`);
+    const res = await authFetch(`${API_URL}/admin/invoices`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
   createPayment: async (data: any) => {
-    const res = await authFetch(`${API_URL}/financials/payments`, {
+    const res = await authFetch(`${API_URL}/admin/invoices/${data.invoice_id}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -126,12 +129,12 @@ export const api = {
     return res.json();
   },
   getExpenses: async () => {
-    const res = await authFetch(`${API_URL}/financials/expenses`);
+    const res = await authFetch(`${API_URL}/admin/expenses`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
   createExpense: async (data: any) => {
-    const res = await authFetch(`${API_URL}/financials/expenses`, {
+    const res = await authFetch(`${API_URL}/admin/expenses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -140,7 +143,7 @@ export const api = {
     return res.json();
   },
   getFinancialDashboard: async () => {
-    const res = await authFetch(`${API_URL}/financials/dashboard`);
+    const res = await authFetch(`${API_URL}/admin/analytics/dashboard`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

@@ -11,8 +11,8 @@ export default function CustomerDashboard() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [formData, setFormData] = useState({ 
-    pickup: "", pickup_lat: "", pickup_lng: "", 
-    drop: "", drop_lat: "", drop_lng: "", 
+    pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", 
+    drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", 
     cargo: "", weight: "" 
   });
   const [trackingTrip, setTrackingTrip] = useState<any>(null);
@@ -55,15 +55,16 @@ export default function CustomerDashboard() {
     e.preventDefault();
     try {
       await api.createBooking({
-        customer_id: 1, // Mock customer ID
-        pickup_address: formData.pickup,
-        pickup_latitude: formData.pickup_lat !== "" ? parseFloat(formData.pickup_lat) : null,
-        pickup_longitude: formData.pickup_lng !== "" ? parseFloat(formData.pickup_lng) : null,
-        drop_address: formData.drop,
-        drop_latitude: formData.drop_lat !== "" ? parseFloat(formData.drop_lat) : null,
-        drop_longitude: formData.drop_lng !== "" ? parseFloat(formData.drop_lng) : null,
-        cargo_type: formData.cargo,
-        cargo_weight: parseFloat(formData.weight) || 0
+        goods_type: formData.cargo,
+        weight_tons: parseFloat(formData.weight) || 0,
+        pickup_company_name: formData.pickup_company || "Unknown Company",
+        pickup_address: formData.pickup_address || "Unknown Address",
+        pickup_lat: formData.pickup_lat !== "" ? parseFloat(formData.pickup_lat) : null,
+        pickup_lng: formData.pickup_lng !== "" ? parseFloat(formData.pickup_lng) : null,
+        destination_company_name: formData.drop_company || "Unknown Company",
+        destination_address: formData.drop_address || "Unknown Address",
+        destination_lat: formData.drop_lat !== "" ? parseFloat(formData.drop_lat) : null,
+        destination_lng: formData.drop_lng !== "" ? parseFloat(formData.drop_lng) : null,
       });
       setShowBookingForm(false);
       loadData();
@@ -157,7 +158,8 @@ export default function CustomerDashboard() {
                     title="Pickup Address" 
                     onChange={(data: AddressData) => setFormData({
                       ...formData, 
-                      pickup: data.formattedString,
+                      pickup_company: data.company,
+                      pickup_address: data.address,
                       pickup_lat: "",
                       pickup_lng: ""
                     })} 
@@ -166,7 +168,8 @@ export default function CustomerDashboard() {
                     title="Drop Address" 
                     onChange={(data: AddressData) => setFormData({
                       ...formData, 
-                      drop: data.formattedString,
+                      drop_company: data.company,
+                      drop_address: data.address,
                       drop_lat: "",
                       drop_lng: ""
                     })} 
@@ -194,8 +197,8 @@ export default function CustomerDashboard() {
               bookings.map((booking: any) => (
                 <div key={booking.id} className="p-4 flex justify-between items-center">
                    <div>
-                      <p className="font-bold text-foreground">{booking.pickup_address} → {booking.drop_address}</p>
-                      <p className="text-sm text-muted">{booking.cargo_weight} Ton {booking.cargo_type} • Booking #CX100{booking.id}</p>
+                      <p className="font-bold text-foreground">{booking.pickup_company_name} - {booking.pickup_address} → {booking.destination_company_name} - {booking.destination_address}</p>
+                      <p className="text-sm text-muted">{booking.weight_tons} Ton {booking.goods_type} • {booking.request_number || `REQ-${booking.id}`}</p>
                    </div>
                    <div className="flex items-center gap-4">
                      <span className="bg-surface-elevated text-foreground px-3 py-1 rounded-full text-xs font-bold">{booking.status}</span>

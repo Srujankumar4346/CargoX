@@ -41,9 +41,9 @@ export const api = {
     if (!res.ok) throw new Error("Invalid credentials");
     return res.json();
   },
-  // Bookings
+  // Bookings (now Delivery Requests)
   createBooking: async (data: any) => {
-    const res = await authFetch(`${API_URL}/bookings/`, {
+    const res = await authFetch(`${API_URL}/customer/requests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -52,12 +52,12 @@ export const api = {
     return res.json();
   },
   getBookings: async () => {
-    const res = await authFetch(`${API_URL}/bookings/`);
+    const res = await authFetch(`${API_URL}/customer/requests`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  cancelBooking: async (id: number) => {
-    const res = await authFetch(`${API_URL}/bookings/${id}/cancel`, { method: "PUT" });
+  cancelBooking: async (id: string) => { // id is now a UUID string
+    const res = await authFetch(`${API_URL}/customer/requests/${id}/cancel`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

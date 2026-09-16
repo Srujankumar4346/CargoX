@@ -52,15 +52,15 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     try {
-      setBookings(await api.getBookings());
       setVehicles(await api.getVehicles());
       setDrivers(await api.getDrivers());
       setInvoices(await api.getInvoices());
       setExpenses(await api.getExpenses());
-      setDashboard(await api.getFinancialDashboard());
       
-      const tripsResp = await fetch("http://127.0.0.1:8000/api/trips/");
-      if (tripsResp.ok) setTrips(await tripsResp.json());
+      const dispatchRequests = await api.getBookings();
+      setBookings(dispatchRequests);
+      setTrips(dispatchRequests.filter((b: any) => b.status === 'IN TRANSIT' || b.status === 'DELIVERED'));
+      setDashboard(await api.getFinancialDashboard());
       setDashboard(await api.getFinancialDashboard());
 
       // Load Compliance if on compliance tab (or all the time for simplicity)
@@ -122,15 +122,15 @@ export default function AdminDashboard() {
   const handleGetTripRecommendation = async (booking: any) => {
       try {
           // 1. Vehicle recommendation
-          const v_rec = await api.recommendVehicle(booking.cargo_weight);
+          const v_rec = await api.recommendVehicle(booking.weight_tons);
           
           // 2. Pricing estimation (Mock distance if coordinates aren't real, but we have a dedicated endpoint)
-          const p_rec = await api.predictPrice(500, booking.cargo_weight); // default 500km for demo
+          const p_rec = await api.predictPrice(500, booking.weight_tons); // default 500km for demo
           
           // 3. Route intelligence
           let r_rec = [];
-          if (booking.pickup_latitude && booking.drop_latitude) {
-             r_rec = await api.recommendRoute(booking.pickup_latitude, booking.pickup_longitude, booking.drop_latitude, booking.drop_longitude);
+          if (booking.pickup_lat && booking.destination_lat) {
+             r_rec = await api.recommendRoute(booking.pickup_lat, booking.pickup_lng, booking.destination_lat, booking.destination_lng);
           }
           
           setAiRecommendations(prev => ({
@@ -318,7 +318,7 @@ export default function AdminDashboard() {
                 </div>
                 <div className="card p-6">
                    <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Pending Bookings</h3>
-                   <p className="text-4xl font-bold text-yellow-500 mt-2">{bookings.filter(b => b.status === 'REQUESTED').length}</p>
+                   <p className="text-4xl font-bold text-yellow-500 mt-2">{bookings.filter(b => b.status === 'SUBMITTED' || b.status === 'REQUESTED').length}</p>
                 </div>
                 <div className="card p-6">
                    <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Total Revenue</h3>
@@ -340,7 +340,9 @@ export default function AdminDashboard() {
                            </div>
                            <div>
                              <p className="text-sm font-medium text-[var(--text-primary)]">Trip #{t.id} {t.status}</p>
-                             <p className="text-xs text-[var(--text-secondary)]">{t.booking.pickup_location} → {t.booking.drop_location}</p>
+                             <p className="text-xs text-[var(--text-secondary)]">
+                               {t.booking?.pickup_address || t.request?.pickup_address} → {t.booking?.drop_address || t.request?.destination_address}
+                             </p>
                            </div>
                         </div>
                       ))}
@@ -353,13 +355,13 @@ export default function AdminDashboard() {
           <div className="fade-in">
              <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-6">Dispatch Board (Phase 8.5)</h1>
              
-             {bookings.filter(b => b.status === "REQUESTED").map(booking => (
+             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED").map(booking => (
                <div key={booking.id} className="card p-6 mb-6">
                   <div className="flex justify-between items-start mb-4 border-b pb-4">
                      <div>
-                       <h3 className="text-xl font-bold text-foreground">Booking #CX100{booking.id}</h3>
-                       <p className="text-muted mt-1">{booking.pickup_location} → {booking.drop_location}</p>
-                       <p className="text-sm font-medium text-blue-600 mt-2">Cargo: {booking.cargo_weight} Ton {booking.cargo_type}</p>
+                       <h3 className="text-xl font-bold text-foreground">{booking.request_number || `REQ-${booking.id.substring(0,6)}`}</h3>
+                       <p className="text-muted mt-1">{booking.pickup_company_name} → {booking.destination_company_name}</p>
+                       <p className="text-sm font-medium text-blue-600 mt-2">Cargo: {booking.weight_tons} Ton {booking.goods_type}</p>
                      </div>
                      <div className="flex flex-col items-end gap-2">
                         <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold">PENDING</span>

@@ -10,7 +10,7 @@ from app.core.rate_limit import limiter
 from app.db.base import Base
 from app.db.database import engine, get_db
 from app.models import *
-from app.api.routes import api_router
+from app.api.v1.routes import api_router
 from app.core.config import settings
 
 # Setup structured logging
@@ -71,7 +71,7 @@ async def security_and_logging_middleware(request: Request, call_next):
         
     return response
 
-app.include_router(api_router, prefix="/api")
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():

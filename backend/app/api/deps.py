@@ -4,66 +4,51 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.core.security import decode_token
+from app.models.user import User
+from app.models.enums import UserRole
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# We can use OAuth2PasswordBearer for dependency injection parsing of the Authorization header,
+# but we do not use its tokenUrl in our actual logic since Clerk handles tokens.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="mock")
 
 def get_current_user_token(token: Annotated[str, Depends(oauth2_scheme)]) -> dict:
-    payload = decode_token(token)
-    if payload is None:
+    try:
+        payload = decode_token(token)
+        return payload
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return payload
 
-def get_current_active_user(token_data: dict = Depends(get_current_user_token), db: Session = Depends(get_db)):
-    # Need to look up user in DB based on role and verify they are active
-    user_id = token_data.get("sub")
-    role = token_data.get("role")
-    
-    if not user_id or not role:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
-        
-    user = None
-    profile_id = None
-    if role == "ADMIN":
-        from app.models.user import User
-        from app.models.role import Role
-        user = db.query(User).join(Role).filter(User.id == user_id, Role.name == "ADMIN").first()
-        if user:
-            profile_id = user.id
-    elif role == "CUSTOMER":
-        from app.models.customer import Customer
-        user = db.query(Customer).filter(Customer.user_id == user_id).first()
-        if user:
-            profile_id = user.id
-    elif role == "DRIVER":
-        from app.models.driver import Driver
-        user = db.query(Driver).filter(Driver.user_id == user_id).first()
-        if user:
-            profile_id = user.id
-        
+def get_current_user(token_data: dict = Depends(get_current_user_token), db: Session = Depends(get_db)) -> User:
+    clerk_user_id = token_data.get("sub")
+    if not clerk_user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+    user = db.query(User).filter(User.clerk_user_id == clerk_user_id).first()
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-        
-    # Check if active
-    if hasattr(user, 'status') and user.status == 'INACTIVE':
-         raise HTTPException(status_code=403, detail="Inactive user")
-         
-    return {"id": profile_id, "user_id": int(user_id), "role": role, "user_obj": user}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-def get_current_admin(current_user: dict = Depends(get_current_active_user)):
-    if current_user.get("role") != "ADMIN":
-        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+
+    return user
+
+def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
     return current_user
 
-def get_current_customer(current_user: dict = Depends(get_current_active_user)):
-    if current_user.get("role") != "CUSTOMER":
-        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+def get_current_customer_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != UserRole.CUSTOMER_USER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
+    if not current_user.customer_company_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Customer company not assigned")
     return current_user
 
-def get_current_driver(current_user: dict = Depends(get_current_active_user)):
-    if current_user.get("role") != "DRIVER":
-        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+def get_current_driver(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != UserRole.DRIVER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
     return current_user

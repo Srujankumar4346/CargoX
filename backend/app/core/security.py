@@ -1,39 +1,36 @@
-from passlib.context import CryptContext
-from datetime import datetime, timedelta, timezone
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWKClient
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+# Initialize PyJWKClient to fetch and cache JWKS keys automatically
+# It handles caching based on Cache-Control headers returned by the JWKS endpoint
+# We only fetch keys from the trusted URL in our configuration, NEVER dynamically from a token header.
+jwks_client = PyJWKClient(settings.CLERK_JWKS_URL, cache_keys=True)
 
 def decode_token(token: str) -> dict:
+    """
+    Decodes and verifies a Clerk JWT using asymmetric JWKS.
+    Validates signature, expiration, and issuer.
+    """
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        # Fetch the signing key corresponding to the 'kid' header in the token
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        
+        # Decode and verify the token
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],  # Reject alg=none, HS256, etc. Require asymmetric RS256.
+            issuer=settings.CLERK_ISSUER_URL,
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iss": True,
+                "verify_aud": False,  
+                "require": ["exp", "iss", "sub"], # Explicitly require `sub` claim
+            }
+        )
         return payload
-    except JWTError:
-        return None
+    except jwt.PyJWTError as e:
+        # Never log the token or the secret details here.
+        raise ValueError("Token validation failed")

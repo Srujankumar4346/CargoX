@@ -6,13 +6,18 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     
     # DB
-    DATABASE_URL: str = "postgresql://cargox_user:cargox_password@localhost:5055/cargox"
+    DATABASE_URL: str
     
-    # Security
-    SECRET_KEY: str = "super_secret_temporary_key_replace_in_prod" # Should be overridden in prod
+    # Security / Clerk
+    # These must be configured in environment (.env).
+    # We do not use symmetric keys; we use asymmetric JWKS verification.
+    CLERK_ISSUER_URL: str
+    CLERK_JWKS_URL: str
+    
+    # Optional backend internal secret if needed for non-Clerk internal flows
+    # Must be set securely in prod.
+    SECRET_KEY: str = "unsafe_default_key"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]

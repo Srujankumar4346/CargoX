@@ -1,320 +1,423 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Receipt, MapPin, Navigation, User, Bell } from "lucide-react";
-import { api } from "../../services/api";
+import { MapPin, Navigation, Phone, AlertTriangle, Wifi, WifiOff, CheckCircle, Clock } from "lucide-react";
+
+interface DriverTrip {
+  trip_id: string;
+  request_id: string;
+  request_number: str;
+  status: string;
+  goods_type: string;
+  goods_description?: string;
+  weight_tons: number;
+  special_instructions?: string;
+  pickup_company_name: string;
+  pickup_address: string;
+  pickup_contact_person?: string;
+  pickup_phone?: string;
+  destination_company_name: string;
+  destination_address: string;
+  destination_contact_person?: string;
+  destination_phone?: string;
+  vehicle_registration: string;
+  vehicle_type: string;
+  assigned_at: string;
+  pickup_started_at?: string;
+  started_at?: string;
+  arrived_at?: string;
+  current_lat?: number;
+  current_lng?: number;
+}
+
+// IndexedDB Helper for Offline Location Telemetry Queue
+const DB_NAME = "CargoX_Driver_PWA";
+const DB_VERSION = 1;
+const STORE_NAME = "gps_telemetry_queue";
+
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+const queueLocationOffline = async (tripId: string, lat: number, lng: number) => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    store.add({
+      trip_id: tripId,
+      lat,
+      lng,
+      captured_at: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error("Failed to queue GPS offline in IndexedDB:", e);
+  }
+};
+
+const flushLocationQueue = async (sendLocationFn: (tripId: string, lat: number, lng: number) => Promise<void>) => {
+  try {
+    const db = await openDB();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = async () => {
+      const items = getAllReq.result;
+      if (items && items.length > 0) {
+        for (const item of items) {
+          try {
+            await sendLocationFn(item.trip_id, item.lat, item.lng);
+          } catch (err) {
+            console.error("Failed to push queued location:", err);
+          }
+        }
+        // Clear store after flush attempt
+        const clearTx = db.transaction(STORE_NAME, "readwrite");
+        clearTx.objectStore(STORE_NAME).clear();
+      }
+    };
+  } catch (e) {
+    console.error("Failed to flush IndexedDB location queue:", e);
+  }
+};
 
 export default function DriverDashboard() {
-  const [activeTab, setActiveTab] = useState("trips"); // trips, expenses, profile
-  const [trip, setTrip] = useState<any>(null);
-  const [expenseForm, setExpenseForm] = useState({ type: "FUEL", amount: "", desc: "" });
-  const [podForm, setPodForm] = useState({ receiver_name: "", notes: "" });
-  const [showPodModal, setShowPodModal] = useState(false);
-  const [locationLog, setLocationLog] = useState<string[]>([]);
+  const [trip, setTrip] = useState<DriverTrip | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  
-  const simInterval = useRef<any>(null);
-  const driverId = 1; // Assuming driver 1 for now
+  const [locationLog, setLocationLog] = useState<string[]>([]);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const loadData = async () => {
+  const fetchActiveTrip = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const trips = await api.getMobileTripsToday(driverId);
-      if (trips.length > 0) {
-         const activeTrip = trips[trips.length - 1];
-         setTrip(activeTrip);
+      const res = await fetch("/api/v1/driver/trips/active", {
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (res.status === 404) {
+        setTrip(null);
+      } else if (!res.ok) {
+        throw new Error("Failed to load active trip details");
+      } else {
+        const data = await res.json();
+        setTrip(data);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err: any) {
+      setError(err.message || "Network error loading trip");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-    
-    const handleOnline = () => setIsOffline(false);
+    fetchActiveTrip();
+
+    const handleOnline = () => {
+      setIsOffline(false);
+      flushLocationQueue(sendLocationApi);
+      fetchActiveTrip();
+    };
     const handleOffline = () => setIsOffline(true);
-    
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    
+
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
-    }
+    };
   }, []);
 
-  // GPS Simulation logic
+  const sendLocationApi = async (tripId: string, lat: number, lng: number) => {
+    const res = await fetch(`/api/v1/driver/trips/${tripId}/location`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ lat, lng })
+    });
+    if (!res.ok) throw new Error("Location push failed");
+  };
+
+  // Watch GPS Position
   useEffect(() => {
-    if (trip && trip.status === "IN TRANSIT") {
-      // Start simulator
-      if (!simInterval.current) {
-        let lat = trip.booking.pickup_latitude || 17.3850;
-        let lng = trip.booking.pickup_longitude || 78.4867;
-        const dropLat = trip.booking.drop_latitude || 16.5062;
-        const dropLng = trip.booking.drop_longitude || 80.6480;
-        
-        simInterval.current = setInterval(async () => {
-          // Move 10% closer to drop location each time
-          lat = lat + (dropLat - lat) * 0.1;
-          lng = lng + (dropLng - lng) * 0.1;
-          
-          try {
-            await api.logLocation(trip.id, lat, lng);
-            setLocationLog(prev => [`[${new Date().toLocaleTimeString()}] Pushed GPS: ${lat.toFixed(4)}, ${lng.toFixed(4)}`, ...prev.slice(0, 4)]);
-          } catch (e) {
-             console.error("GPS Sim Error:", e);
-          }
-        }, 10000); // every 10 seconds
-      }
-    } else {
-      // Stop simulator
-      if (simInterval.current) {
-        clearInterval(simInterval.current);
-        simInterval.current = null;
-      }
+    if (!trip || !["DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS", "IN_TRANSIT", "ARRIVED"].includes(trip.status)) {
+      return;
     }
-    
-    return () => {
-      if (simInterval.current) clearInterval(simInterval.current);
-    };
+
+    if ("geolocation" in navigator) {
+      const watchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          const { latitude, longitude } = pos.coords;
+          const timestamp = new Date().toLocaleTimeString();
+          if (navigator.onLine) {
+            try {
+              await sendLocationApi(trip.trip_id, latitude, longitude);
+              setLocationLog(prev => [`[${timestamp}] GPS Pushed: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, ...prev.slice(0, 4)]);
+            } catch (e) {
+              await queueLocationOffline(trip.trip_id, latitude, longitude);
+              setLocationLog(prev => [`[${timestamp}] GPS Queued Offline: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, ...prev.slice(0, 4)]);
+            }
+          } else {
+            await queueLocationOffline(trip.trip_id, latitude, longitude);
+            setLocationLog(prev => [`[${timestamp}] GPS Queued Offline: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, ...prev.slice(0, 4)]);
+          }
+        },
+        (err) => console.warn("GPS Access Error:", err.message),
+        { enableHighAccuracy: true, maximumAge: 30000, timeout: 27000 }
+      );
+
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
   }, [trip]);
 
-  const handleUpdateStatus = async (nextStatus: string) => {
+  const handleStateAction = async (actionPath: string) => {
     if (isOffline) {
-        alert("You are offline. This update cannot be submitted.");
-        return;
+      alert("State transitions cannot be executed offline. Please reconnect to network to trigger state update.");
+      return;
     }
     if (!trip) return;
-    try {
-      await api.updateMobileTripStatus(trip.id, nextStatus, driverId);
-      loadData();
-    } catch (e: any) {
-      alert("Failed to update status: " + e);
-    }
-  };
 
-  const handleSubmitPod = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (isOffline) {
-          alert("You are offline. This update cannot be submitted.");
-          return;
-      }
-      try {
-          await api.submitMobilePOD(trip.id, driverId, {
-              receiver_name: podForm.receiver_name,
-              signature_url: "/simulated_signatures/sig_1.png",
-              notes: podForm.notes
-          });
-          alert("Proof of Delivery submitted successfully!");
-          setShowPodModal(false);
-          // Now mark it delivered and completed
-          await api.updateMobileTripStatus(trip.id, "COMPLETED", driverId);
-          loadData();
-      } catch(err: any) {
-          alert("POD Failed: " + err);
-      }
-  };
-
-  const handleLogExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!trip) return;
+    setActionLoading(true);
     try {
-      await api.createExpense({
-        trip_id: trip.id,
-        expense_type: expenseForm.type,
-        amount: parseFloat(expenseForm.amount),
-        description: expenseForm.desc,
-        recorded_by: "Driver 1"
+      const res = await fetch(`/api/v1/driver/trips/${trip.trip_id}/${actionPath}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Content-Type": "application/json"
+        }
       });
-      alert("Expense logged successfully!");
-      setExpenseForm({ type: "FUEL", amount: "", desc: "" });
-    } catch (err: any) {
-      alert("Failed to log expense: " + err);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "State update failed");
+      }
+      const updatedTrip = await res.json();
+      setTrip(updatedTrip);
+    } catch (e: any) {
+      alert(e.message || "Failed to update trip status");
+    } finally {
+      setActionLoading(false);
     }
   };
-
-  const getNextStatusAction = () => {
-    if (!trip) return null;
-    switch (trip.status) {
-      case "TRIP CREATED": return { label: "Start Trip", next: "IN TRANSIT" };
-      case "IN TRANSIT": return { label: "Arrived at Destination", next: "ARRIVED AT DESTINATION" };
-      case "ARRIVED AT DESTINATION": return { label: "Submit Proof of Delivery", action: "POD" };
-      default: return null;
-    }
-  };
-
-  const action = getNextStatusAction();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col max-w-md mx-auto border-x border-gray-200 shadow-xl relative pb-20">
-      {/* Modal for POD */}
-      {showPodModal && (
-          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg shadow-xl w-full p-6">
-                  <h3 className="text-xl font-bold mb-4">Proof of Delivery</h3>
-                  <form onSubmit={handleSubmitPod} className="space-y-4">
-                      <div>
-                          <label className="block text-sm font-medium text-gray-700">Receiver Name</label>
-                          <input type="text" required value={podForm.receiver_name} onChange={e => setPodForm({...podForm, receiver_name: e.target.value})} className="mt-1 block w-full border border-gray-300 rounded p-2" />
-                      </div>
-                      <div>
-                          <label className="block text-sm font-medium text-gray-700">Notes</label>
-                          <textarea value={podForm.notes} onChange={e => setPodForm({...podForm, notes: e.target.value})} className="mt-1 block w-full border border-gray-300 rounded p-2" rows={3}></textarea>
-                      </div>
-                      <div className="bg-gray-100 p-4 rounded text-center border-2 border-dashed border-gray-300 text-gray-500">
-                          [ Sign Here ]
-                      </div>
-                      <div className="flex gap-4">
-                          <button type="button" onClick={() => setShowPodModal(false)} className="flex-1 bg-gray-200 text-gray-800 p-3 rounded-lg font-bold">Cancel</button>
-                          <button type="submit" className="flex-1 bg-green-600 text-white p-3 rounded-lg font-bold">Submit</button>
-                      </div>
-                  </form>
-              </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Top Header */}
+      <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-20 flex justify-between items-center shadow-lg">
+        <div className="flex items-center space-x-2">
+          <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white text-lg">
+            CX
           </div>
-      )}
-
-      <header className="bg-green-600 text-white shadow-md sticky top-0 z-10">
-        <div className="px-4 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold">CargoX Driver</h1>
-          <button className="relative p-2 hover:bg-green-700 rounded-full">
-            <Bell size={20} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
+          <div>
+            <h1 className="font-bold text-base text-slate-100 leading-tight">CargoX Driver PWA</h1>
+            <p className="text-xs text-slate-400">Mobile Execution Console</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <a
+            href="tel:18001234567"
+            className="flex items-center space-x-1 px-3 py-1.5 bg-rose-600/20 text-rose-400 border border-rose-600/30 rounded-full text-xs font-semibold hover:bg-rose-600/30 transition"
+            title="Call Operations Desk"
+          >
+            <Phone className="w-3.5 h-3.5" />
+            <span>Ops Desk</span>
+          </a>
         </div>
       </header>
 
+      {/* Network Status Banner */}
       {isOffline && (
-        <div className="bg-red-500 text-white text-center py-2 px-4 font-bold text-sm shadow-inner sticky top-[68px] z-10">
-           You are currently offline. Changes will not be saved.
+        <div className="bg-amber-600 text-amber-950 font-bold px-4 py-2 text-xs flex items-center justify-between sticky top-14 z-20">
+          <div className="flex items-center space-x-2">
+            <WifiOff className="w-4 h-4" />
+            <span>OFFLINE MODE — Status actions disabled until reconnected. GPS updates queued in IndexedDB.</span>
+          </div>
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto p-4">
-        {activeTab === "trips" && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Assigned Trip</h2>
-
-            {trip ? (
-              <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-                <div className="flex justify-between items-center mb-4 border-b pb-4">
-                   <div>
-                     <h3 className="text-xl font-bold text-gray-900">Booking #CX100{trip.booking_id}</h3>
-                     <p className="text-gray-500 mt-1">Trip ID: {trip.id}</p>
-                   </div>
-                   <span className={`px-3 py-1 rounded-full text-sm font-bold ${trip.status === 'COMPLETED' ? 'bg-gray-100 text-gray-800' : 'bg-blue-100 text-blue-800'}`}>{trip.status}</span>
+      {/* Main Content Area */}
+      <main className="flex-1 p-4 max-w-md mx-auto w-full space-y-4">
+        {loading ? (
+          <div className="p-8 text-center text-slate-400 animate-pulse">Loading active trip assignment...</div>
+        ) : error ? (
+          <div className="p-4 bg-rose-950/50 border border-rose-800 text-rose-300 rounded-xl text-sm">
+            {error}
+          </div>
+        ) : !trip ? (
+          <div className="p-8 text-center bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
+            <Clock className="w-12 h-12 text-slate-600 mx-auto" />
+            <h2 className="text-lg font-bold text-slate-200">No Active Trip Assigned</h2>
+            <p className="text-xs text-slate-400">You currently have no active trip dispatch. Waiting for Admin assignment.</p>
+            <button
+              onClick={fetchActiveTrip}
+              className="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition"
+            >
+              Refresh Active Trip
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Trip Status Header Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-xs text-slate-400 block">Trip Request</span>
+                  <span className="text-lg font-extrabold text-emerald-400">{trip.request_number}</span>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                   <div>
-                      <p className="text-sm text-gray-500">Status</p>
-                      <p className="font-semibold">{trip.status}</p>
-                   </div>
-                   <div>
-                      <p className="text-sm text-gray-500">Route</p>
-                      <p className="font-semibold">{trip.booking.pickup_address} → {trip.booking.drop_address}</p>
-                   </div>
+                <div className="text-right">
+                  <span className="text-xs text-slate-400 block">Vehicle</span>
+                  <span className="text-sm font-bold text-slate-200">{trip.vehicle_registration} ({trip.vehicle_type})</span>
                 </div>
-
-                <div className="flex gap-4">
-                   {action ? (
-                     <button 
-                       onClick={() => action.action === "POD" ? setShowPodModal(true) : handleUpdateStatus(action.next as string)}
-                       className="flex-1 bg-green-600 text-white py-3 rounded-md font-bold text-lg shadow hover:bg-green-700"
-                     >
-                        {action.label}
-                     </button>
-                   ) : (
-                     <div className="flex-1 bg-gray-100 text-gray-500 py-3 rounded-md font-bold text-lg text-center border border-gray-200">
-                        Trip Completed
-                     </div>
-                   )}
-                </div>
-
-                {trip.status === "IN TRANSIT" && (
-                    <div className="mt-6 bg-gray-900 text-green-400 p-4 rounded font-mono text-xs shadow-inner">
-                        <div className="flex items-center gap-2 mb-2 font-bold text-white">
-                            <MapPin size={16} /> GPS Simulator Active
-                        </div>
-                        {locationLog.map((log, i) => (
-                            <div key={i} className="opacity-80">{log}</div>
-                        ))}
-                        {locationLog.length === 0 && <div>Waiting for next GPS ping... (every 10s)</div>}
-                    </div>
-                )}
               </div>
-            ) : (
-              <p className="text-gray-500">No active trips assigned.</p>
-            )}
-          </div>
 
-        )}
-
-        {activeTab === "expenses" && (
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Receipt className="text-gray-700" />
-              <h2 className="text-xl font-bold text-gray-800">Log Expense</h2>
+              {/* Status Badge */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <span className="text-xs text-slate-400">Current Status:</span>
+                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold rounded-full text-xs tracking-wide">
+                  {trip.status}
+                </span>
+              </div>
             </div>
-            
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-                {!trip ? (
-                    <p className="text-gray-500 text-center py-4">You must have an active trip.</p>
-                ) : (
-                    <form onSubmit={handleLogExpense} className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Expense Type</label>
-                          <select value={expenseForm.type} onChange={e => setExpenseForm({...expenseForm, type: e.target.value})} className="block w-full rounded-lg border-gray-300 bg-gray-50 border p-3">
-                             <option value="FUEL">Fuel</option>
-                             <option value="TOLL">Toll Tax</option>
-                             <option value="ALLOWANCE">Driver Allowance</option>
-                             <option value="MAINTENANCE">Maintenance</option>
-                             <option value="OTHER">Other</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Amount (INR)</label>
-                          <input type="number" required min="1" step="0.1" value={expenseForm.amount} onChange={e => setExpenseForm({...expenseForm, amount: e.target.value})} className="block w-full rounded-lg border-gray-300 bg-gray-50 border p-3" placeholder="e.g. 500" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                          <input type="text" value={expenseForm.desc} onChange={e => setExpenseForm({...expenseForm, desc: e.target.value})} className="block w-full rounded-lg border-gray-300 bg-gray-50 border p-3" placeholder="e.g. Toll at NH44" />
-                        </div>
-                        <button type="submit" className="w-full bg-green-600 text-white p-4 rounded-xl font-bold shadow-md active:bg-green-700 mt-4">Submit Expense</button>
-                    </form>
-                )}
+
+            {/* Cargo Operational Details */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cargo Info</h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-slate-500 block">Goods Type</span>
+                  <span className="font-semibold text-slate-200">{trip.goods_type}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Weight</span>
+                  <span className="font-semibold text-slate-200">{trip.weight_tons} Tons</span>
+                </div>
+              </div>
+              {trip.special_instructions && (
+                <div className="pt-2 text-xs">
+                  <span className="text-slate-500 block">Special Instructions</span>
+                  <span className="text-amber-300 font-medium">{trip.special_instructions}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Pickup & Delivery Location Cards */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+              {/* Pickup */}
+              <div className="flex items-start space-x-3">
+                <div className="p-2 bg-blue-600/20 text-blue-400 rounded-xl mt-0.5">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                <div className="flex-1 text-xs">
+                  <span className="text-blue-400 font-bold block uppercase tracking-wider text-[10px]">Pickup Origin</span>
+                  <span className="font-bold text-slate-100 text-sm block">{trip.pickup_company_name}</span>
+                  <p className="text-slate-300 mt-0.5">{trip.pickup_address}</p>
+                  {trip.pickup_phone && (
+                    <a href={`tel:${trip.pickup_phone}`} className="mt-1 inline-flex items-center space-x-1 text-blue-400 hover:underline">
+                      <Phone className="w-3 h-3" />
+                      <span>{trip.pickup_phone} {trip.pickup_contact_person ? `(${trip.pickup_contact_person})` : ""}</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-800"></div>
+
+              {/* Destination */}
+              <div className="flex items-start space-x-3">
+                <div className="p-2 bg-emerald-600/20 text-emerald-400 rounded-xl mt-0.5">
+                  <Navigation className="w-5 h-5" />
+                </div>
+                <div className="flex-1 text-xs">
+                  <span className="text-emerald-400 font-bold block uppercase tracking-wider text-[10px]">Delivery Destination</span>
+                  <span className="font-bold text-slate-100 text-sm block">{trip.destination_company_name}</span>
+                  <p className="text-slate-300 mt-0.5">{trip.destination_address}</p>
+                  {trip.destination_phone && (
+                    <a href={`tel:${trip.destination_phone}`} className="mt-1 inline-flex items-center space-x-1 text-emerald-400 hover:underline">
+                      <Phone className="w-3 h-3" />
+                      <span>{trip.destination_phone} {trip.destination_contact_person ? `(${trip.destination_contact_person})` : ""}</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Sequential Primary Action Button */}
+            <div className="pt-2">
+              {trip.status === "DRIVER_ASSIGNED" && (
+                <button
+                  disabled={actionLoading || isOffline}
+                  onClick={() => handleStateAction("start-pickup")}
+                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-extrabold text-base rounded-2xl shadow-lg transition active:scale-[0.98]"
+                >
+                  {actionLoading ? "Updating..." : "Start Pickup"}
+                </button>
+              )}
+
+              {trip.status === "PICKUP_IN_PROGRESS" && (
+                <button
+                  disabled={actionLoading || isOffline}
+                  onClick={() => handleStateAction("start-transit")}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-base rounded-2xl shadow-lg transition active:scale-[0.98]"
+                >
+                  {actionLoading ? "Updating..." : "Complete Pickup & Start Transit"}
+                </button>
+              )}
+
+              {trip.status === "IN_TRANSIT" && (
+                <button
+                  disabled={actionLoading || isOffline}
+                  onClick={() => handleStateAction("arrive")}
+                  className="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-extrabold text-base rounded-2xl shadow-lg transition active:scale-[0.98]"
+                >
+                  {actionLoading ? "Updating..." : "Mark Arrived at Destination"}
+                </button>
+              )}
+
+              {trip.status === "ARRIVED" && (
+                <div className="w-full py-3 bg-emerald-950/60 border border-emerald-700/50 text-emerald-300 text-center text-xs font-bold rounded-2xl flex items-center justify-center space-x-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400" />
+                  <span>Arrived at Destination — Awaiting Verification</span>
+                </div>
+              )}
+            </div>
+
+            {/* GPS Telemetry Log Widget */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 text-xs space-y-1">
+              <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase">
+                <span>GPS Telemetry Feed</span>
+                <span className="text-emerald-400 flex items-center space-x-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  <span>Active</span>
+                </span>
+              </div>
+              {locationLog.length === 0 ? (
+                <div className="text-slate-600 text-[11px] italic">Monitoring GPS coordinates...</div>
+              ) : (
+                locationLog.map((log, idx) => (
+                  <div key={idx} className="text-[11px] text-slate-400 font-mono">
+                    {log}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
-        
-        {activeTab === "profile" && (
-          <div className="p-4 text-center">
-             <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-md">
-                <User size={40} className="text-green-600"/>
-             </div>
-             <h2 className="text-xl font-bold">Driver Name</h2>
-             <p className="text-gray-500 mb-8">Vehicle: AP 09 XY 1234</p>
-             <Link to="/" className="inline-flex items-center gap-2 bg-red-100 text-red-700 px-6 py-3 rounded-full font-bold">
-               <LogOut size={20} /> Logout
-             </Link>
-          </div>
-        )}
-
       </main>
-      
-      {/* Bottom Navigation */}
-      <nav className="bg-white border-t border-gray-200 fixed bottom-0 w-full max-w-md flex justify-around items-center pb-safe pt-2 pb-2">
-         <button onClick={() => setActiveTab('trips')} className={`flex flex-col items-center p-2 ${activeTab === 'trips' ? 'text-green-600' : 'text-gray-400'}`}>
-            <Navigation size={24} className={activeTab === 'trips' ? 'fill-current' : ''}/>
-            <span className="text-[10px] font-bold mt-1">Trips</span>
-         </button>
-         <button onClick={() => setActiveTab('expenses')} className={`flex flex-col items-center p-2 ${activeTab === 'expenses' ? 'text-green-600' : 'text-gray-400'}`}>
-            <Receipt size={24}/>
-            <span className="text-[10px] font-bold mt-1">Expenses</span>
-         </button>
-         <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center p-2 ${activeTab === 'profile' ? 'text-green-600' : 'text-gray-400'}`}>
-            <User size={24}/>
-            <span className="text-[10px] font-bold mt-1">Profile</span>
-         </button>
-      </nav>
     </div>
   );
 }

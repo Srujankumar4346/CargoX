@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     # Security / Clerk
     # These must be configured in environment (.env).
     # We do not use symmetric keys; we use asymmetric JWKS verification.
-    CLERK_ISSUER_URL: str
-    CLERK_JWKS_URL: str
+    CLERK_ISSUER_URL: str = "https://gentle-hamster-3926.clerk.accounts.dev"
+    CLERK_JWKS_URL: str = "https://gentle-hamster-3926.clerk.accounts.dev/.well-known/jwks.json"
     
     # Optional backend internal secret if needed for non-Clerk internal flows
     # Must be set securely in prod.

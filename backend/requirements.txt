@@ -13,3 +13,4 @@ python-multipart
 slowapi
 pytest
 httpx
+openai

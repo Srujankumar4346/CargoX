@@ -1,18 +1,29 @@
 import { Link } from "react-router-dom";
 import { Truck } from "lucide-react";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/react";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm sticky top-0 z-10">
+    <div className="min-h-screen bg-[var(--bg-primary)]">
+      <header className="bg-[var(--bg-secondary)] shadow-sm sticky top-0 z-10 border-b border-[var(--border-color)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Truck className="h-8 w-8 text-blue-600" />
-            <span className="text-2xl font-bold text-gray-900">CargoX</span>
+            <Truck className="h-8 w-8 text-[var(--accent)]" />
+            <span className="text-2xl font-bold text-[var(--text-primary)]">CargoX</span>
           </div>
-          <div className="flex gap-4">
-            <Link to="/login" className="text-gray-600 hover:text-gray-900 font-medium px-4 py-2">Login</Link>
-            <Link to="/register" className="bg-blue-600 text-white px-4 py-2 rounded-md font-medium hover:bg-blue-700 transition">Register</Link>
+          <div className="flex gap-4 items-center">
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium px-4 py-2">Login</button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button className="btn-primary">Register</button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
+              <Link to="/admin" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium px-4 py-2 mr-4">Dashboard</Link>
+              <UserButton />
+            </Show>
           </div>
         </div>
       </header>
@@ -25,12 +36,21 @@ export default function LandingPage() {
           CargoX makes goods transportation simple with smart booking, fleet management, real-time tracking, and intelligent logistics.
         </p>
         <div className="flex justify-center gap-6">
-          <Link to="/customer" className="bg-blue-600 text-white px-8 py-3 rounded-lg text-lg font-bold hover:bg-blue-700 transition shadow-lg">
+          <Link to="/customer" className="btn-primary px-8 py-3 rounded-lg text-lg font-bold shadow-lg">
             Book a Vehicle
           </Link>
-          <Link to="/login" className="bg-white text-blue-600 border border-blue-600 px-8 py-3 rounded-lg text-lg font-bold hover:bg-gray-50 transition shadow-sm">
-            Transport Login
-          </Link>
+          <Show when="signed-out">
+            <SignInButton mode="modal">
+              <button className="bg-[var(--bg-primary)] text-[var(--accent)] border border-[var(--accent)] px-8 py-3 rounded-lg text-lg font-bold hover:bg-[var(--bg-secondary)] transition shadow-sm">
+                Transport Login
+              </button>
+            </SignInButton>
+          </Show>
+          <Show when="signed-in">
+            <Link to="/admin" className="bg-[var(--bg-primary)] text-[var(--accent)] border border-[var(--accent)] px-8 py-3 rounded-lg text-lg font-bold hover:bg-[var(--bg-secondary)] transition shadow-sm">
+              Go to Dashboard
+            </Link>
+          </Show>
         </div>
       </main>
     </div>

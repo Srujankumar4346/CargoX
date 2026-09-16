@@ -10,18 +10,17 @@ export default function DriverDashboard() {
   const [podForm, setPodForm] = useState({ receiver_name: "", notes: "" });
   const [showPodModal, setShowPodModal] = useState(false);
   const [locationLog, setLocationLog] = useState<string[]>([]);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   
   const simInterval = useRef<any>(null);
+  const driverId = 1; // Assuming driver 1 for now
 
   const loadData = async () => {
     try {
-      const tripsResp = await fetch("http://127.0.0.1:8000/api/trips/");
-      if (tripsResp.ok) {
-        const trips = await tripsResp.json();
-        if (trips.length > 0) {
-           const activeTrip = trips[trips.length - 1];
-           setTrip(activeTrip);
-        }
+      const trips = await api.getMobileTripsToday(driverId);
+      if (trips.length > 0) {
+         const activeTrip = trips[trips.length - 1];
+         setTrip(activeTrip);
       }
     } catch (e) {
       console.error(e);
@@ -30,6 +29,17 @@ export default function DriverDashboard() {
 
   useEffect(() => {
     loadData();
+    
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    }
   }, []);
 
   // GPS Simulation logic
@@ -69,9 +79,13 @@ export default function DriverDashboard() {
   }, [trip]);
 
   const handleUpdateStatus = async (nextStatus: string) => {
+    if (isOffline) {
+        alert("You are offline. This update cannot be submitted.");
+        return;
+    }
     if (!trip) return;
     try {
-      await api.updateTripStatus(trip.id, nextStatus);
+      await api.updateMobileTripStatus(trip.id, nextStatus, driverId);
       loadData();
     } catch (e: any) {
       alert("Failed to update status: " + e);
@@ -80,8 +94,12 @@ export default function DriverDashboard() {
 
   const handleSubmitPod = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (isOffline) {
+          alert("You are offline. This update cannot be submitted.");
+          return;
+      }
       try {
-          await api.submitPOD(trip.id, {
+          await api.submitMobilePOD(trip.id, driverId, {
               receiver_name: podForm.receiver_name,
               signature_url: "/simulated_signatures/sig_1.png",
               notes: podForm.notes
@@ -89,8 +107,7 @@ export default function DriverDashboard() {
           alert("Proof of Delivery submitted successfully!");
           setShowPodModal(false);
           // Now mark it delivered and completed
-          await api.updateTripStatus(trip.id, "DELIVERED");
-          await api.updateTripStatus(trip.id, "COMPLETED");
+          await api.updateMobileTripStatus(trip.id, "COMPLETED", driverId);
           loadData();
       } catch(err: any) {
           alert("POD Failed: " + err);
@@ -164,6 +181,12 @@ export default function DriverDashboard() {
           </button>
         </div>
       </header>
+
+      {isOffline && (
+        <div className="bg-red-500 text-white text-center py-2 px-4 font-bold text-sm shadow-inner sticky top-[68px] z-10">
+           You are currently offline. Changes will not be saved.
+        </div>
+      )}
 
       <main className="flex-1 overflow-y-auto p-4">
         {activeTab === "trips" && (

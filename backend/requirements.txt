@@ -7,3 +7,9 @@ pydantic
 pydantic-settings
 requests
 google-generativeai
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+slowapi
+pytest
+httpx

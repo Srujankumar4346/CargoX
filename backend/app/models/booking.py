@@ -1,10 +1,15 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, DateTime, CheckConstraint, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.base import Base
 
 class Booking(Base):
     __tablename__ = "bookings"
+    __table_args__ = (
+        CheckConstraint('cargo_weight >= 0', name='check_cargo_weight_positive'),
+        Index('ix_bookings_customer_id', 'customer_id'),
+        Index('ix_bookings_status', 'status'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"))

@@ -1,10 +1,16 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.base import Base
 
 class Trip(Base):
     __tablename__ = "trips"
+    __table_args__ = (
+        Index('ix_trips_booking_id', 'booking_id'),
+        Index('ix_trips_driver_id', 'driver_id'),
+        Index('ix_trips_vehicle_id', 'vehicle_id'),
+        Index('ix_trips_status', 'status'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     booking_id = Column(Integer, ForeignKey("bookings.id"))

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Map as MapIcon, Bot, Sparkles, Navigation } from "lucide-react";
+import { LogOut, Map as MapIcon, Bot, Sparkles } from "lucide-react";
 import { api } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
+import ThemeToggle from "../../components/ThemeToggle";
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("trips");
@@ -154,40 +155,109 @@ export default function AdminDashboard() {
   }, [trackingTrip]);
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="min-h-screen bg-[var(--bg-primary)] flex">
       {/* Sidebar */}
-      <div className="w-64 bg-gray-900 text-white min-h-screen p-4 flex flex-col">
-        <h2 className="text-2xl font-bold mb-8 tracking-wider">CargoX Admin</h2>
-        <nav className="flex-1 space-y-2 mb-6">
-          <button onClick={() => setActiveTab('bookings')} className={`w-full text-left py-2.5 px-4 rounded flex items-center justify-between ${activeTab === 'bookings' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>
-             <span>Pending Bookings</span>
+      <div className="w-64 bg-slate-900 border-r border-slate-800 text-white min-h-screen flex flex-col shadow-2xl z-10">
+        <div className="p-6 pb-2">
+          <h2 className="text-2xl font-bold tracking-wider mb-2 flex items-center justify-between">
+            CargoX Admin
+          </h2>
+          <div className="flex justify-between items-center mb-6 text-sm text-slate-400">
+             <span>Premium Ops</span>
+             <ThemeToggle />
+          </div>
+        </div>
+        <nav className="flex-1 space-y-1 px-3 mb-6">
+          <button onClick={() => setActiveTab('dashboard')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+             <MapIcon size={18} /> <span>Dashboard</span>
+          </button>
+          <button onClick={() => setActiveTab('bookings')} className={`w-full text-left py-2.5 px-4 rounded flex items-center justify-between ${activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+             <div className="flex items-center gap-3"><Sparkles size={18} /> <span>Dispatch</span></div>
              {bookings.filter(b => b.status === "REQUESTED").length > 0 && (
                 <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{bookings.filter(b => b.status === "REQUESTED").length}</span>
              )}
           </button>
-          <button onClick={() => setActiveTab('vehicles')} className={`w-full text-left py-2.5 px-4 rounded ${activeTab === 'vehicles' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Fleet Status</button>
-          <button onClick={() => setActiveTab('trips')} className={`w-full text-left py-2.5 px-4 rounded ${activeTab === 'trips' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Active Trips</button>
-          <button onClick={() => setActiveTab('financials')} className={`w-full text-left py-2.5 px-4 rounded ${activeTab === 'financials' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Business Operations</button>
-          <button onClick={() => setActiveTab('ai')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-2 ${activeTab === 'ai' ? 'bg-gray-800 text-purple-400' : 'hover:bg-gray-800'}`}><Bot size={18}/> AI Assistant</button>
+          <button onClick={() => setActiveTab('vehicles')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+             <MapIcon size={18}/> <span>Fleet Status</span>
+          </button>
+          <button onClick={() => setActiveTab('trips')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'trips' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+             <MapIcon size={18}/> <span>Active Trips</span>
+          </button>
+          <button onClick={() => setActiveTab('financials')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'financials' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+             <MapIcon size={18}/> <span>Financials</span>
+          </button>
+          <button onClick={() => setActiveTab('ai')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'ai' ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-slate-800 text-purple-400'}`}>
+             <Bot size={18}/> <span>AI Assistant</span>
+          </button>
         </nav>
         
         <div className="mb-4">
            <NotificationDropdown userType="ADMIN" userId={0} />
         </div>
         
-        <Link to="/" className="flex items-center gap-2 mt-auto py-2.5 px-4 hover:bg-gray-800 rounded">
+        <Link to="/" className="flex items-center gap-3 mt-auto py-2.5 px-4 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded transition-colors mx-3 mb-4">
           <LogOut size={20} /> Logout
         </Link>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-8">
+      <div className="flex-1 p-8 overflow-y-auto">
+        
+        {activeTab === 'dashboard' && (
+          <div className="fade-in">
+             <div className="flex justify-between items-center mb-8">
+               <h1 className="text-3xl font-bold text-[var(--text-primary)]">Operations Dashboard</h1>
+             </div>
+             
+             {/* KPI Cards */}
+             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="glass-card p-6">
+                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Active Trips</h3>
+                   <p className="text-4xl font-bold text-[var(--text-primary)] mt-2">{trips.filter(t => t.status === 'IN TRANSIT').length}</p>
+                </div>
+                <div className="glass-card p-6">
+                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Available Fleet</h3>
+                   <p className="text-4xl font-bold text-green-500 mt-2">{vehicles.filter(v => v.status === 'AVAILABLE').length}</p>
+                </div>
+                <div className="glass-card p-6">
+                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Pending Bookings</h3>
+                   <p className="text-4xl font-bold text-yellow-500 mt-2">{bookings.filter(b => b.status === 'REQUESTED').length}</p>
+                </div>
+                <div className="glass-card p-6">
+                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Total Revenue</h3>
+                   <p className="text-4xl font-bold text-blue-500 mt-2">₹{dashboard?.revenue ? dashboard.revenue.toLocaleString() : '0'}</p>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 glass-card p-6 min-h-[400px] flex items-center justify-center">
+                   <p className="text-[var(--text-secondary)]">Fleet Map will be integrated here (Phase 8.4)</p>
+                </div>
+                <div className="glass-card p-6">
+                   <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">Recent Activity</h3>
+                   <div className="space-y-4">
+                      {trips.slice(0, 3).map(t => (
+                        <div key={t.id} className="flex items-start gap-3 border-b border-[var(--border-color)] pb-3">
+                           <div className="bg-blue-500/10 p-2 rounded text-blue-500">
+                             <MapIcon size={16} />
+                           </div>
+                           <div>
+                             <p className="text-sm font-medium text-[var(--text-primary)]">Trip #{t.id} {t.status}</p>
+                             <p className="text-xs text-[var(--text-secondary)]">{t.booking.pickup_location} → {t.booking.drop_location}</p>
+                           </div>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
+          </div>
+        )}
         {activeTab === 'bookings' && (
-          <div>
-             <h1 className="text-3xl font-bold text-gray-800 mb-6">Pending Bookings Assignment</h1>
+          <div className="fade-in">
+             <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-6">Dispatch Board (Phase 8.5)</h1>
              
              {bookings.filter(b => b.status === "REQUESTED").map(booking => (
-               <div key={booking.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+               <div key={booking.id} className="glass-card p-6 mb-6">
                   <div className="flex justify-between items-start mb-4 border-b pb-4">
                      <div>
                        <h3 className="text-xl font-bold text-gray-900">Booking #CX100{booking.id}</h3>

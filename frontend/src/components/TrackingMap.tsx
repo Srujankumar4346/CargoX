@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet";
 import L from "leaflet";
 
@@ -49,28 +49,31 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+      <div className="glass-card p-6 border-l-4 border-l-[var(--accent)]">
          <div className="flex justify-between items-center mb-2">
-            <span className="font-bold text-gray-800">Status: {trip.status}</span>
-            {trip.status === "IN TRANSIT" && (
-                <span className="text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-full text-sm">
-                   Live Tracking Active
-                </span>
-            )}
+            <span className="font-bold text-[var(--text-primary)]">Status: {trip.status}</span>
+            <div className="flex items-center gap-3">
+               <span className="text-xs text-[var(--text-secondary)] italic">Near-real-time simulated tracking</span>
+               {trip.status === "IN TRANSIT" && (
+                   <span className="text-blue-500 font-bold bg-blue-500/10 px-3 py-1 rounded-full text-sm animate-pulse">
+                      Live Tracking Active
+                   </span>
+               )}
+            </div>
          </div>
          <div className="grid grid-cols-2 gap-4 text-sm mt-4">
             <div>
-               <p className="text-gray-500">Distance Remaining</p>
-               <p className="font-bold text-lg">{distRemaining.toFixed(1)} km</p>
+               <p className="text-[var(--text-secondary)]">Distance Remaining</p>
+               <p className="font-bold text-lg text-[var(--text-primary)]">{distRemaining.toFixed(1)} km</p>
             </div>
             <div>
-               <p className="text-gray-500">Estimated Arrival (Avg 45km/h)</p>
-               <p className="font-bold text-lg">{trip.status === "COMPLETED" || trip.status === "DELIVERED" ? "Arrived" : etaStr}</p>
+               <p className="text-[var(--text-secondary)]">Estimated Arrival (Avg 45km/h)</p>
+               <p className="font-bold text-lg text-[var(--text-primary)]">{trip.status === "COMPLETED" || trip.status === "DELIVERED" ? "Arrived" : etaStr}</p>
             </div>
          </div>
       </div>
       
-      <div className="h-[400px] w-full bg-gray-100 rounded-lg overflow-hidden border border-gray-300">
+      <div className="h-[400px] w-full bg-[var(--bg-secondary)] rounded-xl overflow-hidden border border-[var(--border-color)] shadow-inner">
         <MapContainer center={currentLoc as any} zoom={7} className="h-full w-full">
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

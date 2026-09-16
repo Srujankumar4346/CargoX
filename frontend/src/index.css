@@ -1,2 +1,70 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit', system-ui, sans-serif;
+}
+
+@layer base {
+  :root {
+    --bg-primary: #f9fafb;
+    --bg-secondary: #ffffff;
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --border-color: #e5e7eb;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+  }
+  
+  .dark {
+    --bg-primary: #020617; /* Very dark slate for premium feel */
+    --bg-secondary: #0f172a;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border-color: #1e293b;
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+}
+
+@layer components {
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .glass-card {
+    @apply bg-white/70 dark:bg-slate-900/50 backdrop-blur-md border border-gray-200 dark:border-slate-800 shadow-xl rounded-xl;
+  }
+  .card {
+    @apply bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-xl shadow-sm p-6;
+  }
+  .btn-primary {
+    @apply bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] px-4 py-2 rounded-lg font-semibold transition-all duration-200 shadow-md hover:shadow-lg active:scale-95;
+  }
+  .btn-secondary {
+    @apply bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-color)] hover:bg-gray-50 dark:hover:bg-slate-800 px-4 py-2 rounded-lg font-semibold transition-all duration-200 shadow-sm;
+  }
+  .input-field {
+    @apply w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-2 text-[var(--text-primary)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] outline-none transition-colors;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "CargoX Driver",
+  "short_name": "CargoX",
+  "description": "CargoX Driver Application",
+  "start_url": "/driver",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

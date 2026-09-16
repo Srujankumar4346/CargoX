@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date
 import uuid
@@ -11,35 +11,38 @@ from app.models.trip_status_history import TripStatusHistory
 from app.models.invoice import Invoice
 from app.models.tracking import ProofOfDelivery
 from app.schemas.trip import TripCreate, TripResponse
-from app.services.notifications.notifier import NotificationService
+from app.domain.events import event_dispatcher, DomainEvent
+from app.api.deps import get_current_active_user, get_current_admin
 
 router = APIRouter()
 
 @router.post("/", response_model=TripResponse)
-def create_trip(trip: TripCreate, db: Session = Depends(get_db)):
-    # Validate Booking
-    booking = db.query(Booking).filter(Booking.id == trip.booking_id).first()
+def create_trip(
+    trip: TripCreate, 
+    db: Session = Depends(get_db), 
+    current_user: dict = Depends(get_current_admin)
+):
+    # Concurrency safe assignment
+    # Lock booking, vehicle, driver
+    booking = db.query(Booking).filter(Booking.id == trip.booking_id).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    if booking.status != "REQUESTED" and booking.status != "CONFIRMED":
+    if booking.status not in ["REQUESTED", "CONFIRMED"]:
         raise HTTPException(status_code=400, detail="Booking is not in a valid state for assignment")
 
-    # Validate Vehicle availability & capacity
-    vehicle = db.query(Vehicle).filter(Vehicle.id == trip.vehicle_id).first()
+    vehicle = db.query(Vehicle).filter(Vehicle.id == trip.vehicle_id).with_for_update().first()
     if not vehicle:
         raise HTTPException(status_code=404, detail="Vehicle not found")
     if vehicle.status != "AVAILABLE":
         raise HTTPException(status_code=400, detail="Vehicle is not available")
     try:
-        # Assuming capacity is a string like "10 Ton", extract number
         capacity_val = float(vehicle.capacity.lower().replace("ton", "").strip())
         if booking.cargo_weight > capacity_val:
             raise HTTPException(status_code=400, detail="Cargo weight exceeds vehicle capacity")
     except ValueError:
-        pass # Handle cases where parsing fails, ignore for this simple implementation
+        pass
 
-    # Validate Driver availability
-    driver = db.query(Driver).filter(Driver.id == trip.driver_id).first()
+    driver = db.query(Driver).filter(Driver.id == trip.driver_id).with_for_update().first()
     if not driver:
         raise HTTPException(status_code=404, detail="Driver not found")
     if driver.status != "AVAILABLE":
@@ -54,33 +57,14 @@ def create_trip(trip: TripCreate, db: Session = Depends(get_db)):
     vehicle.status = "ASSIGNED"
     driver.status = "ASSIGNED"
     
-    db.commit()
-    db.refresh(db_trip)
-    
-    # Notify Driver & Customer
-    NotificationService.notify(
-        db=db,
-        user_type="DRIVER",
-        user_id=trip.driver_id,
-        title="New Trip Assigned",
-        message=f"You have been assigned to Trip #{db_trip.id}.",
-        channels=["IN_APP", "SMS"]
-    )
-    NotificationService.notify(
-        db=db,
-        user_type="CUSTOMER",
-        user_id=booking.customer_id,
-        title="Vehicle Assigned",
-        message=f"Vehicle has been assigned to your booking #CX100{booking.id}.",
-        channels=["IN_APP", "EMAIL"]
-    )
+    db.flush() # Flush to get db_trip.id before commit
     
     # Create History
     history = TripStatusHistory(trip_id=db_trip.id, status="TRIP CREATED")
     db.add(history)
     
     # Generate Invoice
-    base_charge = float(booking.cargo_weight) * 3000.0  # INR 3000 per ton
+    base_charge = float(booking.cargo_weight) * 3000.0
     taxes = base_charge * 0.10
     total_amount = base_charge + taxes
     invoice_number = f"INV-CX-{uuid.uuid4().hex[:8].upper()}"
@@ -102,15 +86,50 @@ def create_trip(trip: TripCreate, db: Session = Depends(get_db)):
     db.add(invoice)
     db.commit()
     
+    db.refresh(db_trip)
+    db.refresh(invoice)
+    
+    # Notify Driver & Customer
+    event_dispatcher.publish(db, DomainEvent(event_type="VEHICLE_ASSIGNED", entity_id=db_trip.id))
+    event_dispatcher.publish(db, DomainEvent(event_type="INVOICE_GENERATED", entity_id=invoice.id))
+    
     return db_trip
 
+
+@router.get("/", response_model=list[TripResponse])
+def read_trips(
+    skip: int = Query(0, ge=0), 
+    limit: int = Query(50, ge=1, le=100), 
+    db: Session = Depends(get_db), 
+    current_user: dict = Depends(get_current_active_user)
+):
+    query = db.query(Trip)
+    
+    if current_user["role"] == "CUSTOMER":
+        query = query.join(Booking).filter(Booking.customer_id == current_user["id"])
+    elif current_user["role"] == "DRIVER":
+        query = query.filter(Trip.driver_id == current_user["id"])
+        
+    return query.offset(skip).limit(limit).all()
+
+
 @router.put("/{trip_id}/status", response_model=TripResponse)
-def update_trip_status(trip_id: int, new_status: str, location: str = None, db: Session = Depends(get_db)):
-    trip = db.query(Trip).filter(Trip.id == trip_id).first()
+def update_trip_status(
+    trip_id: int, 
+    new_status: str, 
+    location: str = None, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_active_user)
+):
+    trip = db.query(Trip).filter(Trip.id == trip_id).with_for_update().first()
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
+        
+    if current_user["role"] == "CUSTOMER":
+        raise HTTPException(status_code=403, detail="Customers cannot update trip status")
+    elif current_user["role"] == "DRIVER" and trip.driver_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this trip")
     
-    # Validation for status flow
     valid_transitions = {
         "TRIP CREATED": ["IN TRANSIT"],
         "IN TRANSIT": ["ARRIVED AT DESTINATION"],
@@ -122,15 +141,18 @@ def update_trip_status(trip_id: int, new_status: str, location: str = None, db: 
         raise HTTPException(status_code=400, detail=f"Invalid transition from {trip.status} to {new_status}")
     
     if new_status == "COMPLETED":
-        # Check for POD
-        from app.models.tracking import ProofOfDelivery
         pod = db.query(ProofOfDelivery).filter(ProofOfDelivery.trip_id == trip_id).first()
         if not pod:
             raise HTTPException(status_code=400, detail="Cannot mark trip as COMPLETED without Proof of Delivery")
 
-        trip.booking.status = "COMPLETED"
-        trip.vehicle.status = "AVAILABLE"
-        trip.driver.status = "AVAILABLE"
+        # Concurrency safety: Get lock on related records
+        booking = db.query(Booking).filter(Booking.id == trip.booking_id).with_for_update().first()
+        vehicle = db.query(Vehicle).filter(Vehicle.id == trip.vehicle_id).with_for_update().first()
+        driver = db.query(Driver).filter(Driver.id == trip.driver_id).with_for_update().first()
+
+        booking.status = "COMPLETED"
+        vehicle.status = "AVAILABLE"
+        driver.status = "AVAILABLE"
         
     trip.status = new_status
     history = TripStatusHistory(trip_id=trip_id, status=new_status, location=location)
@@ -139,13 +161,16 @@ def update_trip_status(trip_id: int, new_status: str, location: str = None, db: 
     db.commit()
     db.refresh(trip)
     
-    NotificationService.notify(
-        db=db,
-        user_type="CUSTOMER",
-        user_id=trip.booking.customer_id,
-        title="Trip Status Updated",
-        message=f"Trip #{trip.id} status is now {new_status}.",
-        channels=["IN_APP", "SMS"]
-    )
+    event_type = "TRIP_UPDATED"
+    if new_status == "IN TRANSIT":
+        event_type = "TRIP_STARTED"
+    elif new_status == "DELIVERED":
+        event_type = "DELIVERED"
+    elif new_status == "ARRIVED AT DESTINATION":
+        event_type = "ARRIVED_AT_DESTINATION"
+    elif new_status == "COMPLETED":
+        event_type = "DELIVERY_COMPLETED"
+    
+    event_dispatcher.publish(db, DomainEvent(event_type=event_type, entity_id=trip.id))
     
     return trip

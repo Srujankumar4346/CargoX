@@ -4,6 +4,7 @@ from app.models.invoice import Invoice
 from app.models.expense import Expense
 from app.models.trip import Trip
 from app.models.booking import Booking
+from app.models.vehicle import Vehicle
 
 def get_total_revenue(db: Session) -> float:
     result = db.query(func.sum(Invoice.total_amount)).scalar()
@@ -26,6 +27,19 @@ def get_pending_bookings(db: Session) -> int:
     result = db.query(func.count(Booking.id)).filter(Booking.status == "REQUESTED").scalar()
     return int(result) if result else 0
 
+def get_best_performing_vehicle(db: Session) -> str:
+    result = db.query(
+        Vehicle.vehicle_number,
+        func.sum(Invoice.total_amount).label('total_profit')
+    ).join(Trip, Vehicle.id == Trip.vehicle_id) \
+     .join(Invoice, Invoice.booking_id == Trip.booking_id) \
+     .group_by(Vehicle.id) \
+     .order_by(func.sum(Invoice.total_amount).desc()) \
+     .first()
+    if result:
+        return f"Vehicle {result[0]} made the most profit: ₹{result[1]}"
+    return "No vehicle data available."
+
 # Mapping of tools available to the LLM
 def execute_tool(db: Session, tool_name: str, kwargs: dict) -> str:
     try:
@@ -44,6 +58,8 @@ def execute_tool(db: Session, tool_name: str, kwargs: dict) -> str:
         elif tool_name == "get_pending_bookings":
             val = get_pending_bookings(db)
             return f"There are {val} pending bookings."
+        elif tool_name == "get_best_performing_vehicle":
+            return get_best_performing_vehicle(db)
         else:
             return "Tool not recognized."
     except Exception as e:

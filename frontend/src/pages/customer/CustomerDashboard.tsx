@@ -4,12 +4,17 @@ import { LogOut, Truck, FileText, Map as MapIcon } from "lucide-react";
 import { api } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
+import StructuredAddressForm, { type AddressData } from "../../components/StructuredAddressForm";
 
 export default function CustomerDashboard() {
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [bookings, setBookings] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [formData, setFormData] = useState({ pickup: "", drop: "", cargo: "", weight: "" });
+  const [formData, setFormData] = useState({ 
+    pickup: "", pickup_lat: "", pickup_lng: "", 
+    drop: "", drop_lat: "", drop_lng: "", 
+    cargo: "", weight: "" 
+  });
   const [trackingTrip, setTrackingTrip] = useState<any>(null);
   const [trackingLocations, setTrackingLocations] = useState<any[]>([]);
 
@@ -52,7 +57,11 @@ export default function CustomerDashboard() {
       await api.createBooking({
         customer_id: 1, // Mock customer ID
         pickup_address: formData.pickup,
+        pickup_latitude: formData.pickup_lat !== "" ? parseFloat(formData.pickup_lat) : null,
+        pickup_longitude: formData.pickup_lng !== "" ? parseFloat(formData.pickup_lng) : null,
         drop_address: formData.drop,
+        drop_latitude: formData.drop_lat !== "" ? parseFloat(formData.drop_lat) : null,
+        drop_longitude: formData.drop_lng !== "" ? parseFloat(formData.drop_lng) : null,
         cargo_type: formData.cargo,
         cargo_weight: parseFloat(formData.weight) || 0
       });
@@ -143,13 +152,25 @@ export default function CustomerDashboard() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
               <h3 className="text-xl font-bold mb-4">Request a Vehicle</h3>
               <form onSubmit={handleBookingSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Pickup Address</label>
-                  <input type="text" required value={formData.pickup} onChange={e => setFormData({...formData, pickup: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. Hyderabad, Telangana" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Drop Address</label>
-                  <input type="text" required value={formData.drop} onChange={e => setFormData({...formData, drop: e.target.value})} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. Vijayawada, Andhra Pradesh" />
+                <div className="md:col-span-2">
+                  <StructuredAddressForm 
+                    title="Pickup Address" 
+                    onChange={(data: AddressData) => setFormData({
+                      ...formData, 
+                      pickup: data.formattedString,
+                      pickup_lat: data.lat as any,
+                      pickup_lng: data.lng as any
+                    })} 
+                  />
+                  <StructuredAddressForm 
+                    title="Drop Address" 
+                    onChange={(data: AddressData) => setFormData({
+                      ...formData, 
+                      drop: data.formattedString,
+                      drop_lat: data.lat as any,
+                      drop_lng: data.lng as any
+                    })} 
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Cargo Type</label>

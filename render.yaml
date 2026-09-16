@@ -18,9 +18,15 @@ services:
           name: cargox-db
           property: connectionString
       - key: GEMINI_API_KEY
-        sync: false # You will need to enter this manually in the Render Dashboard
+        sync: false
       - key: PYTHON_VERSION
-        value: 3.12.0 # Ensure this matches your local Python version roughly
+        value: 3.12.0
+      - key: CLERK_ISSUER_URL
+        value: https://gentle-hamster-3926.clerk.accounts.dev
+      - key: CLERK_JWKS_URL
+        value: https://gentle-hamster-3926.clerk.accounts.dev/.well-known/jwks.json
+      - key: CLERK_SECRET_KEY
+        sync: false # Set this manually in the Render Dashboard
 
   # 3. React Frontend
   - type: web

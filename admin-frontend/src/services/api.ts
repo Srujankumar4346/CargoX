@@ -1,7 +1,22 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api";
 
 async function authFetch(url: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('access_token');
+  let token = null;
+  
+  // Try to get Clerk token first
+  if (typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
+    try {
+      token = await (window as any).Clerk.session.getToken();
+    } catch (e) {
+      console.warn("Failed to fetch Clerk token", e);
+    }
+  }
+  
+  // Fallback to localStorage
+  if (!token) {
+    token = localStorage.getItem('access_token');
+  }
+
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);

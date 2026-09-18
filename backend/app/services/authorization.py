@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 from app.models.user import User
+from app.models.fleet import Driver
 from app.models.enums import UserRole
 import uuid
 
@@ -24,7 +25,7 @@ class AuthorizationService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
             
     @staticmethod
-    def verify_driver_trip_access(current_user: User, assigned_driver_id: uuid.UUID, is_released: bool = False):
+    async def verify_driver_trip_access(current_user: User, assigned_driver_id: uuid.UUID, is_released: bool = False):
         """
         Ensures a Driver can only access trips they are actively assigned to.
         """
@@ -34,9 +35,10 @@ class AuthorizationService:
         if current_user.role != UserRole.DRIVER:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access driver resources")
             
-        if not current_user.driver:
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if not driver:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Driver profile not found")
             
-        if current_user.driver.id != assigned_driver_id or is_released:
+        if driver.id != assigned_driver_id or is_released:
             # Mask existence
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")

@@ -1,48 +1,39 @@
-from sqlalchemy import Column, String, Integer, Enum, ForeignKey, DateTime, Float
-from sqlalchemy.orm import relationship
-from app.db.base import Base
-from app.models.enums import VehicleType, VehicleStatus, DriverStatus
+import pymongo
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from typing import Optional
+from datetime import datetime
+from beanie import Document
+from pydantic import Field
+from app.models.enums import VehicleType, VehicleStatus, DriverStatus
 
-class Vehicle(Base):
-    __tablename__ = "vehicles"
+class Vehicle(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    registration_number: str # type: ignore
+    type: VehicleType
+    capacity_tons: float
+    status: VehicleStatus = VehicleStatus.AVAILABLE
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    registration_number = Column(String, unique=True, index=True, nullable=False)
-    type = Column(Enum(VehicleType), nullable=False)
-    capacity_tons = Column(Float, nullable=False)
-    status = Column(Enum(VehicleStatus), default=VehicleStatus.AVAILABLE, nullable=False)
-    
-    # Relationships
-    assignments = relationship("VehicleAssignment", back_populates="vehicle")
-    maintenance_records = relationship("VehicleMaintenance", back_populates="vehicle")
+    class Settings:
+        name = "vehicles"
 
-class Driver(Base):
-    __tablename__ = "drivers"
+class Driver(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    user_id: uuid.UUID # type: ignore
+    name: str
+    phone: str
+    license_number: str # type: ignore
+    status: DriverStatus = DriverStatus.AVAILABLE
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False)
-    name = Column(String, nullable=False)
-    phone = Column(String, nullable=False)
-    license_number = Column(String, unique=True, nullable=False)
-    status = Column(Enum(DriverStatus), default=DriverStatus.AVAILABLE, nullable=False)
-    
-    # Relationships
-    user = relationship("User", back_populates="driver")
-    assignments = relationship("VehicleAssignment", back_populates="driver")
+    class Settings:
+        name = "drivers"
 
-class VehicleAssignment(Base):
-    __tablename__ = "vehicle_assignments"
+class VehicleAssignment(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    trip_id: uuid.UUID
+    vehicle_id: uuid.UUID
+    driver_id: uuid.UUID
+    assigned_at: datetime
+    released_at: Optional[datetime] = None
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    trip_id = Column(UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False)
-    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id"), nullable=False)
-    driver_id = Column(UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False)
-    assigned_at = Column(DateTime, nullable=False)
-    released_at = Column(DateTime, nullable=True)
-    
-    # Relationships
-    vehicle = relationship("Vehicle", back_populates="assignments")
-    driver = relationship("Driver", back_populates="assignments")
-    trip = relationship("Trip", back_populates="assignment", uselist=False)
+    class Settings:
+        name = "vehicle_assignments"

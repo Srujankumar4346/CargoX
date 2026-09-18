@@ -1,4 +1,3 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from datetime import datetime, timezone
 import uuid
@@ -15,31 +14,33 @@ from app.models.notifications import NotificationChannel
 
 class TrackingDeliveryService:
     @staticmethod
-    def submit_pod(db: Session, trip_id: uuid.UUID, pod_in: PODSubmission, driver_user: User) -> ProofOfDelivery:
+    async def submit_pod(trip_id: uuid.UUID, pod_in: PODSubmission, driver_user: User) -> ProofOfDelivery:
         # Check active driver profile
-        driver = db.query(Driver).filter(Driver.user_id == driver_user.id).first()
+        driver = await Driver.find_one(Driver.user_id == driver_user.id)
         if not driver:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is not a driver")
 
-        # Fetch trip with active assignment (released_at IS NULL)
-        trip = db.query(Trip).join(VehicleAssignment, Trip.id == VehicleAssignment.trip_id)\
-            .filter(
-                Trip.id == trip_id,
-                VehicleAssignment.driver_id == driver.id,
-                VehicleAssignment.released_at.is_(None)
-            ).first()
-
-        if not trip:
+        # Fetch active assignment
+        assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.trip_id == trip_id,
+            VehicleAssignment.driver_id == driver.id,
+            VehicleAssignment.released_at == None
+        )
+        if not assignment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active trip assignment not found")
 
+        trip = await Trip.find_one(Trip.id == trip_id)
+        if not trip:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
         # Check duplicate POD first — must always return 409 regardless of current state
-        existing_pod = db.query(ProofOfDelivery).filter(ProofOfDelivery.trip_id == trip.id).first()
+        existing_pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
         if existing_pod:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="POD has already been submitted for this trip")
 
         # Validate DeliveryRequest status
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == trip.request_id).with_for_update().first()
-        if not request or request.status != DeliveryRequestStatus.ARRIVED:
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+        if not request or request.status != DeliveryRequestStatus.ARRIVED.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot submit POD for request in status '{request.status if request else 'None'}'. Must be in ARRIVED status."
@@ -51,7 +52,6 @@ class TrackingDeliveryService:
 
         # Create POD record
         pod = ProofOfDelivery(
-            id=uuid.uuid4(),
             trip_id=trip.id,
             file_url=pod_photo or pod_sig or "https://storage.cargox.com/default_pod.png",
             notes=pod_in.notes,
@@ -59,16 +59,16 @@ class TrackingDeliveryService:
             submitted_by=driver_user.id
         )
 
-        db.add(pod)
+        await pod.insert()
 
         # Transition request status ARRIVED -> POD_SUBMITTED
         request.status = DeliveryRequestStatus.POD_SUBMITTED
+        await request.save()
         
         # Notification: POD_SUBMITTED (to Admins)
-        admin_users = NotificationService.resolve_admin_recipients(db)
+        admin_users = await NotificationService.resolve_admin_recipients()
         for admin in admin_users:
-            NotificationService.create_notification(
-                db=db,
+            await NotificationService.create_notification(
                 event_id=f"POD_SUBMITTED:{trip.id}:ADMIN:{admin.id}",
                 event_type="POD_SUBMITTED",
                 recipient_user_id=admin.id,
@@ -77,19 +77,16 @@ class TrackingDeliveryService:
                 message=f"POD submitted for request {request.request_number} and needs verification."
             )
             
-        db.commit()
-        NotificationService.process_pending_notifications(db)
-        db.refresh(pod)
+        await NotificationService.process_pending_notifications()
         return pod
 
     @staticmethod
-    def verify_pod(db: Session, trip_id: uuid.UUID, admin_user: User) -> ProofOfDelivery:
-        # Lock Trip & DeliveryRequest
-        trip = db.query(Trip).filter(Trip.id == trip_id).with_for_update().first()
+    async def verify_pod(trip_id: uuid.UUID, admin_user: User) -> ProofOfDelivery:
+        trip = await Trip.find_one(Trip.id == trip_id)
         if not trip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == trip.request_id).with_for_update().first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
@@ -100,7 +97,7 @@ class TrackingDeliveryService:
                 detail=f"Cannot verify POD for request in status '{request.status}'. Request must be in POD_SUBMITTED status."
             )
 
-        pod = db.query(ProofOfDelivery).filter(ProofOfDelivery.trip_id == trip.id).first()
+        pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
         if not pod:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proof of Delivery record not found")
 
@@ -109,10 +106,9 @@ class TrackingDeliveryService:
         request.status = DeliveryRequestStatus.DELIVERED
 
         # Notification: TRIP_DELIVERED (to Customer)
-        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        customer_users = await NotificationService.resolve_customer_recipients(request.customer_company_id)
         for cust_user in customer_users:
-            NotificationService.create_notification(
-                db=db,
+            await NotificationService.create_notification(
                 event_id=f"TRIP_DELIVERED:{trip.id}:CUST:{cust_user.id}",
                 event_type="TRIP_DELIVERED",
                 recipient_user_id=cust_user.id,
@@ -121,19 +117,18 @@ class TrackingDeliveryService:
                 message=f"Request {request.request_number} has been delivered."
             )
 
-        db.commit()
-        NotificationService.process_pending_notifications(db)
-        db.refresh(pod)
+        await trip.save()
+        await request.save()
+        await NotificationService.process_pending_notifications()
         return pod
 
     @staticmethod
-    def complete_trip(db: Session, trip_id: uuid.UUID, admin_user: User) -> Trip:
-        # Lock Trip and DeliveryRequest
-        trip = db.query(Trip).filter(Trip.id == trip_id).with_for_update().first()
+    async def complete_trip(trip_id: uuid.UUID, admin_user: User) -> Trip:
+        trip = await Trip.find_one(Trip.id == trip_id)
         if not trip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == trip.request_id).with_for_update().first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
@@ -145,17 +140,17 @@ class TrackingDeliveryService:
             )
 
         # Lock active VehicleAssignment
-        assignment = db.query(VehicleAssignment).filter(
+        assignment = await VehicleAssignment.find_one(
             VehicleAssignment.trip_id == trip.id,
-            VehicleAssignment.released_at.is_(None)
-        ).with_for_update().first()
+            VehicleAssignment.released_at == None
+        )
 
         if not assignment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active vehicle assignment not found for this trip")
 
         # Lock Vehicle & Driver resources
-        vehicle = db.query(Vehicle).filter(Vehicle.id == assignment.vehicle_id).with_for_update().first()
-        driver = db.query(Driver).filter(Driver.id == assignment.driver_id).with_for_update().first()
+        vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
+        driver = await Driver.find_one(Driver.id == assignment.driver_id)
 
         now = datetime.now(timezone.utc)
 
@@ -167,14 +162,15 @@ class TrackingDeliveryService:
         assignment.released_at = now
         if vehicle:
             vehicle.status = VehicleStatus.AVAILABLE
+            await vehicle.save()
         if driver:
             driver.status = DriverStatus.AVAILABLE
+            await driver.save()
 
         # Notification: TRIP_COMPLETED (to Customer)
-        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        customer_users = await NotificationService.resolve_customer_recipients(request.customer_company_id)
         for cust_user in customer_users:
-            NotificationService.create_notification(
-                db=db,
+            await NotificationService.create_notification(
                 event_id=f"TRIP_COMPLETED:{trip.id}:CUST:{cust_user.id}",
                 event_type="TRIP_COMPLETED",
                 recipient_user_id=cust_user.id,
@@ -183,14 +179,15 @@ class TrackingDeliveryService:
                 message=f"Request {request.request_number} trip is now completed."
             )
 
-        db.commit()
-        NotificationService.process_pending_notifications(db)
-        db.refresh(trip)
+        await trip.save()
+        await assignment.save()
+        await request.save()
+        await NotificationService.process_pending_notifications()
         return trip
 
     @staticmethod
-    def get_customer_tracking(db: Session, request_id: uuid.UUID, customer_user: User) -> CustomerTrackingRead:
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
+    async def get_customer_tracking(request_id: uuid.UUID, customer_user: User) -> CustomerTrackingRead:
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
@@ -198,26 +195,33 @@ class TrackingDeliveryService:
         AuthorizationService.verify_customer_access(customer_user, request.customer_company_id)
 
 
-        trip = db.query(Trip).filter(Trip.request_id == request.id).first()
+        trip = await Trip.find_one(Trip.request_id == request.id)
 
         live_statuses = [
-            DeliveryRequestStatus.DRIVER_ASSIGNED,
-            DeliveryRequestStatus.PICKUP_IN_PROGRESS,
-            DeliveryRequestStatus.IN_TRANSIT,
-            DeliveryRequestStatus.ARRIVED
+            DeliveryRequestStatus.DRIVER_ASSIGNED.value,
+            DeliveryRequestStatus.PICKUP_IN_PROGRESS.value,
+            DeliveryRequestStatus.IN_TRANSIT.value,
+            DeliveryRequestStatus.ARRIVED.value
         ]
         is_live = request.status in live_statuses
 
         breadcrumbs_list = []
+        last_loc = None
         if trip:
-            breadcrumbs = db.query(LocationHistory).filter(
+            breadcrumbs = await LocationHistory.find(
                 LocationHistory.trip_id == trip.id
-            ).order_by(LocationHistory.recorded_at.asc()).limit(500).all()
+            ).sort("+recorded_at").limit(500).to_list()
 
             breadcrumbs_list = [
                 LocationBreadcrumbRead(lat=b.lat, lng=b.lng, recorded_at=b.recorded_at)
                 for b in breadcrumbs
             ]
+            if len(breadcrumbs) > 0:
+                last_loc = breadcrumbs[-1].recorded_at
+
+        # Fetch quotation if exists for timestamps
+        from app.models.pricing import Quotation
+        quotation = await Quotation.find_one(Quotation.request_id == request.id)
 
         return CustomerTrackingRead(
             request_id=request.id,
@@ -227,11 +231,11 @@ class TrackingDeliveryService:
             destination_address=request.destination_address,
             current_lat=trip.current_lat if trip else None,
             current_lng=trip.current_lng if trip else None,
-            last_location_update=trip.location_history[-1].recorded_at if (trip and trip.location_history) else None,
+            last_location_update=last_loc,
             is_live=is_live,
             submitted_at=request.created_at,
-            quoted_at=request.quotation.created_at if request.quotation else None,
-            accepted_at=request.quotation.accepted_at if (request.quotation and hasattr(request.quotation, 'accepted_at')) else None,
+            quoted_at=quotation.created_at if quotation else None,
+            accepted_at=quotation.accepted_at if quotation else None,
             assigned_at=trip.assigned_at if trip else None,
             pickup_started_at=trip.pickup_started_at if trip else None,
             picked_up_at=trip.picked_up_at if trip else None,
@@ -241,4 +245,3 @@ class TrackingDeliveryService:
             completed_at=trip.completed_at if trip else None,
             breadcrumbs=breadcrumbs_list
         )
-

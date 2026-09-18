@@ -3,13 +3,9 @@ import uuid
 import time
 from fastapi import FastAPI, Request, Response, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from slowapi.errors import RateLimitExceeded
 from app.core.rate_limit import limiter
-from app.db.base import Base
-from app.db.database import engine, get_db
-from app.models import *
+from app.db.database import init_db, client
+from app.api.v1.routes import api_router
 from app.api.v1.routes import api_router
 from app.core.config import settings
 
@@ -30,7 +26,12 @@ app = FastAPI(
 
 app.state.limiter = limiter
 from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 
 # CORS middleware
 app.add_middleware(
@@ -83,10 +84,10 @@ def health_check():
     return {"status": "alive"}
 
 @app.get("/ready")
-def readiness_check(db: Session = Depends(get_db)):
+async def readiness_check():
     """Readiness probe"""
     try:
-        db.execute(text("SELECT 1"))
+        await client.admin.command('ping')
         return {"status": "ready"}
     except Exception as e:
         logger.error(f"Readiness check failed: {e}")

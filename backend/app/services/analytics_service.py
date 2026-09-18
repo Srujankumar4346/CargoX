@@ -1,5 +1,3 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 from decimal import Decimal
 
 from app.models.finance import Invoice
@@ -12,69 +10,77 @@ from app.models.finance import DriverSettlement
 
 class AnalyticsService:
     @staticmethod
-    def get_dashboard(db: Session) -> AdminDashboardRead:
-        # Finance metrics
-        finance_metrics = db.query(
-            func.coalesce(func.sum(Invoice.total_amount), 0).label('total_invoiced'),
-            func.coalesce(func.sum(Invoice.amount_paid), 0).label('total_collected')
-        ).first()
+    async def _get_sum(model_class, match_query, sum_field: str) -> Decimal:
+        pipeline = [
+            {"$match": match_query},
+            {"$group": {"_id": None, "total": {"$sum": {"$toDecimal": f"${sum_field}"}}}}
+        ]
+        result = await model_class.aggregate(pipeline).to_list()
+        if result:
+            # result[0]['total'] will be a Decimal128, we convert to python Decimal
+            return Decimal(str(result[0]["total"]))
+        return Decimal("0.0")
 
-        total_invoiced = Decimal(str(finance_metrics.total_invoiced))
-        total_collected = Decimal(str(finance_metrics.total_collected))
+    @staticmethod
+    async def get_dashboard() -> AdminDashboardRead:
+        # Finance metrics
+        total_invoiced = await AnalyticsService._get_sum(Invoice, {}, "total_amount")
+        total_collected = await AnalyticsService._get_sum(Invoice, {}, "amount_paid")
         outstanding_balance = total_invoiced - total_collected
 
         # Operating Expenses
-        approved_trip_expenses = db.query(func.coalesce(func.sum(TripExpense.amount), 0)).filter(
-            TripExpense.status == ExpenseStatus.APPROVED
-        ).scalar()
+        approved_trip_expenses = await AnalyticsService._get_sum(
+            TripExpense, 
+            {"status": ExpenseStatus.APPROVED.value}, 
+            "amount"
+        )
         
-        completed_maintenance_cost = db.query(func.coalesce(func.sum(VehicleMaintenance.cost), 0)).filter(
-            VehicleMaintenance.status == MaintenanceStatus.COMPLETED
-        ).scalar()
+        completed_maintenance_cost = await AnalyticsService._get_sum(
+            VehicleMaintenance,
+            {"status": MaintenanceStatus.COMPLETED.value},
+            "cost"
+        )
         
-        total_operating_expenses = Decimal(str(approved_trip_expenses)) + Decimal(str(completed_maintenance_cost))
+        total_operating_expenses = approved_trip_expenses + completed_maintenance_cost
         
         operating_profit = total_collected - total_operating_expenses
         collected_cash_profit = total_collected - total_operating_expenses
 
         # Active Deliveries
         active_statuses = [
-            DeliveryRequestStatus.DRIVER_ASSIGNED,
-            DeliveryRequestStatus.PICKUP_IN_PROGRESS,
-            DeliveryRequestStatus.IN_TRANSIT,
-            DeliveryRequestStatus.ARRIVED,
-            DeliveryRequestStatus.POD_SUBMITTED
+            DeliveryRequestStatus.DRIVER_ASSIGNED.value,
+            DeliveryRequestStatus.PICKUP_IN_PROGRESS.value,
+            DeliveryRequestStatus.IN_TRANSIT.value,
+            DeliveryRequestStatus.ARRIVED.value,
+            DeliveryRequestStatus.POD_SUBMITTED.value
         ]
-        active_deliveries = db.query(DeliveryRequest).filter(
-            DeliveryRequest.status.in_(active_statuses)
-        ).count()
+        active_deliveries = await DeliveryRequest.find({"status": {"$in": active_statuses}}).count()
 
         # Fleet Utilization
         # (ASSIGNED / (AVAILABLE + ASSIGNED + MAINTENANCE)) * 100
-        assigned_vehicles = db.query(Vehicle).filter(Vehicle.status == VehicleStatus.ASSIGNED).count()
-        total_vehicles = db.query(Vehicle).filter(
-            Vehicle.status.in_([
-                VehicleStatus.AVAILABLE,
-                VehicleStatus.ASSIGNED,
-                VehicleStatus.MAINTENANCE
-            ])
-        ).count()
+        assigned_vehicles = await Vehicle.find({"status": VehicleStatus.ASSIGNED.value}).count()
+        total_vehicles = await Vehicle.find({"status": {"$in": [
+                VehicleStatus.AVAILABLE.value,
+                VehicleStatus.ASSIGNED.value,
+                VehicleStatus.MAINTENANCE.value
+            ]}}).count()
 
         fleet_utilization = 0.0
         if total_vehicles > 0:
             fleet_utilization = (assigned_vehicles / total_vehicles) * 100.0
 
         # Driver Settlements
-        pending_payables = db.query(func.coalesce(func.sum(DriverSettlement.total_payout), 0)).filter(
-            DriverSettlement.status == SettlementStatus.PENDING_PAYMENT
-        ).scalar()
+        pending_driver_payables = await AnalyticsService._get_sum(
+            DriverSettlement,
+            {"status": SettlementStatus.PENDING_PAYMENT.value},
+            "total_payout"
+        )
         
-        draft_value = db.query(func.coalesce(func.sum(DriverSettlement.total_payout), 0)).filter(
-            DriverSettlement.status == SettlementStatus.DRAFT
-        ).scalar()
-        
-        pending_driver_payables = Decimal(str(pending_payables))
-        draft_settlement_value = Decimal(str(draft_value))
+        draft_settlement_value = await AnalyticsService._get_sum(
+            DriverSettlement,
+            {"status": SettlementStatus.DRAFT.value},
+            "total_payout"
+        )
 
         return AdminDashboardRead(
             total_invoiced=total_invoiced,

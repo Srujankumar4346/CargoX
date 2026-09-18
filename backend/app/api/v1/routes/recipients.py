@@ -1,8 +1,6 @@
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.db.database import get_db
 from app.models.user import User
 from app.models.company import RecipientCompany
 from app.schemas.recipient import RecipientCompanyCreate, RecipientCompanyRead, RecipientCompanyUpdate
@@ -11,8 +9,7 @@ from app.api.deps import get_current_customer_user
 router = APIRouter()
 
 @router.get("", response_model=List[RecipientCompanyRead])
-def list_recipients(
-    db: Session = Depends(get_db),
+async def list_recipients(
     current_user: User = Depends(get_current_customer_user)
 ):
     recipients = db.query(RecipientCompany).filter(
@@ -21,9 +18,8 @@ def list_recipients(
     return recipients
 
 @router.post("", response_model=RecipientCompanyRead, status_code=status.HTTP_201_CREATED)
-def create_recipient(
+async def create_recipient(
     payload: RecipientCompanyCreate,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
     recipient = RecipientCompany(
@@ -36,9 +32,8 @@ def create_recipient(
     return recipient
 
 @router.get("/{recipient_id}", response_model=RecipientCompanyRead)
-def get_recipient(
+async def get_recipient(
     recipient_id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
     recipient = db.query(RecipientCompany).filter(RecipientCompany.id == recipient_id).first()
@@ -47,10 +42,9 @@ def get_recipient(
     return recipient
 
 @router.put("/{recipient_id}", response_model=RecipientCompanyRead)
-def update_recipient(
+async def update_recipient(
     recipient_id: uuid.UUID,
     payload: RecipientCompanyUpdate,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
     recipient = db.query(RecipientCompany).filter(RecipientCompany.id == recipient_id).first()
@@ -66,9 +60,8 @@ def update_recipient(
     return recipient
 
 @router.delete("/{recipient_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_recipient(
+async def delete_recipient(
     recipient_id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
     recipient = db.query(RecipientCompany).filter(RecipientCompany.id == recipient_id).first()

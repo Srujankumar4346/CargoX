@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from app.api.deps import get_current_customer_user, get_current_admin
-from app.db.database import get_db
 from app.models.user import User
 from app.models.pricing import Quotation
 from app.models.delivery import DeliveryRequest
@@ -13,11 +11,10 @@ import uuid
 router = APIRouter()
 
 @router.get("/{quotation_id}", response_model=CustomerQuotationRead)
-def get_quotation_for_customer(
+async def get_quotation_for_customer(
     quotation_id: uuid.UUID,
     current_user: User = Depends(get_current_customer_user),
-    db: Session = Depends(get_db)
-):
+    ):
     """
     Returns a quotation with internal cost/margin fields hidden.
     """
@@ -30,16 +27,15 @@ def get_quotation_for_customer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         
     # Enforce isolation at the service boundary using the persisted ownership
-    AuthorizationService.verify_customer_access(current_user, request.customer_company_id)
+    await AuthorizationService.verify_customer_access(current_user, request.customer_company_id)
     
     return quotation
 
 @router.get("/admin/{quotation_id}", response_model=AdminQuotationRead)
-def get_quotation_for_admin(
+async def get_quotation_for_admin(
     quotation_id: uuid.UUID,
     current_user: User = Depends(get_current_admin),
-    db: Session = Depends(get_db)
-):
+    ):
     """
     Returns a quotation with ALL internal fields visible.
     """

@@ -1,8 +1,6 @@
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from app.db.database import get_db
 from app.models.user import User
 from app.models.delivery import DeliveryRequest
 from app.schemas.delivery_request import DeliveryRequestCreate, DeliveryRequestRead
@@ -12,8 +10,7 @@ from app.services.customer_portal import CustomerPortalService
 router = APIRouter()
 
 @router.get("", response_model=List[DeliveryRequestRead])
-def list_requests(
-    db: Session = Depends(get_db),
+async def list_requests(
     current_user: User = Depends(get_current_customer_user)
 ):
     requests = db.query(DeliveryRequest).filter(
@@ -22,18 +19,16 @@ def list_requests(
     return requests
 
 @router.post("", response_model=DeliveryRequestRead, status_code=status.HTTP_201_CREATED)
-def create_request(
+async def create_request(
     payload: DeliveryRequestCreate,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
-    req = CustomerPortalService.create_delivery_request(db, current_user, payload)
+    req = await CustomerPortalService.create_delivery_request(current_user, payload)
     return req
 
 @router.get("/{request_id}", response_model=DeliveryRequestRead)
-def get_request(
+async def get_request(
     request_id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
     req = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
@@ -42,10 +37,9 @@ def get_request(
     return req
 
 @router.post("/{request_id}/cancel", response_model=DeliveryRequestRead)
-def cancel_request(
+async def cancel_request(
     request_id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_customer_user)
 ):
-    req = CustomerPortalService.cancel_delivery_request(db, current_user, request_id)
+    req = await CustomerPortalService.cancel_delivery_request(current_user, request_id)
     return req

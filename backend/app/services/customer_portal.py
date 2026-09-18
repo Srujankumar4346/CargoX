@@ -1,9 +1,8 @@
 import uuid
 import datetime
 import random
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
+from pymongo.errors import DuplicateKeyError
 from app.models.user import User
 from app.models.delivery import DeliveryRequest
 from app.models.company import RecipientCompany
@@ -19,12 +18,12 @@ class CustomerPortalService:
         return f"CRG-{date_str}-{rand_id}"
 
     @staticmethod
-    def create_delivery_request(db: Session, user: User, payload: DeliveryRequestCreate) -> DeliveryRequest:
+    async def create_delivery_request(user: User, payload: DeliveryRequestCreate) -> DeliveryRequest:
         # 1. Start processing the destination snapshot
         dest_kwargs = {}
         
         if payload.recipient_company_id:
-            recipient = db.query(RecipientCompany).filter(RecipientCompany.id == payload.recipient_company_id).first()
+            recipient = await RecipientCompany.find_one(RecipientCompany.id == payload.recipient_company_id)
             if not recipient:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Recipient not found")
             
@@ -55,17 +54,16 @@ class CustomerPortalService:
         # Update customer company details if pending/placeholder
         if user.customer_company_id:
             from app.models.company import CustomerCompany
-            comp = db.query(CustomerCompany).filter(CustomerCompany.id == user.customer_company_id).first()
+            comp = await CustomerCompany.find_one(CustomerCompany.id == user.customer_company_id)
             if comp and ("Pending" in (comp.billing_address or "") or "Logistics Co" in (comp.name or "")):
                 if payload.pickup_company_name and payload.pickup_company_name != "Unknown Company":
                     comp.name = payload.pickup_company_name
                 if payload.pickup_address and payload.pickup_address != "Unknown Address":
                     comp.billing_address = payload.pickup_address
                 try:
-                    db.add(comp)
-                    db.commit()
+                    await comp.save()
                 except Exception:
-                    db.rollback()
+                    pass
 
         # 2. Retry loop for request number collision
         max_retries = 5
@@ -101,28 +99,24 @@ class CustomerPortalService:
                 updated_at=now
             )
             
-            db.add(new_req)
             try:
-                db.commit()
-                db.refresh(new_req)
+                await new_req.insert()
                 return new_req
-            except IntegrityError:
-                db.rollback()
+            except DuplicateKeyError:
                 if attempt == max_retries - 1:
                     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate unique request number")
                 # Retry
 
     @staticmethod
-    def cancel_delivery_request(db: Session, user: User, request_id: uuid.UUID) -> DeliveryRequest:
-        req = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
+    async def cancel_delivery_request(user: User, request_id: uuid.UUID) -> DeliveryRequest:
+        req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
         if not req or req.customer_company_id != user.customer_company_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
             
         if req.status not in [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot cancel request in state {req.status.name}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot cancel request in state {req.status.value}")
             
         req.status = DeliveryRequestStatus.CUSTOMER_CANCELLED
         req.updated_at = datetime.datetime.now(datetime.timezone.utc)
-        db.commit()
-        db.refresh(req)
+        await req.save()
         return req

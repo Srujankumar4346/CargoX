@@ -1,52 +1,51 @@
-from sqlalchemy import Column, String, Numeric, DateTime, Enum, ForeignKey, CheckConstraint
-from sqlalchemy.orm import relationship
-from app.db.base import Base
-from app.models.enums import ExpenseCategory, ExpenseStatus, MaintenanceType, MaintenanceStatus, ExpensePayer
+import pymongo
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from typing import Optional
+from datetime import datetime
+from decimal import Decimal
+from beanie import Document
+from pydantic import Field
+from app.models.enums import ExpenseCategory, ExpenseStatus, MaintenanceType, MaintenanceStatus, ExpensePayer
 
-class TripExpense(Base):
-    __tablename__ = "trip_expenses"
-    __table_args__ = (
-        CheckConstraint("amount > 0", name="chk_expense_amount_positive"),
-        CheckConstraint("receipt_url LIKE 'https://%' OR receipt_url IS NULL", name="chk_receipt_url_https"),
-    )
+class TripExpense(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    trip_id: uuid.UUID # type: ignore
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    trip_id = Column(UUID(as_uuid=True), ForeignKey("trips.id"), index=True, nullable=False)
+    amount: Decimal
+    category: ExpenseCategory # type: ignore
+    status: ExpenseStatus = ExpenseStatus.PENDING_APPROVAL # type: ignore
+    date: datetime
+    description: Optional[str] = None
+    receipt_url: Optional[str] = None
+    paid_by: ExpensePayer = ExpensePayer.CARGOX
     
-    amount = Column(Numeric(12, 2), nullable=False)
-    category = Column(Enum(ExpenseCategory), index=True, nullable=False)
-    status = Column(Enum(ExpenseStatus), default=ExpenseStatus.PENDING_APPROVAL, index=True, nullable=False)
-    date = Column(DateTime, nullable=False)
-    description = Column(String, nullable=True)
-    receipt_url = Column(String, nullable=True)
-    paid_by = Column(Enum(ExpensePayer), default=ExpensePayer.CARGOX, nullable=False)
+    recorded_by: uuid.UUID
     
-    recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
-    # Relationships
-    trip = relationship("Trip", back_populates="expenses")
+    class Settings:
+        name = "trip_expenses"
 
-class VehicleMaintenance(Base):
-    __tablename__ = "vehicle_maintenance"
-    __table_args__ = (
-        CheckConstraint("cost > 0 OR cost IS NULL", name="chk_maintenance_cost_positive"),
-    )
+        indexes = [
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("status")
+        ]
+class VehicleMaintenance(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    vehicle_id: uuid.UUID # type: ignore
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id"), index=True, nullable=False)
+    maintenance_type: MaintenanceType # type: ignore
+    status: MaintenanceStatus = MaintenanceStatus.SCHEDULED # type: ignore
+    cost: Optional[Decimal] = None
     
-    maintenance_type = Column(Enum(MaintenanceType), index=True, nullable=False)
-    status = Column(Enum(MaintenanceStatus), default=MaintenanceStatus.SCHEDULED, index=True, nullable=False)
-    cost = Column(Numeric(12, 2), nullable=True) # Cost can be set when completed
+    scheduled_date: datetime
+    completed_date: Optional[datetime] = None
     
-    scheduled_date = Column(DateTime, nullable=False)
-    completed_date = Column(DateTime, nullable=True)
+    description: Optional[str] = None
+    mechanic_notes: Optional[str] = None
+    recorded_by: uuid.UUID
     
-    description = Column(String, nullable=True)
-    mechanic_notes = Column(String, nullable=True)
-    recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
-    # Relationships
-    vehicle = relationship("Vehicle", back_populates="maintenance_records")
+    class Settings:
+        name = "vehicle_maintenance"
+        indexes = [
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("status")
+        ]

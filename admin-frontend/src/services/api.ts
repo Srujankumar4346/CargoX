@@ -343,5 +343,21 @@ export const api = {
     });
     if (!res.ok) throw new Error("Failed to upload document");
     return res.json();
+  },
+  
+  // Users (Admin Only)
+  getUsers: async () => {
+    const res = await authFetch(`${API_URL}/admin/users`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  updateUserRole: async (userId: string, role: string) => {
+    const res = await authFetch(`${API_URL}/admin/users/${userId}/role`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
   }
 };

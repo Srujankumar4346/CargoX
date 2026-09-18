@@ -1,4 +1,3 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
@@ -15,19 +14,20 @@ from app.services.authorization import AuthorizationService
 
 class PricingEngineService:
     @staticmethod
-    def create_pricing_config(db: Session, config_in: PricingConfigCreate, admin_user: User) -> PricingConfig:
+    async def create_pricing_config(config_in: PricingConfigCreate, admin_user: User) -> PricingConfig:
         """
         Creates a new pricing configuration and sets it as active.
-        Deactivates all previously active pricing configurations in a single transaction.
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         effective_from = config_in.effective_from.replace(tzinfo=None) if config_in.effective_from else now
 
         # Deactivate all active configs
-        db.query(PricingConfig).filter(PricingConfig.active == True).update({"active": False}, synchronize_session=False)
+        active_configs = await PricingConfig.find(PricingConfig.active == True).to_list()
+        for conf in active_configs:
+            conf.active = False
+            await conf.save()
 
         new_config = PricingConfig(
-            id=uuid.uuid4(),
             base_rate_per_km=config_in.base_rate_per_km,
             margin_per_km=config_in.margin_per_km,
             effective_from=effective_from,
@@ -35,18 +35,16 @@ class PricingEngineService:
             created_by=admin_user.id,
             created_at=now
         )
-        db.add(new_config)
-        db.commit()
-        db.refresh(new_config)
+        await new_config.insert()
         return new_config
 
     @staticmethod
-    def get_active_pricing_config(db: Session) -> PricingConfig:
+    async def get_active_pricing_config() -> PricingConfig:
         """
         Retrieves the currently active pricing config.
         Raises 400 if no active pricing config exists.
         """
-        config = db.query(PricingConfig).filter(PricingConfig.active == True).first()
+        config = await PricingConfig.find_one(PricingConfig.active == True)
         if not config:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -55,48 +53,45 @@ class PricingEngineService:
         return config
 
     @staticmethod
-    def generate_quotation(
-        db: Session,
+    async def generate_quotation(
         request_id: uuid.UUID,
         quote_in: QuotationGenerate,
         admin_user: User
     ) -> Quotation:
         """
         Generates an immutable quotation for a delivery request.
-        Validates request state and pending quotation mutex.
-        Atomically updates request status to QUOTED.
         """
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
         # Check delivery request status
-        allowed_statuses = [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]
+        allowed_statuses = [DeliveryRequestStatus.SUBMITTED.value, DeliveryRequestStatus.UNDER_REVIEW.value]
         if request.status not in allowed_statuses:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot generate quotation for delivery request in status '{request.status.value}'"
+                detail=f"Cannot generate quotation for delivery request in status '{request.status}'"
             )
 
         # Mutex check: max 1 PENDING quotation per request
-        existing_pending = db.query(Quotation).filter(
+        existing_pending = await Quotation.find_one(
             Quotation.request_id == request_id,
             Quotation.status == QuotationStatus.PENDING
-        ).first()
+        )
         
         if existing_pending:
             # Check if existing pending is actually expired
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             if existing_pending.expires_at <= now:
                 existing_pending.status = QuotationStatus.EXPIRED
-                db.commit()
+                await existing_pending.save()
             else:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="A pending quotation already exists for this delivery request"
                 )
 
-        active_config = PricingEngineService.get_active_pricing_config(db)
+        active_config = await PricingEngineService.get_active_pricing_config()
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         distance = Decimal(str(quote_in.distance_km))
@@ -111,7 +106,6 @@ class PricingEngineService:
         expires_at = now + timedelta(hours=validity_hours)
 
         quotation = Quotation(
-            id=uuid.uuid4(),
             request_id=request_id,
             pricing_config_id=active_config.id,
             distance_km=distance,
@@ -124,28 +118,25 @@ class PricingEngineService:
             expires_at=expires_at
         )
 
-        # Atomic transaction: insert quotation, update request status
         request.status = DeliveryRequestStatus.QUOTED
-        db.add(quotation)
-        db.commit()
-        db.refresh(quotation)
+        await quotation.insert()
+        await request.save()
 
         return quotation
 
     @staticmethod
-    def get_customer_quotation(db: Session, quotation_id: uuid.UUID, customer_user: User) -> Quotation:
+    async def get_customer_quotation(quotation_id: uuid.UUID, customer_user: User) -> Quotation:
         """
         Retrieves a quotation for a customer with tenant isolation and lazy expiration.
         """
-        quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+        quotation = await Quotation.find_one(Quotation.id == quotation_id)
         if not quotation:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == quotation.request_id).first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == quotation.request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-        # Verify tenant isolation (raises 404 on mismatch)
         AuthorizationService.verify_customer_access(customer_user, request.customer_company_id)
 
         # Lazy expiration check
@@ -157,17 +148,16 @@ class PricingEngineService:
 
         if quotation.status == QuotationStatus.PENDING and expires_at <= now:
             quotation.status = QuotationStatus.EXPIRED
-            db.commit()
-            db.refresh(quotation)
+            await quotation.save()
 
         return quotation
 
     @staticmethod
-    def get_admin_quotation(db: Session, quotation_id: uuid.UUID, admin_user: User) -> Quotation:
+    async def get_admin_quotation(quotation_id: uuid.UUID, admin_user: User) -> Quotation:
         """
         Retrieves a quotation for an admin.
         """
-        quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+        quotation = await Quotation.find_one(Quotation.id == quotation_id)
         if not quotation:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
@@ -180,27 +170,23 @@ class PricingEngineService:
 
         if quotation.status == QuotationStatus.PENDING and expires_at <= now:
             quotation.status = QuotationStatus.EXPIRED
-            db.commit()
-            db.refresh(quotation)
+            await quotation.save()
 
         return quotation
 
     @staticmethod
-    def accept_quotation(db: Session, quotation_id: uuid.UUID, customer_user: User) -> Quotation:
+    async def accept_quotation(quotation_id: uuid.UUID, customer_user: User) -> Quotation:
         """
         Customer accepts a quotation.
-        Validates tenant isolation, lazy expiration, and state.
-        Atomically updates quotation status to ACCEPTED and request status to ACCEPTED.
         """
-        quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+        quotation = await Quotation.find_one(Quotation.id == quotation_id)
         if not quotation:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == quotation.request_id).first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == quotation.request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-        # Verify tenant isolation (raises 404 on mismatch)
         AuthorizationService.verify_customer_access(customer_user, request.customer_company_id)
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -213,7 +199,7 @@ class PricingEngineService:
         if quotation.status == QuotationStatus.EXPIRED or (expires_at <= now and quotation.status == QuotationStatus.PENDING):
             if quotation.status == QuotationStatus.PENDING:
                 quotation.status = QuotationStatus.EXPIRED
-                db.commit()
+                await quotation.save()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Quotation has expired and cannot be accepted"
@@ -230,26 +216,23 @@ class PricingEngineService:
         quotation.accepted_at = now
         request.status = DeliveryRequestStatus.ACCEPTED
 
-        db.commit()
-        db.refresh(quotation)
+        await quotation.save()
+        await request.save()
         return quotation
 
     @staticmethod
-    def reject_quotation(db: Session, quotation_id: uuid.UUID, customer_user: User) -> Quotation:
+    async def reject_quotation(quotation_id: uuid.UUID, customer_user: User) -> Quotation:
         """
         Customer rejects a quotation.
-        Validates tenant isolation and state.
-        Atomically updates quotation status to REJECTED and request status to REJECTED.
         """
-        quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+        quotation = await Quotation.find_one(Quotation.id == quotation_id)
         if not quotation:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-        request = db.query(DeliveryRequest).filter(DeliveryRequest.id == quotation.request_id).first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == quotation.request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-        # Verify tenant isolation (raises 404 on mismatch)
         AuthorizationService.verify_customer_access(customer_user, request.customer_company_id)
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -258,7 +241,7 @@ class PricingEngineService:
         if quotation.status == QuotationStatus.EXPIRED or (quotation.expires_at <= now and quotation.status == QuotationStatus.PENDING):
             if quotation.status == QuotationStatus.PENDING:
                 quotation.status = QuotationStatus.EXPIRED
-                db.commit()
+                await quotation.save()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Quotation has expired and cannot be rejected"
@@ -274,6 +257,6 @@ class PricingEngineService:
         quotation.status = QuotationStatus.REJECTED
         request.status = DeliveryRequestStatus.REJECTED
 
-        db.commit()
-        db.refresh(quotation)
+        await quotation.save()
+        await request.save()
         return quotation

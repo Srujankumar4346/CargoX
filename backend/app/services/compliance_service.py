@@ -1,7 +1,6 @@
 import uuid
 from typing import List, Optional, Tuple
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models.compliance import ComplianceDocument
 from app.models.enums import DocumentOwnerType, DocumentType, DocumentVerificationStatus
@@ -20,15 +19,14 @@ MANDATORY_DOCUMENTS = {
 
 class ComplianceService:
     @staticmethod
-    def get_document(db: Session, document_id: uuid.UUID) -> ComplianceDocument:
-        doc = db.query(ComplianceDocument).filter(ComplianceDocument.id == document_id).first()
+    async def get_document(document_id: uuid.UUID) -> ComplianceDocument:
+        doc = await ComplianceDocument.find_one(ComplianceDocument.id == document_id)
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
         return doc
 
     @staticmethod
-    def upload_document(
-        db: Session,
+    async def upload_document(
         owner_type: DocumentOwnerType,
         owner_id: uuid.UUID,
         document_type: DocumentType,
@@ -41,9 +39,9 @@ class ComplianceService:
         
         # Verify owner exists
         if owner_type == DocumentOwnerType.DRIVER:
-            owner = db.query(Driver).filter(Driver.id == owner_id).first()
+            owner = await Driver.find_one(Driver.id == owner_id)
         else:
-            owner = db.query(Vehicle).filter(Vehicle.id == owner_id).first()
+            owner = await Vehicle.find_one(Vehicle.id == owner_id)
             
         if not owner:
             raise HTTPException(status_code=404, detail=f"{owner_type.value} not found")
@@ -60,20 +58,17 @@ class ComplianceService:
             uploaded_by=uploaded_by.id,
             status=DocumentVerificationStatus.PENDING
         )
-        db.add(doc)
-        db.commit()
-        db.refresh(doc)
+        await doc.insert()
         return doc
 
     @staticmethod
-    def verify_document(
-        db: Session,
+    async def verify_document(
         document_id: uuid.UUID,
         verified_by: User,
         is_verified: bool,
         rejection_reason: Optional[str] = None
     ) -> ComplianceDocument:
-        doc = ComplianceService.get_document(db, document_id)
+        doc = await ComplianceService.get_document(document_id)
         
         if doc.status != DocumentVerificationStatus.PENDING:
             raise HTTPException(status_code=400, detail="Only pending documents can be verified")
@@ -84,26 +79,26 @@ class ComplianceService:
             doc.verified_at = datetime.now(timezone.utc)
             
             # Archive existing verified document of same type
-            existing_verified = db.query(ComplianceDocument).filter(
+            existing_verified = await ComplianceDocument.find(
                 ComplianceDocument.owner_type == doc.owner_type,
                 ComplianceDocument.owner_id == doc.owner_id,
                 ComplianceDocument.document_type == doc.document_type,
                 ComplianceDocument.status == DocumentVerificationStatus.VERIFIED,
                 ComplianceDocument.id != doc.id
-            ).all()
+            ).to_list()
             
             for existing in existing_verified:
                 existing.status = DocumentVerificationStatus.ARCHIVED
+                await existing.save()
         else:
             doc.status = DocumentVerificationStatus.REJECTED
             doc.rejection_reason = rejection_reason
             
-        db.commit()
-        db.refresh(doc)
+        await doc.save()
         return doc
 
     @staticmethod
-    def validate_dispatch_eligibility(db: Session, vehicle_id: uuid.UUID, driver_id: uuid.UUID) -> None:
+    async def validate_dispatch_eligibility(vehicle_id: uuid.UUID, driver_id: uuid.UUID) -> None:
         """
         Hard block on dispatch if mandatory documents are missing or expired.
         Throws HTTPException(400) if compliance fails.
@@ -111,11 +106,11 @@ class ComplianceService:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         
         # Check Driver
-        driver_docs = db.query(ComplianceDocument).filter(
+        driver_docs = await ComplianceDocument.find(
             ComplianceDocument.owner_type == DocumentOwnerType.DRIVER,
             ComplianceDocument.owner_id == driver_id,
             ComplianceDocument.status == DocumentVerificationStatus.VERIFIED
-        ).all()
+        ).to_list()
         
         driver_doc_map = {doc.document_type: doc for doc in driver_docs}
         
@@ -127,11 +122,11 @@ class ComplianceService:
                 raise HTTPException(status_code=400, detail=f"Cannot dispatch: Driver {required_type.value} is expired")
 
         # Check Vehicle
-        vehicle_docs = db.query(ComplianceDocument).filter(
+        vehicle_docs = await ComplianceDocument.find(
             ComplianceDocument.owner_type == DocumentOwnerType.VEHICLE,
             ComplianceDocument.owner_id == vehicle_id,
             ComplianceDocument.status == DocumentVerificationStatus.VERIFIED
-        ).all()
+        ).to_list()
         
         vehicle_doc_map = {doc.document_type: doc for doc in vehicle_docs}
         
@@ -143,22 +138,19 @@ class ComplianceService:
                 raise HTTPException(status_code=400, detail=f"Cannot dispatch: Vehicle {required_type.value} is expired")
 
     @staticmethod
-    def check_compliance_expirations(db: Session):
+    async def check_compliance_expirations():
         """
         Scans all VERIFIED documents and emits notifications based on expiry thresholds.
-        - 30 days prior: NOTIFICATION_COMPLIANCE_EXPIRING_SOON
-        - 7 days prior: NOTIFICATION_COMPLIANCE_EXPIRING_URGENT
-        - 0 days (expired): NOTIFICATION_COMPLIANCE_EXPIRED
         """
         from app.services.notification_service import NotificationService
         from app.models.notifications import NotificationChannel
         
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         
-        docs = db.query(ComplianceDocument).filter(
+        docs = await ComplianceDocument.find(
             ComplianceDocument.status == DocumentVerificationStatus.VERIFIED,
-            ComplianceDocument.expiry_date.isnot(None)
-        ).all()
+            ComplianceDocument.expiry_date != None
+        ).to_list()
         
         for doc in docs:
             days_left = (doc.expiry_date - now).days
@@ -181,12 +173,11 @@ class ComplianceService:
                 message = f"The {doc.document_type.value} for {doc.owner_type.value} expires in {days_left} days."
                 
             if event_type:
-                admins = db.query(User).filter(User.role == 'ADMIN', User.is_active == True).all()
+                admins = await User.find(User.role == 'ADMIN', User.is_active == True).to_list()
                 for admin in admins:
                     event_id = f"{event_type}:{doc.id}:{days_left if days_left > 0 else 'EXPIRED'}:{admin.id}"
                     try:
-                        NotificationService.create_notification(
-                            db=db,
+                        await NotificationService.create_notification(
                             event_id=event_id,
                             event_type=event_type,
                             recipient_user_id=admin.id,
@@ -198,7 +189,6 @@ class ComplianceService:
                         pass
         
         try:
-            db.commit()
-            NotificationService.process_pending_notifications(db)
+            await NotificationService.process_pending_notifications()
         except Exception:
-            db.rollback()
+            pass

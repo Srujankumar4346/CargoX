@@ -1,4 +1,3 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from decimal import Decimal
 from datetime import datetime, timezone
@@ -16,26 +15,21 @@ from app.services.compliance_service import ComplianceService
 
 class DispatchService:
     @staticmethod
-    def dispatch_request(
-        db: Session,
+    async def dispatch_request(
         request_id: uuid.UUID,
         dispatch_in: DispatchRequest,
         admin_user: User
     ) -> Dict[str, Any]:
         """
         Dispatches an ACCEPTED delivery request to a vehicle and driver.
-        Acquires row-level locks (.with_for_update()) for request, vehicle, driver, and user.
-        Atomically updates request, vehicle, and driver statuses and creates Trip + VehicleAssignment.
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Verify Compliance before anything
-        ComplianceService.validate_dispatch_eligibility(db, dispatch_in.vehicle_id, dispatch_in.driver_id)
+        await ComplianceService.validate_dispatch_eligibility(dispatch_in.vehicle_id, dispatch_in.driver_id)
 
         # 1. Lock and validate DeliveryRequest
-        request = db.query(DeliveryRequest).filter(
-            DeliveryRequest.id == request_id
-        ).with_for_update().first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
 
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
@@ -47,7 +41,7 @@ class DispatchService:
             )
 
         # Single active Trip invariant check
-        existing_trip = db.query(Trip).filter(Trip.request_id == request_id).first()
+        existing_trip = await Trip.find_one(Trip.request_id == request_id)
         if existing_trip:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -55,9 +49,7 @@ class DispatchService:
             )
 
         # 2. Lock and validate Vehicle
-        vehicle = db.query(Vehicle).filter(
-            Vehicle.id == dispatch_in.vehicle_id
-        ).with_for_update().first()
+        vehicle = await Vehicle.find_one(Vehicle.id == dispatch_in.vehicle_id)
 
         if not vehicle:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
@@ -77,9 +69,7 @@ class DispatchService:
             )
 
         # 3. Lock and validate Driver & User
-        driver = db.query(Driver).filter(
-            Driver.id == dispatch_in.driver_id
-        ).with_for_update().first()
+        driver = await Driver.find_one(Driver.id == dispatch_in.driver_id)
 
         if not driver:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
@@ -90,9 +80,7 @@ class DispatchService:
                 detail=f"Driver is currently unavailable for assignment (status: {driver.status.value})"
             )
 
-        driver_user = db.query(User).filter(
-            User.id == driver.user_id
-        ).with_for_update().first()
+        driver_user = await User.find_one(User.id == driver.user_id)
 
         if not driver_user or not driver_user.is_active:
             raise HTTPException(
@@ -102,31 +90,31 @@ class DispatchService:
 
         # 4. Atomic Execution
         trip = Trip(
-            id=uuid.uuid4(),
             request_id=request_id,
             assigned_at=now
         )
-        db.add(trip)
-        db.flush()  # obtain trip.id
+        await trip.insert()
 
         assignment = VehicleAssignment(
-            id=uuid.uuid4(),
             trip_id=trip.id,
             vehicle_id=vehicle.id,
             driver_id=driver.id,
             assigned_at=now,
             released_at=None
         )
-        db.add(assignment)
+        await assignment.insert()
 
         request.status = DeliveryRequestStatus.DRIVER_ASSIGNED
         vehicle.status = VehicleStatus.ASSIGNED
         driver.status = DriverStatus.ON_TRIP
 
+        await request.save()
+        await vehicle.save()
+        await driver.save()
+
         # Notification: TRIP_DISPATCHED
         # Driver notification
-        NotificationService.create_notification(
-            db=db,
+        await NotificationService.create_notification(
             event_id=f"TRIP_DISPATCHED:{trip.id}:DRIVER",
             event_type="TRIP_DISPATCHED",
             recipient_user_id=driver_user.id,
@@ -136,10 +124,9 @@ class DispatchService:
         )
         
         # Customer notification
-        customer_users = NotificationService.resolve_customer_recipients(db, request.customer_company_id)
+        customer_users = await NotificationService.resolve_customer_recipients(request.customer_company_id)
         for cust_user in customer_users:
-            NotificationService.create_notification(
-                db=db,
+            await NotificationService.create_notification(
                 event_id=f"TRIP_DISPATCHED:{trip.id}:CUST:{cust_user.id}",
                 event_type="TRIP_DISPATCHED",
                 recipient_user_id=cust_user.id,
@@ -147,14 +134,9 @@ class DispatchService:
                 title="Trip Dispatched",
                 message=f"Your request {request.request_number} has been dispatched."
             )
-
-        db.commit()
         
         # Process notifications after commit
-        NotificationService.process_pending_notifications(db)
-        
-        db.refresh(trip)
-        db.refresh(assignment)
+        await NotificationService.process_pending_notifications()
 
         return {
             "trip_id": trip.id,
@@ -167,8 +149,7 @@ class DispatchService:
         }
 
     @staticmethod
-    def reassign_request(
-        db: Session,
+    async def reassign_request(
         request_id: uuid.UUID,
         dispatch_in: DispatchRequest,
         admin_user: User
@@ -180,12 +161,10 @@ class DispatchService:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Verify Compliance before anything
-        ComplianceService.validate_dispatch_eligibility(db, dispatch_in.vehicle_id, dispatch_in.driver_id)
+        await ComplianceService.validate_dispatch_eligibility(dispatch_in.vehicle_id, dispatch_in.driver_id)
 
         # 1. Lock DeliveryRequest & Trip
-        request = db.query(DeliveryRequest).filter(
-            DeliveryRequest.id == request_id
-        ).with_for_update().first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
 
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
@@ -196,9 +175,7 @@ class DispatchService:
                 detail=f"Reassignment requires request status 'DRIVER_ASSIGNED'. Current status: '{request.status.value}'"
             )
 
-        trip = db.query(Trip).filter(
-            Trip.request_id == request_id
-        ).with_for_update().first()
+        trip = await Trip.find_one(Trip.request_id == request_id)
 
         if not trip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found for request")
@@ -210,25 +187,26 @@ class DispatchService:
             )
 
         # 2. Fetch and release current active assignment
-        active_assignment = db.query(VehicleAssignment).filter(
+        active_assignment = await VehicleAssignment.find_one(
             VehicleAssignment.trip_id == trip.id,
             VehicleAssignment.released_at == None
-        ).with_for_update().first()
+        )
 
         if active_assignment:
             active_assignment.released_at = now
+            await active_assignment.save()
             # Return old vehicle and driver to AVAILABLE
-            old_vehicle = db.query(Vehicle).filter(Vehicle.id == active_assignment.vehicle_id).with_for_update().first()
+            old_vehicle = await Vehicle.find_one(Vehicle.id == active_assignment.vehicle_id)
             if old_vehicle:
                 old_vehicle.status = VehicleStatus.AVAILABLE
-            old_driver = db.query(Driver).filter(Driver.id == active_assignment.driver_id).with_for_update().first()
+                await old_vehicle.save()
+            old_driver = await Driver.find_one(Driver.id == active_assignment.driver_id)
             if old_driver:
                 old_driver.status = DriverStatus.AVAILABLE
+                await old_driver.save()
 
         # 3. Lock & validate NEW Vehicle
-        new_vehicle = db.query(Vehicle).filter(
-            Vehicle.id == dispatch_in.vehicle_id
-        ).with_for_update().first()
+        new_vehicle = await Vehicle.find_one(Vehicle.id == dispatch_in.vehicle_id)
 
         if not new_vehicle:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="New vehicle not found")
@@ -248,9 +226,7 @@ class DispatchService:
             )
 
         # 4. Lock & validate NEW Driver & User
-        new_driver = db.query(Driver).filter(
-            Driver.id == dispatch_in.driver_id
-        ).with_for_update().first()
+        new_driver = await Driver.find_one(Driver.id == dispatch_in.driver_id)
 
         if not new_driver:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="New driver not found")
@@ -261,9 +237,7 @@ class DispatchService:
                 detail=f"New driver is currently unavailable for assignment (status: {new_driver.status.value})"
             )
 
-        new_driver_user = db.query(User).filter(
-            User.id == new_driver.user_id
-        ).with_for_update().first()
+        new_driver_user = await User.find_one(User.id == new_driver.user_id)
 
         if not new_driver_user or not new_driver_user.is_active:
             raise HTTPException(
@@ -273,20 +247,19 @@ class DispatchService:
 
         # 5. Create new assignment under existing Trip
         new_assignment = VehicleAssignment(
-            id=uuid.uuid4(),
             trip_id=trip.id,
             vehicle_id=new_vehicle.id,
             driver_id=new_driver.id,
             assigned_at=now,
             released_at=None
         )
-        db.add(new_assignment)
+        await new_assignment.insert()
 
         new_vehicle.status = VehicleStatus.ASSIGNED
         new_driver.status = DriverStatus.ON_TRIP
 
-        db.commit()
-        db.refresh(new_assignment)
+        await new_vehicle.save()
+        await new_driver.save()
 
         return {
             "trip_id": trip.id,

@@ -1,9 +1,8 @@
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_driver
+from app.api.deps import get_current_driver
 from app.models.user import User
 from app.schemas.operations import TripExpenseCreate, TripExpenseRead
 from app.services.expense_service import ExpenseService
@@ -11,14 +10,12 @@ from app.services.expense_service import ExpenseService
 router = APIRouter(tags=["Driver Expenses"])
 
 @router.post("/trips/{trip_id}/expenses", response_model=TripExpenseRead)
-def submit_expense(
+async def submit_expense(
     trip_id: uuid.UUID,
     expense_in: TripExpenseCreate,
-    db: Session = Depends(get_db),
     current_driver: User = Depends(get_current_driver)
 ):
-    return ExpenseService.submit_expense(
-        db=db,
+    return await ExpenseService.submit_expense(
         trip_id=trip_id,
         user=current_driver,
         amount=expense_in.amount,
@@ -28,9 +25,8 @@ def submit_expense(
     )
 
 @router.get("/trips/{trip_id}/expenses", response_model=List[TripExpenseRead])
-def get_trip_expenses(
+async def get_trip_expenses(
     trip_id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_driver: User = Depends(get_current_driver)
 ):
-    return ExpenseService.list_expenses_for_trip(db, trip_id, current_driver)
+    return await ExpenseService.list_expenses_for_trip(trip_id, current_driver)

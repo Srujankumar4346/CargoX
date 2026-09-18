@@ -2,8 +2,6 @@ import uuid
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 from fastapi import HTTPException
 
 from app.models.finance import DriverSettlement
@@ -16,8 +14,7 @@ from app.models.fleet import Driver
 
 class SettlementService:
     @staticmethod
-    def generate_settlement(
-        db: Session,
+    async def generate_settlement(
         admin_user: User,
         driver_id: uuid.UUID,
         period_start: datetime,
@@ -34,32 +31,36 @@ class SettlementService:
             raise HTTPException(status_code=400, detail="Deduction reason is required if deductions > 0")
 
         # Verify driver exists
-        driver = db.query(Driver).filter(Driver.id == driver_id).first()
+        driver = await Driver.find_one(Driver.id == driver_id)
         if not driver:
             raise HTTPException(status_code=404, detail="Driver not found")
 
         # Exclusive end date logic
         end_date_exclusive = period_end + timedelta(days=1)
-
-        # We must lock the eligible trips to prevent concurrent settlements from claiming them.
-        # Eligibility: 
-        # 1. Trip.request.status == COMPLETED
-        # 2. Trip.settlement_id IS NULL
-        # 3. Trip.completed_at >= period_start and < end_date_exclusive
-        
-        # Subquery or join for locking: We lock trips
-        # We also need to check historical VehicleAssignment to ensure this driver actually completed it.
-        # The trip must have an assignment matching this driver where assignment was completed.
         
         # Fetch eligible trips
-        trips = db.query(Trip).join(DeliveryRequest).join(VehicleAssignment).filter(
-            DeliveryRequest.status == DeliveryRequestStatus.COMPLETED,
-            Trip.settlement_id.is_(None),
+        # Eligibility: Trip.request.status == COMPLETED, Trip.settlement_id IS NULL, Trip.completed_at >= period_start and < end_date_exclusive
+        # Driver assignment released_at is None
+        
+        completed_requests = await DeliveryRequest.find(DeliveryRequest.status == DeliveryRequestStatus.COMPLETED).to_list()
+        completed_req_ids = [req.id for req in completed_requests]
+        
+        eligible_trips = await Trip.find(
+            Trip.request_id.in_(completed_req_ids),
+            Trip.settlement_id == None,
             Trip.completed_at >= period_start,
-            Trip.completed_at < end_date_exclusive,
-            VehicleAssignment.driver_id == driver_id,
-            VehicleAssignment.released_at.is_(None)
-        ).with_for_update().all()
+            Trip.completed_at < end_date_exclusive
+        ).to_list()
+        
+        trips = []
+        for trip in eligible_trips:
+            assignment = await VehicleAssignment.find_one(
+                VehicleAssignment.trip_id == trip.id,
+                VehicleAssignment.driver_id == driver_id,
+                VehicleAssignment.released_at == None
+            )
+            if assignment:
+                trips.append(trip)
 
         if not trips:
             raise HTTPException(status_code=400, detail="No eligible trips found for this driver in the specified period")
@@ -68,12 +69,13 @@ class SettlementService:
 
         # Calculate reimbursements
         # Only APPROVED TripExpenses paid_by DRIVER
-        reimbursements = db.query(func.coalesce(func.sum(TripExpense.amount), 0)).filter(
+        reimb_expenses = await TripExpense.find(
             TripExpense.trip_id.in_(trip_ids),
             TripExpense.status == ExpenseStatus.APPROVED,
             TripExpense.paid_by == ExpensePayer.DRIVER
-        ).scalar()
+        ).to_list()
         
+        reimbursements = sum([e.amount for e in reimb_expenses])
         reimbursements = Decimal(str(reimbursements))
         
         total_payout = base_pay + reimbursements - deductions
@@ -93,38 +95,34 @@ class SettlementService:
             generated_by=admin_user.id
         )
 
-        db.add(settlement)
-        db.flush() # Get settlement ID
+        await settlement.insert()
 
         # Link trips
         for trip in trips:
             trip.settlement_id = settlement.id
-
-        db.commit()
-        db.refresh(settlement)
+            await trip.save()
 
         return settlement
 
     @staticmethod
-    def get_settlements(db: Session) -> List[DriverSettlement]:
-        return db.query(DriverSettlement).order_by(DriverSettlement.period_start.desc()).all()
+    async def get_settlements() -> List[DriverSettlement]:
+        return await DriverSettlement.find_all().to_list()
 
     @staticmethod
-    def get_settlement(db: Session, settlement_id: uuid.UUID) -> DriverSettlement:
-        settlement = db.query(DriverSettlement).filter(DriverSettlement.id == settlement_id).first()
+    async def get_settlement(settlement_id: uuid.UUID) -> DriverSettlement:
+        settlement = await DriverSettlement.find_one(DriverSettlement.id == settlement_id)
         if not settlement:
             raise HTTPException(status_code=404, detail="Settlement not found")
         return settlement
 
     @staticmethod
-    def update_settlement(
-        db: Session,
+    async def update_settlement(
         settlement_id: uuid.UUID,
         base_pay: Decimal = None,
         deductions: Decimal = None,
         deduction_reason: str = None
     ) -> DriverSettlement:
-        settlement = db.query(DriverSettlement).filter(DriverSettlement.id == settlement_id).with_for_update().first()
+        settlement = await DriverSettlement.find_one(DriverSettlement.id == settlement_id)
         if not settlement:
             raise HTTPException(status_code=404, detail="Settlement not found")
             
@@ -152,30 +150,25 @@ class SettlementService:
 
         settlement.total_payout = total_payout
 
-        db.commit()
-        db.refresh(settlement)
+        await settlement.save()
         return settlement
 
     @staticmethod
-    def submit_settlement(db: Session, settlement_id: uuid.UUID) -> DriverSettlement:
-        settlement = SettlementService.get_settlement(db, settlement_id)
+    async def submit_settlement(settlement_id: uuid.UUID) -> DriverSettlement:
+        settlement = await SettlementService.get_settlement(settlement_id)
         if settlement.status != SettlementStatus.DRAFT:
             raise HTTPException(status_code=400, detail="Only DRAFT settlements can be submitted")
         
         settlement.status = SettlementStatus.PENDING_PAYMENT
-        db.commit()
-        db.refresh(settlement)
+        await settlement.save()
         return settlement
 
     @staticmethod
-    def pay_settlement(db: Session, settlement_id: uuid.UUID, reference_number: str) -> DriverSettlement:
+    async def pay_settlement(settlement_id: uuid.UUID, reference_number: str) -> DriverSettlement:
         if not reference_number:
             raise HTTPException(status_code=400, detail="Payment reference number is required")
 
-        # Lock the settlement for safety during payment
-        settlement = db.query(DriverSettlement).filter(
-            DriverSettlement.id == settlement_id
-        ).with_for_update().first()
+        settlement = await DriverSettlement.find_one(DriverSettlement.id == settlement_id)
 
         if not settlement:
             raise HTTPException(status_code=404, detail="Settlement not found")
@@ -186,22 +179,22 @@ class SettlementService:
         settlement.status = SettlementStatus.PAID
         settlement.paid_at = datetime.now(timezone.utc)
         settlement.reference_number = reference_number
-        db.commit()
-        db.refresh(settlement)
+        await settlement.save()
         return settlement
 
     @staticmethod
-    def cancel_settlement(db: Session, settlement_id: uuid.UUID) -> DriverSettlement:
-        settlement = SettlementService.get_settlement(db, settlement_id)
+    async def cancel_settlement(settlement_id: uuid.UUID) -> DriverSettlement:
+        settlement = await SettlementService.get_settlement(settlement_id)
         if settlement.status != SettlementStatus.DRAFT:
             raise HTTPException(status_code=400, detail="Only DRAFT settlements can be cancelled")
 
         settlement.status = SettlementStatus.CANCELLED
         
         # Unlink trips
-        for trip in settlement.trips:
+        trips = await Trip.find(Trip.settlement_id == settlement.id).to_list()
+        for trip in trips:
             trip.settlement_id = None
+            await trip.save()
 
-        db.commit()
-        db.refresh(settlement)
+        await settlement.save()
         return settlement

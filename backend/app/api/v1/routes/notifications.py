@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 from typing import List, Optional
-from app.db.database import get_db
 from app.models.notifications import Notification
 from pydantic import BaseModel
 from datetime import datetime
@@ -20,11 +18,10 @@ class NotificationResponse(BaseModel):
 
 @router.get("", response_model=List[NotificationResponse])
 @router.get("/", response_model=List[NotificationResponse])
-def get_notifications(
+async def get_notifications(
     user_type: Optional[str] = Query(None),
     user_id: Optional[str] = Query(None),
-    db: Session = Depends(get_db)
-):
+    ):
     """
     Get in-app notifications for user or admin.
     """
@@ -46,10 +43,9 @@ def get_notifications(
     ]
 
 @router.post("/{notification_id}/read")
-def mark_notification_read(
+async def mark_notification_read(
     notification_id: str,
-    db: Session = Depends(get_db)
-):
+    ):
     """
     Mark a notification as read.
     """

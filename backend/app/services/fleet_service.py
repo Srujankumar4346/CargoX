@@ -1,4 +1,3 @@
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 import uuid
 from typing import Optional, List
@@ -11,8 +10,8 @@ from app.schemas.fleet import VehicleCreate, VehicleUpdate, DriverCreate, Driver
 
 class FleetService:
     @staticmethod
-    def create_vehicle(db: Session, vehicle_in: VehicleCreate) -> Vehicle:
-        existing = db.query(Vehicle).filter(Vehicle.registration_number == vehicle_in.registration_number).first()
+    async def create_vehicle(vehicle_in: VehicleCreate) -> Vehicle:
+        existing = await Vehicle.find_one(Vehicle.registration_number == vehicle_in.registration_number)
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -20,36 +19,32 @@ class FleetService:
             )
 
         vehicle = Vehicle(
-            id=uuid.uuid4(),
             registration_number=vehicle_in.registration_number,
             type=vehicle_in.type,
             capacity_tons=float(vehicle_in.capacity_tons),
             status=VehicleStatus.AVAILABLE
         )
-        db.add(vehicle)
-        db.commit()
-        db.refresh(vehicle)
+        await vehicle.insert()
         return vehicle
 
     @staticmethod
-    def list_vehicles(db: Session, vehicle_status: Optional[VehicleStatus] = None) -> List[Vehicle]:
-        query = db.query(Vehicle)
+    async def list_vehicles(vehicle_status: Optional[VehicleStatus] = None) -> List[Vehicle]:
         if vehicle_status:
-            query = query.filter(Vehicle.status == vehicle_status)
-        return query.all()
+            return await Vehicle.find(Vehicle.status == vehicle_status).to_list()
+        return await Vehicle.find_all().to_list()
 
     @staticmethod
-    def get_vehicle(db: Session, vehicle_id: uuid.UUID) -> Vehicle:
-        vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    async def get_vehicle(vehicle_id: uuid.UUID) -> Vehicle:
+        vehicle = await Vehicle.find_one(Vehicle.id == vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found")
         return vehicle
 
     @staticmethod
-    def update_vehicle(db: Session, vehicle_id: uuid.UUID, vehicle_in: VehicleUpdate) -> Vehicle:
-        vehicle = FleetService.get_vehicle(db, vehicle_id)
+    async def update_vehicle(vehicle_id: uuid.UUID, vehicle_in: VehicleUpdate) -> Vehicle:
+        vehicle = await FleetService.get_vehicle(vehicle_id)
         if vehicle_in.registration_number is not None and vehicle_in.registration_number != vehicle.registration_number:
-            existing = db.query(Vehicle).filter(Vehicle.registration_number == vehicle_in.registration_number).first()
+            existing = await Vehicle.find_one(Vehicle.registration_number == vehicle_in.registration_number)
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -64,14 +59,13 @@ class FleetService:
         if vehicle_in.status is not None:
             vehicle.status = vehicle_in.status
 
-        db.commit()
-        db.refresh(vehicle)
+        await vehicle.save()
         return vehicle
 
     @staticmethod
-    def create_driver(db: Session, driver_in: DriverCreate) -> Driver:
+    async def create_driver(driver_in: DriverCreate) -> Driver:
         # Validate target user exists and role is DRIVER
-        user = db.query(User).filter(User.id == driver_in.user_id).first()
+        user = await User.find_one(User.id == driver_in.user_id)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         if user.role != UserRole.DRIVER:
@@ -80,14 +74,14 @@ class FleetService:
                 detail=f"User must have role '{UserRole.DRIVER.value}' to be assigned as driver"
             )
 
-        existing_user_driver = db.query(Driver).filter(Driver.user_id == driver_in.user_id).first()
+        existing_user_driver = await Driver.find_one(Driver.user_id == driver_in.user_id)
         if existing_user_driver:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A driver profile already exists for this user"
             )
 
-        existing_license = db.query(Driver).filter(Driver.license_number == driver_in.license_number).first()
+        existing_license = await Driver.find_one(Driver.license_number == driver_in.license_number)
         if existing_license:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -95,37 +89,33 @@ class FleetService:
             )
 
         driver = Driver(
-            id=uuid.uuid4(),
             user_id=driver_in.user_id,
             name=driver_in.name,
             phone=driver_in.phone,
             license_number=driver_in.license_number,
             status=DriverStatus.AVAILABLE
         )
-        db.add(driver)
-        db.commit()
-        db.refresh(driver)
+        await driver.insert()
         return driver
 
     @staticmethod
-    def list_drivers(db: Session, driver_status: Optional[DriverStatus] = None) -> List[Driver]:
-        query = db.query(Driver)
+    async def list_drivers(driver_status: Optional[DriverStatus] = None) -> List[Driver]:
         if driver_status:
-            query = query.filter(Driver.status == driver_status)
-        return query.all()
+            return await Driver.find(Driver.status == driver_status).to_list()
+        return await Driver.find_all().to_list()
 
     @staticmethod
-    def get_driver(db: Session, driver_id: uuid.UUID) -> Driver:
-        driver = db.query(Driver).filter(Driver.id == driver_id).first()
+    async def get_driver(driver_id: uuid.UUID) -> Driver:
+        driver = await Driver.find_one(Driver.id == driver_id)
         if not driver:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
         return driver
 
     @staticmethod
-    def update_driver(db: Session, driver_id: uuid.UUID, driver_in: DriverUpdate) -> Driver:
-        driver = FleetService.get_driver(db, driver_id)
+    async def update_driver(driver_id: uuid.UUID, driver_in: DriverUpdate) -> Driver:
+        driver = await FleetService.get_driver(driver_id)
         if driver_in.license_number is not None and driver_in.license_number != driver.license_number:
-            existing = db.query(Driver).filter(Driver.license_number == driver_in.license_number).first()
+            existing = await Driver.find_one(Driver.license_number == driver_in.license_number)
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -140,6 +130,5 @@ class FleetService:
         if driver_in.status is not None:
             driver.status = driver_in.status
 
-        db.commit()
-        db.refresh(driver)
+        await driver.save()
         return driver

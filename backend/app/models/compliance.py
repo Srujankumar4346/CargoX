@@ -1,30 +1,31 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, Enum, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from app.db.base import Base
+from typing import Optional
+from datetime import datetime
+from beanie import Document
+from pydantic import Field
 from app.models.enums import DocumentOwnerType, DocumentType, DocumentVerificationStatus
 
-class ComplianceDocument(Base):
-    __tablename__ = "compliance_documents"
+class ComplianceDocument(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    owner_type: DocumentOwnerType
+    owner_id: uuid.UUID
+    document_type: DocumentType
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    owner_type = Column(Enum(DocumentOwnerType), nullable=False)
-    owner_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    document_type = Column(Enum(DocumentType), nullable=False)
+    document_number: Optional[str] = None
+    issued_date: Optional[datetime] = None
+    expiry_date: Optional[datetime] = None
     
-    document_number = Column(String, nullable=True)
-    issued_date = Column(DateTime, nullable=True)
-    expiry_date = Column(DateTime, nullable=True)
+    storage_key: str
     
-    storage_key = Column(String, nullable=False)
+    status: DocumentVerificationStatus = DocumentVerificationStatus.PENDING
+    rejection_reason: Optional[str] = None
     
-    status = Column(Enum(DocumentVerificationStatus), default=DocumentVerificationStatus.PENDING, nullable=False)
-    rejection_reason = Column(String, nullable=True)
+    uploaded_by: uuid.UUID
+    verified_by: Optional[uuid.UUID] = None
+    verified_at: Optional[datetime] = None
     
-    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    verified_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    verified_at = Column(DateTime, nullable=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    class Settings:
+        name = "compliance_documents"

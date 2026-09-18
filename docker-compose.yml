@@ -1,18 +1,18 @@
 services:
   db:
-    image: postgres:15-alpine
-    container_name: cargox_db
+    image: mongo:6
+    container_name: cargox_mongo
     restart: always
     environment:
-      POSTGRES_USER: cargox_user
-      POSTGRES_PASSWORD: cargox_password
-      POSTGRES_DB: cargox
+      MONGO_INITDB_ROOT_USERNAME: cargox_user
+      MONGO_INITDB_ROOT_PASSWORD: cargox_password
+      MONGO_INITDB_DATABASE: cargox
     ports:
-      - "5432:5432"
+      - "27017:27017"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongo_data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cargox_user -d cargox"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,7 +28,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://cargox_user:cargox_password@db/cargox
+      - DATABASE_URL=mongodb://cargox_user:cargox_password@db:27017/cargox?authSource=admin
       - SECRET_KEY=supersecretkey-change-in-production
       - ALGORITHM=HS256
       - ENVIRONMENT=production
@@ -47,4 +47,4 @@ services:
       - backend
 
 volumes:
-  postgres_data:
+  mongo_data:

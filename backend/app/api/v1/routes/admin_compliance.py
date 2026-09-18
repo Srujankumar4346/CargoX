@@ -4,9 +4,8 @@ import shutil
 from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_admin, get_db
+from app.api.deps import get_current_admin
 from app.models.user import User
 from app.models.enums import DocumentOwnerType, DocumentType, DocumentVerificationStatus
 from app.schemas.compliance import ComplianceDocumentResponse, ComplianceVerificationRequest, ComplianceDashboardResponse
@@ -19,7 +18,7 @@ UPLOAD_DIR = "uploads/compliance"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/documents", response_model=ComplianceDocumentResponse, status_code=status.HTTP_201_CREATED)
-def admin_upload_compliance_document(
+async def admin_upload_compliance_document(
     owner_type: DocumentOwnerType = Form(...),
     owner_id: uuid.UUID = Form(...),
     document_type: DocumentType = Form(...),
@@ -27,7 +26,6 @@ def admin_upload_compliance_document(
     issued_date: Optional[datetime] = Form(None),
     expiry_date: Optional[datetime] = Form(None),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
     # Simulate secure storage
@@ -38,8 +36,7 @@ def admin_upload_compliance_document(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    doc = ComplianceService.upload_document(
-        db=db,
+    doc = await ComplianceService.upload_document(
         owner_type=owner_type,
         owner_id=owner_id,
         document_type=document_type,
@@ -52,11 +49,10 @@ def admin_upload_compliance_document(
     return doc
 
 @router.get("/documents", response_model=List[ComplianceDocumentResponse])
-def admin_list_compliance_documents(
+async def admin_list_compliance_documents(
     owner_type: Optional[DocumentOwnerType] = None,
     owner_id: Optional[uuid.UUID] = None,
     status: Optional[DocumentVerificationStatus] = None,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
     query = db.query(ComplianceDocument)
@@ -70,14 +66,12 @@ def admin_list_compliance_documents(
     return query.order_by(ComplianceDocument.created_at.desc()).all()
 
 @router.post("/documents/{document_id}/verify", response_model=ComplianceDocumentResponse)
-def admin_verify_compliance_document(
+async def admin_verify_compliance_document(
     document_id: uuid.UUID,
     verification: ComplianceVerificationRequest,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
-    return ComplianceService.verify_document(
-        db=db,
+    return await ComplianceService.verify_document(
         document_id=document_id,
         verified_by=current_admin,
         is_verified=verification.is_verified,
@@ -85,8 +79,7 @@ def admin_verify_compliance_document(
     )
 
 @router.get("/dashboard", response_model=ComplianceDashboardResponse)
-def admin_compliance_dashboard(
-    db: Session = Depends(get_db),
+async def admin_compliance_dashboard(
     current_admin: User = Depends(get_current_admin)
 ):
     # Fetch all verified documents

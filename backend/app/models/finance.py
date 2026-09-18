@@ -1,87 +1,91 @@
-from sqlalchemy import Column, String, Numeric, DateTime, Enum, ForeignKey, CheckConstraint
-from sqlalchemy.orm import relationship
-from app.db.base import Base
-from app.models.enums import InvoiceStatus, PaymentMethod, SettlementStatus
+import pymongo
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from typing import Optional
+from datetime import datetime
+from decimal import Decimal
+from beanie import Document
+from pydantic import Field
+from app.models.enums import InvoiceStatus, PaymentMethod, SettlementStatus
 
-class Invoice(Base):
-    __tablename__ = "invoices"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    invoice_number = Column(String, unique=True, index=True, nullable=False)
-    request_id = Column(UUID(as_uuid=True), ForeignKey("delivery_requests.id"), unique=True, nullable=False)
-    customer_company_id = Column(UUID(as_uuid=True), ForeignKey("customer_companies.id"), index=True, nullable=False)
-    quotation_id = Column(UUID(as_uuid=True), ForeignKey("quotations.id"), nullable=False)
+class Invoice(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    invoice_number: str # type: ignore
+    request_id: uuid.UUID # type: ignore
+    customer_company_id: uuid.UUID # type: ignore
+    quotation_id: uuid.UUID
     
     # Financials
-    subtotal = Column(Numeric(12, 2), nullable=False)
-    tax = Column(Numeric(12, 2), nullable=False, default=0.00)
-    discount = Column(Numeric(12, 2), nullable=False, default=0.00)
-    total_amount = Column(Numeric(12, 2), nullable=False)
-    amount_paid = Column(Numeric(12, 2), nullable=False, default=0.00)
-    amount_due = Column(Numeric(12, 2), nullable=False)
+    subtotal: Decimal
+    tax: Decimal = Decimal('0.00')
+    discount: Decimal = Decimal('0.00')
+    total_amount: Decimal
+    amount_paid: Decimal = Decimal('0.00')
+    amount_due: Decimal
     
     # Status
-    status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID, index=True, nullable=False)
+    status: InvoiceStatus = InvoiceStatus.UNPAID # type: ignore
     
     # Timestamps
-    issued_at = Column(DateTime, nullable=False)
-    due_at = Column(DateTime, nullable=True)
+    issued_at: datetime
+    due_at: Optional[datetime] = None
     
-    # Relationships
-    delivery_request = relationship("DeliveryRequest", back_populates="invoices")
-    customer_company = relationship("CustomerCompany", back_populates="invoices")
-    payments = relationship("Payment", back_populates="invoice")
+    class Settings:
+        name = "invoices"
 
-class Payment(Base):
-    __tablename__ = "payments"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    invoice_id = Column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False)
+        indexes = [
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("reference_number", unique=True),
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("reference_number", unique=True)
+        ]
+class Payment(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    invoice_id: uuid.UUID
     
     # Payment Details
-    amount = Column(Numeric(12, 2), nullable=False)
-    method = Column(Enum(PaymentMethod), nullable=False)
-    reference_number = Column(String, unique=True, nullable=True)
-    notes = Column(String, nullable=True)
+    amount: Decimal
+    method: PaymentMethod
+    reference_number: Optional[str] = None # type: ignore
+    notes: Optional[str] = None
     
     # Timestamps
-    paid_at = Column(DateTime, nullable=False)
-    recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    paid_at: datetime
+    recorded_by: uuid.UUID
     
-    # Relationships
-    invoice = relationship("Invoice", back_populates="payments")
+    class Settings:
+        name = "payments"
 
-class DriverSettlement(Base):
-    __tablename__ = "driver_settlements"
-    __table_args__ = (
-        CheckConstraint("base_pay >= 0", name="chk_settlement_base_pay"),
-        CheckConstraint("reimbursements >= 0", name="chk_settlement_reimbursements"),
-        CheckConstraint("deductions >= 0", name="chk_settlement_deductions"),
-        CheckConstraint("total_payout >= 0", name="chk_total_payout"),
-        CheckConstraint("deductions = 0 OR deduction_reason IS NOT NULL", name="chk_deduction_reason"),
-    )
+        indexes = [
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("reference_number", unique=True),
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("reference_number", unique=True)
+        ]
+class DriverSettlement(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    driver_id: uuid.UUID # type: ignore
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    driver_id = Column(UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False, index=True)
+    period_start: datetime
+    period_end: datetime
     
-    period_start = Column(DateTime, nullable=False)
-    period_end = Column(DateTime, nullable=False)
+    base_pay: Decimal = Decimal('0.00')
+    reimbursements: Decimal = Decimal('0.00')
+    deductions: Decimal = Decimal('0.00')
+    total_payout: Decimal = Decimal('0.00')
     
-    base_pay = Column(Numeric(12, 2), nullable=False, default=0.00)
-    reimbursements = Column(Numeric(12, 2), nullable=False, default=0.00)
-    deductions = Column(Numeric(12, 2), nullable=False, default=0.00)
-    total_payout = Column(Numeric(12, 2), nullable=False, default=0.00)
+    deduction_reason: Optional[str] = None
     
-    deduction_reason = Column(String, nullable=True)
+    status: SettlementStatus = SettlementStatus.DRAFT # type: ignore
+    paid_at: Optional[datetime] = None
+    reference_number: Optional[str] = None # type: ignore
     
-    status = Column(Enum(SettlementStatus), nullable=False, default=SettlementStatus.DRAFT, index=True)
-    paid_at = Column(DateTime, nullable=True)
-    reference_number = Column(String, unique=True, nullable=True)
+    generated_by: uuid.UUID
     
-    generated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
-    # Relationships
-    driver = relationship("Driver")
-    trips = relationship("Trip", back_populates="settlement")
+    class Settings:
+        name = "driver_settlements"
+        indexes = [
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("reference_number", unique=True),
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("reference_number", unique=True)
+        ]

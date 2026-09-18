@@ -1,7 +1,6 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
 from app.models.operations import VehicleMaintenance
@@ -11,8 +10,7 @@ from app.models.user import User
 
 class MaintenanceService:
     @staticmethod
-    def schedule_maintenance(
-        db: Session,
+    async def schedule_maintenance(
         vehicle_id: uuid.UUID,
         admin_user: User,
         maintenance_type: MaintenanceType,
@@ -23,15 +21,15 @@ class MaintenanceService:
         if admin_user.role != UserRole.ADMIN:
             raise HTTPException(status_code=403, detail="Only admins can schedule maintenance")
             
-        vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).with_for_update().first()
+        vehicle = await Vehicle.find_one(Vehicle.id == vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Vehicle not found")
             
         # Check if already has active maintenance
-        active_maint = db.query(VehicleMaintenance).filter(
+        active_maint = await VehicleMaintenance.find_one(
             VehicleMaintenance.vehicle_id == vehicle_id,
-            VehicleMaintenance.status.in_([MaintenanceStatus.SCHEDULED, MaintenanceStatus.IN_PROGRESS])
-        ).first()
+            VehicleMaintenance.status.in_([MaintenanceStatus.SCHEDULED.value, MaintenanceStatus.IN_PROGRESS.value])
+        )
         if active_maint:
             raise HTTPException(status_code=409, detail="Vehicle already has scheduled or in-progress maintenance")
             
@@ -43,26 +41,24 @@ class MaintenanceService:
             description=description,
             recorded_by=admin_user.id
         )
-        db.add(maintenance)
-        db.commit()
-        db.refresh(maintenance)
+        await maintenance.insert()
         return maintenance
 
     @staticmethod
-    def start_maintenance(db: Session, maintenance_id: uuid.UUID, admin_user: User):
+    async def start_maintenance(maintenance_id: uuid.UUID, admin_user: User):
         if admin_user.role != UserRole.ADMIN:
             raise HTTPException(status_code=403, detail="Only admins can start maintenance")
             
         # Lock maintenance
-        maintenance = db.query(VehicleMaintenance).filter(VehicleMaintenance.id == maintenance_id).with_for_update().first()
+        maintenance = await VehicleMaintenance.find_one(VehicleMaintenance.id == maintenance_id)
         if not maintenance:
             raise HTTPException(status_code=404, detail="Maintenance record not found")
             
         if maintenance.status != MaintenanceStatus.SCHEDULED:
-            raise HTTPException(status_code=400, detail=f"Cannot start maintenance from {maintenance.status} state")
+            raise HTTPException(status_code=400, detail=f"Cannot start maintenance from {maintenance.status.value} state")
             
         # Lock vehicle
-        vehicle = db.query(Vehicle).filter(Vehicle.id == maintenance.vehicle_id).with_for_update().first()
+        vehicle = await Vehicle.find_one(Vehicle.id == maintenance.vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Vehicle not found")
             
@@ -72,13 +68,12 @@ class MaintenanceService:
         maintenance.status = MaintenanceStatus.IN_PROGRESS
         vehicle.status = VehicleStatus.MAINTENANCE
         
-        db.commit()
-        db.refresh(maintenance)
+        await maintenance.save()
+        await vehicle.save()
         return maintenance
 
     @staticmethod
-    def complete_maintenance(
-        db: Session,
+    async def complete_maintenance(
         maintenance_id: uuid.UUID,
         admin_user: User,
         cost: Decimal,
@@ -91,15 +86,15 @@ class MaintenanceService:
             raise HTTPException(status_code=422, detail="Maintenance cost must be positive")
             
         # Lock maintenance
-        maintenance = db.query(VehicleMaintenance).filter(VehicleMaintenance.id == maintenance_id).with_for_update().first()
+        maintenance = await VehicleMaintenance.find_one(VehicleMaintenance.id == maintenance_id)
         if not maintenance:
             raise HTTPException(status_code=404, detail="Maintenance record not found")
             
         if maintenance.status != MaintenanceStatus.IN_PROGRESS:
-            raise HTTPException(status_code=400, detail=f"Cannot complete maintenance from {maintenance.status} state")
+            raise HTTPException(status_code=400, detail=f"Cannot complete maintenance from {maintenance.status.value} state")
             
         # Lock vehicle
-        vehicle = db.query(Vehicle).filter(Vehicle.id == maintenance.vehicle_id).with_for_update().first()
+        vehicle = await Vehicle.find_one(Vehicle.id == maintenance.vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Vehicle not found")
             
@@ -114,25 +109,25 @@ class MaintenanceService:
             
         vehicle.status = VehicleStatus.AVAILABLE
         
-        db.commit()
-        db.refresh(maintenance)
+        await maintenance.save()
+        await vehicle.save()
         return maintenance
 
     @staticmethod
-    def cancel_maintenance(db: Session, maintenance_id: uuid.UUID, admin_user: User):
+    async def cancel_maintenance(maintenance_id: uuid.UUID, admin_user: User):
         if admin_user.role != UserRole.ADMIN:
             raise HTTPException(status_code=403, detail="Only admins can cancel maintenance")
             
         # Lock maintenance
-        maintenance = db.query(VehicleMaintenance).filter(VehicleMaintenance.id == maintenance_id).with_for_update().first()
+        maintenance = await VehicleMaintenance.find_one(VehicleMaintenance.id == maintenance_id)
         if not maintenance:
             raise HTTPException(status_code=404, detail="Maintenance record not found")
             
         if maintenance.status in (MaintenanceStatus.COMPLETED, MaintenanceStatus.CANCELLED):
-            raise HTTPException(status_code=400, detail=f"Cannot cancel {maintenance.status} maintenance")
+            raise HTTPException(status_code=400, detail=f"Cannot cancel {maintenance.status.value} maintenance")
             
         # Lock vehicle
-        vehicle = db.query(Vehicle).filter(Vehicle.id == maintenance.vehicle_id).with_for_update().first()
+        vehicle = await Vehicle.find_one(Vehicle.id == maintenance.vehicle_id)
         if not vehicle:
             raise HTTPException(status_code=404, detail="Vehicle not found")
             
@@ -140,9 +135,9 @@ class MaintenanceService:
         if maintenance.status == MaintenanceStatus.IN_PROGRESS:
             if vehicle.status == VehicleStatus.MAINTENANCE:
                 vehicle.status = VehicleStatus.AVAILABLE
+                await vehicle.save()
                 
         maintenance.status = MaintenanceStatus.CANCELLED
         
-        db.commit()
-        db.refresh(maintenance)
+        await maintenance.save()
         return maintenance

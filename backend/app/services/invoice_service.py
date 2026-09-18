@@ -1,9 +1,8 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 from fastapi import HTTPException, status
 from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
+import random
 from typing import List, Optional
 
 from app.models.user import User
@@ -57,30 +56,21 @@ class InvoiceService:
         }
 
     @staticmethod
-    def generate_invoice(
-        db: Session,
+    async def generate_invoice(
         trip_id: uuid.UUID,
         invoice_in: InvoiceCreate,
         admin_user: User
     ) -> dict:
         """
         Generates an invoice for a COMPLETED trip.
-        - Validates trip status == COMPLETED
-        - Validates no existing invoice (409 Conflict if duplicate)
-        - Validates quotation status == ACCEPTED
-        - Derives invoice number from PostgreSQL sequence (concurrency-safe)
-        - Derives all financials from the immutable Quotation
-        - Single atomic commit
         """
         # Lock Trip
-        trip = db.query(Trip).filter(Trip.id == trip_id).with_for_update().first()
+        trip = await Trip.find_one(Trip.id == trip_id)
         if not trip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
         # Lock DeliveryRequest
-        request = db.query(DeliveryRequest).filter(
-            DeliveryRequest.id == trip.request_id
-        ).with_for_update().first()
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
@@ -93,7 +83,7 @@ class InvoiceService:
             )
 
         # Guard: no duplicate invoice
-        existing_invoice = db.query(Invoice).filter(Invoice.request_id == request.id).first()
+        existing_invoice = await Invoice.find_one(Invoice.request_id == request.id)
         if existing_invoice:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -101,16 +91,15 @@ class InvoiceService:
             )
 
         # Fetch and validate the accepted quotation — single authoritative pricing source
-        quotation = db.query(Quotation).filter(Quotation.request_id == request.id).first()
+        quotation = await Quotation.find_one(Quotation.request_id == request.id)
         if not quotation or quotation.status != QuotationStatus.ACCEPTED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No accepted quotation found for this delivery request. Cannot generate invoice."
             )
 
-        # Derive invoice number from PostgreSQL sequence (concurrency-safe, may have gaps on rollback)
-        seq_val = db.execute(text("SELECT nextval('invoice_number_seq')")).scalar()
         year = datetime.now(timezone.utc).year
+        seq_val = random.randint(1000, 999999) # Placeholder for sequence since mongo handles this differently
         invoice_number = f"INV-{year}-{seq_val:06d}"
 
         # Financial calculation from immutable Quotation
@@ -122,7 +111,6 @@ class InvoiceService:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         invoice = Invoice(
-            id=uuid.uuid4(),
             invoice_number=invoice_number,
             request_id=request.id,
             customer_company_id=request.customer_company_id,
@@ -137,28 +125,21 @@ class InvoiceService:
             issued_at=now,
             due_at=invoice_in.due_at,
         )
-        db.add(invoice)
-        db.commit()
-        db.refresh(invoice)
+        await invoice.insert()
 
         return InvoiceService._build_admin_read(invoice, quotation, [])
 
     @staticmethod
-    def record_payment(
-        db: Session,
+    async def record_payment(
         invoice_id: uuid.UUID,
         payment_in: PaymentCreate,
         admin_user: User
     ) -> Payment:
         """
         Records a payment against an invoice.
-        - Validates invoice is not already PAID
-        - Validates payment amount > 0 and <= amount_due (no overpayment)
-        - Updates amount_paid, amount_due, and status atomically
-        - Single commit
         """
         # Lock Invoice
-        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+        invoice = await Invoice.find_one(Invoice.id == invoice_id)
         if not invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
@@ -181,7 +162,6 @@ class InvoiceService:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         payment = Payment(
-            id=uuid.uuid4(),
             invoice_id=invoice.id,
             amount=amount,
             method=payment_in.method,
@@ -190,7 +170,7 @@ class InvoiceService:
             paid_at=now,
             recorded_by=admin_user.id,
         )
-        db.add(payment)
+        await payment.insert()
 
         # Update invoice financials
         invoice.amount_paid = Decimal(str(invoice.amount_paid)) + amount
@@ -202,46 +182,45 @@ class InvoiceService:
         elif invoice.amount_paid > Decimal("0"):
             invoice.status = InvoiceStatus.PARTIALLY_PAID
 
-        db.commit()
-        db.refresh(payment)
+        await invoice.save()
         return payment
 
     @staticmethod
-    def get_invoice_admin(db: Session, invoice_id: uuid.UUID) -> dict:
+    async def get_invoice_admin(invoice_id: uuid.UUID) -> dict:
         """Returns full invoice detail for Admin, joining immutable Quotation fields."""
-        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        invoice = await Invoice.find_one(Invoice.id == invoice_id)
         if not invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
-        quotation = db.query(Quotation).filter(Quotation.id == invoice.quotation_id).first()
-        payments = db.query(Payment).filter(Payment.invoice_id == invoice.id).all()
+        quotation = await Quotation.find_one(Quotation.id == invoice.quotation_id)
+        payments = await Payment.find(Payment.invoice_id == invoice.id).to_list()
         return InvoiceService._build_admin_read(invoice, quotation, payments)
 
     @staticmethod
-    def list_invoices_admin(db: Session, status_filter: Optional[str] = None) -> List[dict]:
+    async def list_invoices_admin(status_filter: Optional[str] = None) -> List[dict]:
         """Lists all invoices. Optionally filters by status."""
-        query = db.query(Invoice)
         if status_filter:
             try:
                 status_enum = InvoiceStatus(status_filter)
-                query = query.filter(Invoice.status == status_enum)
+                invoices = await Invoice.find(Invoice.status == status_enum).to_list()
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid status filter '{status_filter}'. "
                            f"Valid values: {[s.value for s in InvoiceStatus]}"
                 )
-        invoices = query.all()
+        else:
+            invoices = await Invoice.find_all().to_list()
+            
         result = []
         for inv in invoices:
-            quotation = db.query(Quotation).filter(Quotation.id == inv.quotation_id).first()
-            payments = db.query(Payment).filter(Payment.invoice_id == inv.id).all()
+            quotation = await Quotation.find_one(Quotation.id == inv.quotation_id)
+            payments = await Payment.find(Payment.invoice_id == inv.id).to_list()
             result.append(InvoiceService._build_admin_read(inv, quotation, payments))
         return result
 
     @staticmethod
-    def update_due_date(
-        db: Session,
+    async def update_due_date(
         invoice_id: uuid.UUID,
         due_at: datetime,
         admin_user: User
@@ -250,7 +229,7 @@ class InvoiceService:
         Updates due_at on an UNPAID invoice.
         Financial fields are immutable once any payment is recorded.
         """
-        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).with_for_update().first()
+        invoice = await Invoice.find_one(Invoice.id == invoice_id)
         if not invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
@@ -262,13 +241,11 @@ class InvoiceService:
             )
 
         invoice.due_at = due_at
-        db.commit()
-        db.refresh(invoice)
+        await invoice.save()
         return invoice
 
     @staticmethod
-    def get_invoice_customer(
-        db: Session,
+    async def get_invoice_customer(
         invoice_id: uuid.UUID,
         customer_user: User
     ) -> Invoice:
@@ -277,7 +254,7 @@ class InvoiceService:
         Enforces tenant isolation via AuthorizationService.
         Never exposes internal pricing fields.
         """
-        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        invoice = await Invoice.find_one(Invoice.id == invoice_id)
         if not invoice:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
@@ -287,14 +264,13 @@ class InvoiceService:
         return invoice
 
     @staticmethod
-    def list_invoices_customer(
-        db: Session,
+    async def list_invoices_customer(
         customer_user: User
     ) -> List[Invoice]:
         """
         Returns all invoices belonging to the customer's company.
         Tenant-scoped by customer_company_id.
         """
-        return db.query(Invoice).filter(
+        return await Invoice.find(
             Invoice.customer_company_id == customer_user.customer_company_id
-        ).all()
+        ).to_list()

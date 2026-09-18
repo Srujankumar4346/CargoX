@@ -1,9 +1,8 @@
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_admin
+from app.api.deps import get_current_admin
 from app.models.user import User
 from app.schemas.settlement import DriverSettlementGenerate, DriverSettlementRead, DriverSettlementPay
 from app.services.settlement_service import SettlementService
@@ -11,13 +10,11 @@ from app.services.settlement_service import SettlementService
 router = APIRouter()
 
 @router.post("/settlements/generate", response_model=DriverSettlementRead)
-def generate_settlement(
+async def generate_settlement(
     payload: DriverSettlementGenerate,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
-    return SettlementService.generate_settlement(
-        db=db,
+    return await SettlementService.generate_settlement(
         admin_user=current_admin,
         driver_id=payload.driver_id,
         period_start=payload.period_start,
@@ -28,41 +25,36 @@ def generate_settlement(
     )
 
 @router.get("/settlements", response_model=List[DriverSettlementRead])
-def list_settlements(
-    db: Session = Depends(get_db),
+async def list_settlements(
     current_admin: User = Depends(get_current_admin)
 ):
-    return SettlementService.get_settlements(db)
+    return await SettlementService.get_settlements(db)
 
 @router.get("/settlements/{id}", response_model=DriverSettlementRead)
-def get_settlement(
+async def get_settlement(
     id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
-    return SettlementService.get_settlement(db, id)
+    return await SettlementService.get_settlement(id)
 
 @router.post("/settlements/{id}/submit", response_model=DriverSettlementRead)
-def submit_settlement(
+async def submit_settlement(
     id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
-    return SettlementService.submit_settlement(db, id)
+    return await SettlementService.submit_settlement(id)
 
 @router.post("/settlements/{id}/pay", response_model=DriverSettlementRead)
-def pay_settlement(
+async def pay_settlement(
     id: uuid.UUID,
     payload: DriverSettlementPay,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
-    return SettlementService.pay_settlement(db, id, payload.reference_number)
+    return await SettlementService.pay_settlement(id, payload.reference_number)
 
 @router.post("/settlements/{id}/cancel", response_model=DriverSettlementRead)
-def cancel_settlement(
+async def cancel_settlement(
     id: uuid.UUID,
-    db: Session = Depends(get_db),
     current_admin: User = Depends(get_current_admin)
 ):
-    return SettlementService.cancel_settlement(db, id)
+    return await SettlementService.cancel_settlement(id)

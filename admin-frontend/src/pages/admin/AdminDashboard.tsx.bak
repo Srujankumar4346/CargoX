@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Map as MapIcon, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users } from "lucide-react";
+import { LogOut, Map as MapIcon, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle } from "lucide-react";
 import { useAuth, useUser, SignInButton, UserButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
@@ -21,7 +21,6 @@ export default function AdminDashboard() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [dashboard, setDashboard] = useState<any>(null);
   const [trips, setTrips] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
   
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [selectedDriver, setSelectedDriver] = useState("");
@@ -71,7 +70,7 @@ export default function AdminDashboard() {
     setIsRefreshing(true);
     setLoadError(null);
     try {
-      const [v, d, inv, exp, dispatchRequests, finDash, tripList, pricingResp, usersList] = await Promise.allSettled([
+      const [v, d, inv, exp, dispatchRequests, finDash, tripList, pricingResp] = await Promise.allSettled([
         api.getVehicles(),
         api.getDrivers(),
         api.getInvoices(),
@@ -79,17 +78,14 @@ export default function AdminDashboard() {
         api.getBookings(),
         api.getFinancialDashboard(),
         api.getTrips(),
-        api.getActivePricing(),
-        api.getUsers()
+        api.getActivePricing()
       ]);
       
       if (v.status === 'fulfilled') setVehicles(v.value);
       if (d.status === 'fulfilled') setDrivers(d.value);
       if (inv.status === 'fulfilled') setInvoices(inv.value);
       if (exp.status === 'fulfilled') setExpenses(exp.value);
-      if (exp.status === 'fulfilled') setExpenses(exp.value);
       if (pricingResp.status === 'fulfilled') setActivePricing(pricingResp.value);
-      if (usersList.status === 'fulfilled') setUsers(usersList.value);
       
       if (dispatchRequests.status === 'fulfilled') {
         setBookings(dispatchRequests.value);
@@ -388,12 +384,9 @@ export default function AdminDashboard() {
           <button onClick={() => setActiveTab('financials')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'financials' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
              <MapIcon size={18}/> <span>Financials</span>
           </button>
-           <button onClick={() => setActiveTab('users')} className={`w-full text-left px-4 py-3 rounded-md transition font-medium flex items-center gap-3 ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'text-foreground hover:bg-surface-elevated'}`}>
-             <Users size={20} /> Team Management
-           </button>
-           <button onClick={() => setActiveTab('ai')} className={`w-full text-left px-4 py-3 rounded-md transition font-medium flex items-center gap-3 ${activeTab === 'ai' ? 'bg-purple-600 text-white' : 'text-foreground hover:bg-surface-elevated'}`}>
-             <Bot size={20} /> AI Assistant
-           </button>
+          <button onClick={() => setActiveTab('ai')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'ai' ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-slate-800 text-purple-400'}`}>
+             <Bot size={18}/> <span>AI Assistant</span>
+          </button>
         </nav>
         
         <div className="mb-4 px-3">
@@ -984,87 +977,7 @@ export default function AdminDashboard() {
                  </table>
               </div>
            </div>
-         )}
-
-         {activeTab === 'users' && (
-           <div>
-             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-foreground">Team & User Management</h2>
-             </div>
-             
-             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                   <thead>
-                      <tr className="bg-surface-elevated border-b border-border-theme">
-                         <th className="p-4 font-semibold text-muted text-sm">User ID / Email</th>
-                         <th className="p-4 font-semibold text-muted text-sm">Role</th>
-                         <th className="p-4 font-semibold text-muted text-sm text-right">Actions</th>
-                      </tr>
-                   </thead>
-                   <tbody>
-                      {users.length === 0 ? (
-                         <tr><td colSpan={3} className="p-4 text-center text-muted">No users found.</td></tr>
-                      ) : (
-                         users.map(u => (
-                            <tr key={u.id} className="border-b border-border-theme last:border-0 hover:bg-surface-elevated/50 transition">
-                               <td className="p-4">
-                                  <p className="font-medium text-foreground">{u.email}</p>
-                                  <p className="text-xs text-muted font-mono">{u.id}</p>
-                               </td>
-                               <td className="p-4">
-                                  <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                    u.role === 'ADMIN' ? 'bg-blue-100 text-blue-800' : 
-                                    u.role === 'DRIVER' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {u.role}
-                                  </span>
-                               </td>
-                               <td className="p-4 text-right">
-                                  {u.role !== 'ADMIN' && (
-                                     <button 
-                                        onClick={async () => {
-                                           if (confirm("Are you sure you want to promote this user to Admin?")) {
-                                              try {
-                                                 await api.updateUserRole(u.id, "ADMIN");
-                                                 alert("User promoted to Admin successfully.");
-                                                 loadData();
-                                              } catch (e: any) {
-                                                 alert("Failed to promote: " + e.message);
-                                              }
-                                           }
-                                        }}
-                                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                                     >
-                                        Make Admin
-                                     </button>
-                                  )}
-                                  {u.role === 'ADMIN' && (
-                                     <button 
-                                        onClick={async () => {
-                                           if (confirm("Are you sure you want to revoke Admin rights?")) {
-                                              try {
-                                                 await api.updateUserRole(u.id, "CUSTOMER");
-                                                 alert("User demoted successfully.");
-                                                 loadData();
-                                              } catch (e: any) {
-                                                 alert("Failed to demote: " + e.message);
-                                              }
-                                           }
-                                        }}
-                                        className="text-sm text-red-600 hover:text-red-800 font-medium ml-3"
-                                     >
-                                        Revoke Admin
-                                     </button>
-                                  )}
-                               </td>
-                            </tr>
-                         ))
-                      )}
-                   </tbody>
-                </table>
-             </div>
-           </div>
-         )}
+        )}
       </div>
 
       {/* Reject Modal */}

@@ -1,113 +1,102 @@
-from sqlalchemy import Column, String, Float, DateTime, Enum, ForeignKey, CheckConstraint, Index
-from sqlalchemy.orm import relationship
-from app.db.base import Base
-from app.models.enums import DeliveryRequestStatus
+import pymongo
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from typing import Optional, List
+from datetime import datetime
+from beanie import Document
+from pydantic import Field
+from app.models.enums import DeliveryRequestStatus
 
-class DeliveryRequest(Base):
-    __tablename__ = "delivery_requests"
-    __table_args__ = (
-        CheckConstraint("weight_tons > 0", name="chk_weight_positive"),
-    )
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    request_number = Column(String, unique=True, index=True, nullable=False)
-    customer_company_id = Column(UUID(as_uuid=True), ForeignKey("customer_companies.id"), nullable=False)
+class DeliveryRequest(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    request_number: str # type: ignore
+    customer_company_id: uuid.UUID
     
     # Cargo Snapshot
-    goods_type = Column(String, nullable=False)
-    goods_description = Column(String, nullable=True)
-    weight_tons = Column(Float, nullable=False)
-    special_instructions = Column(String, nullable=True)
+    goods_type: str
+    goods_description: Optional[str] = None
+    weight_tons: float
+    special_instructions: Optional[str] = None
     
     # Pickup Snapshot
-    pickup_company_name = Column(String, nullable=False)
-    pickup_address = Column(String, nullable=False)
-    pickup_contact_person = Column(String, nullable=True)
-    pickup_phone = Column(String, nullable=True)
-    pickup_lat = Column(Float, nullable=True)
-    pickup_lng = Column(Float, nullable=True)
+    pickup_company_name: str
+    pickup_address: str
+    pickup_contact_person: Optional[str] = None
+    pickup_phone: Optional[str] = None
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
     
     # Destination Snapshot
-    recipient_company_id = Column(UUID(as_uuid=True), ForeignKey("recipient_companies.id", ondelete="SET NULL"), nullable=True)
-    destination_company_name = Column(String, nullable=False)
-    destination_address = Column(String, nullable=False)
-    destination_contact_person = Column(String, nullable=True)
-    destination_phone = Column(String, nullable=True)
-    destination_lat = Column(Float, nullable=True)
-    destination_lng = Column(Float, nullable=True)
+    recipient_company_id: Optional[uuid.UUID] = None
+    destination_company_name: str
+    destination_address: str
+    destination_contact_person: Optional[str] = None
+    destination_phone: Optional[str] = None
+    destination_lat: Optional[float] = None
+    destination_lng: Optional[float] = None
     
     # Metrics
-    distance_km = Column(Float, nullable=False)
-    status = Column(Enum(DeliveryRequestStatus), default=DeliveryRequestStatus.DRAFT, nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    distance_km: float
+    status: DeliveryRequestStatus = DeliveryRequestStatus.DRAFT
+    created_at: datetime
+    updated_at: datetime
     
-    # Relationships
-    customer_company = relationship("CustomerCompany", back_populates="requests")
-    recipient_company = relationship("RecipientCompany")
-    quotation = relationship("Quotation", back_populates="delivery_request", uselist=False)
-    trip = relationship("Trip", back_populates="delivery_request", uselist=False)
-    invoices = relationship("Invoice", back_populates="delivery_request")
+    class Settings:
+        name = "delivery_requests"
 
-class Trip(Base):
-    __tablename__ = "trips"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    request_id = Column(UUID(as_uuid=True), ForeignKey("delivery_requests.id"), unique=True, nullable=False)
+        indexes = [
+            pymongo.IndexModel("settlement_id")
+        ]
+class Trip(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    request_id: uuid.UUID # type: ignore
     
     # Execution Timestamps
-    assigned_at = Column(DateTime, nullable=False)
-    pickup_started_at = Column(DateTime, nullable=True)
-    picked_up_at = Column(DateTime, nullable=True)
-    started_at = Column(DateTime, nullable=True)
-    arrived_at = Column(DateTime, nullable=True)
-    delivered_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    assigned_at: datetime
+    pickup_started_at: Optional[datetime] = None
+    picked_up_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    arrived_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     
     # Tracking
-    current_lat = Column(Float, nullable=True)
-    current_lng = Column(Float, nullable=True)
+    current_lat: Optional[float] = None
+    current_lng: Optional[float] = None
     
     # Settlement
-    settlement_id = Column(UUID(as_uuid=True), ForeignKey("driver_settlements.id"), nullable=True, index=True)
+    settlement_id: Optional[uuid.UUID] = None # type: ignore
 
-    # Relationships
-    delivery_request = relationship("DeliveryRequest", back_populates="trip")
-    assignment = relationship("VehicleAssignment", back_populates="trip", uselist=False)
-    proof_of_delivery = relationship("ProofOfDelivery", back_populates="trip")
-    location_history = relationship("LocationHistory", back_populates="trip")
-    expenses = relationship("TripExpense", back_populates="trip")
-    settlement = relationship("DriverSettlement", back_populates="trips")
+    class Settings:
+        name = "trips"
 
-class ProofOfDelivery(Base):
-    __tablename__ = "proof_of_deliveries"
+        indexes = [
+            pymongo.IndexModel("settlement_id")
+        ]
+class ProofOfDelivery(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    trip_id: uuid.UUID
+    file_url: str
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    notes: Optional[str] = None
+    submitted_at: datetime
+    submitted_by: uuid.UUID
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    trip_id = Column(UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False)
-    file_url = Column(String, nullable=False)
-    receiver_name = Column(String, nullable=True)
-    receiver_phone = Column(String, nullable=True)
-    notes = Column(String, nullable=True)
-    submitted_at = Column(DateTime, nullable=False)
-    submitted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
-    # Relationships
-    trip = relationship("Trip", back_populates="proof_of_delivery")
+    class Settings:
+        name = "proof_of_deliveries"
 
-class LocationHistory(Base):
-    __tablename__ = "location_histories"
-    __table_args__ = (
-        Index("ix_location_histories_trip_recorded", "trip_id", "recorded_at"),
-    )
+        indexes = [
+            pymongo.IndexModel("settlement_id")
+        ]
+class LocationHistory(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    trip_id: uuid.UUID # type: ignore
+    lat: float
+    lng: float
+    recorded_at: datetime # type: ignore
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    trip_id = Column(UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False)
-    lat = Column(Float, nullable=False)
-    lng = Column(Float, nullable=False)
-    recorded_at = Column(DateTime, nullable=False)
-
-    # Relationships
-    trip = relationship("Trip", back_populates="location_history")
-
+    class Settings:
+        name = "location_histories"
+        indexes = [
+            pymongo.IndexModel("settlement_id")
+        ]

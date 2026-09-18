@@ -4,9 +4,8 @@ import shutil
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
-from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_driver, get_db
+from app.api.deps import get_current_driver
 from app.models.user import User
 from app.models.enums import DocumentOwnerType, DocumentType
 from app.schemas.compliance import ComplianceDocumentResponse
@@ -19,13 +18,12 @@ UPLOAD_DIR = "uploads/compliance"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/documents", response_model=ComplianceDocumentResponse, status_code=status.HTTP_201_CREATED)
-def driver_upload_compliance_document(
+async def driver_upload_compliance_document(
     document_type: DocumentType = Form(...),
     document_number: Optional[str] = Form(None),
     issued_date: Optional[datetime] = Form(None),
     expiry_date: Optional[datetime] = Form(None),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
     current_driver: User = Depends(get_current_driver) # This returns the User, we need their driver record
 ):
     # Get the driver record
@@ -40,8 +38,7 @@ def driver_upload_compliance_document(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    doc = ComplianceService.upload_document(
-        db=db,
+    doc = await ComplianceService.upload_document(
         owner_type=DocumentOwnerType.DRIVER,
         owner_id=driver.id,
         document_type=document_type,
@@ -54,8 +51,7 @@ def driver_upload_compliance_document(
     return doc
 
 @router.get("/documents", response_model=List[ComplianceDocumentResponse])
-def driver_list_compliance_documents(
-    db: Session = Depends(get_db),
+async def driver_list_compliance_documents(
     current_driver: User = Depends(get_current_driver)
 ):
     driver = current_driver.driver

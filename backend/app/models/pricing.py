@@ -1,41 +1,44 @@
-from sqlalchemy import Column, Numeric, Boolean, DateTime, ForeignKey, Enum
-from sqlalchemy.orm import relationship
-from app.db.base import Base
-from app.models.enums import QuotationStatus
+import pymongo
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from typing import Optional
+from datetime import datetime
+from decimal import Decimal
+from beanie import Document
+from pydantic import Field
+from app.models.enums import QuotationStatus
 
-class PricingConfig(Base):
-    __tablename__ = "pricing_configs"
+class PricingConfig(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    base_rate_per_km: Decimal
+    margin_per_km: Decimal
+    effective_from: datetime
+    effective_until: Optional[datetime] = None
+    active: bool = True
+    created_by: uuid.UUID
+    created_at: datetime
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    base_rate_per_km = Column(Numeric(12, 2), nullable=False)
-    margin_per_km = Column(Numeric(12, 2), nullable=False)
-    effective_from = Column(DateTime, nullable=False)
-    effective_until = Column(DateTime, nullable=True)
-    active = Column(Boolean, default=True, nullable=False)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    
-    # Relationships
-    quotations = relationship("Quotation", back_populates="pricing_config")
+    class Settings:
+        name = "pricing_configs"
 
-class Quotation(Base):
-    __tablename__ = "quotations"
+        indexes = [
+            pymongo.IndexModel("status")
+        ]
+class Quotation(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    request_id: uuid.UUID # type: ignore
+    pricing_config_id: uuid.UUID
+    distance_km: Decimal
+    base_rate_per_km: Decimal
+    internal_base_cost: Decimal
+    cargox_margin: Decimal
+    customer_total_charge: Decimal
+    status: QuotationStatus = QuotationStatus.PENDING # type: ignore
+    created_at: datetime
+    accepted_at: Optional[datetime] = None
+    expires_at: datetime
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    request_id = Column(UUID(as_uuid=True), ForeignKey("delivery_requests.id"), nullable=False)
-    pricing_config_id = Column(UUID(as_uuid=True), ForeignKey("pricing_configs.id"), nullable=False)
-    distance_km = Column(Numeric(10, 2), nullable=False)
-    base_rate_per_km = Column(Numeric(12, 2), nullable=False)
-    internal_base_cost = Column(Numeric(12, 2), nullable=False)
-    cargox_margin = Column(Numeric(12, 2), nullable=False)
-    customer_total_charge = Column(Numeric(12, 2), nullable=False)
-    status = Column(Enum(QuotationStatus), default=QuotationStatus.PENDING, nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    accepted_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=False)
-    
-    # Relationships
-    pricing_config = relationship("PricingConfig", back_populates="quotations")
-    delivery_request = relationship("DeliveryRequest", back_populates="quotation", uselist=False)
+    class Settings:
+        name = "quotations"
+        indexes = [
+            pymongo.IndexModel("status")
+        ]

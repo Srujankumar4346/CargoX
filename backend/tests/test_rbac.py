@@ -1,6 +1,6 @@
 import pytest
 from fastapi import HTTPException
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from app.api.deps import get_current_user, get_current_admin, get_current_customer_user, get_current_driver
 from app.models.user import User
 from app.models.enums import UserRole
@@ -23,14 +23,23 @@ def test_get_current_user_inactive():
     assert exc.value.status_code == 403
     assert exc.value.detail == "Inactive user"
 
-def test_get_current_user_unknown():
+def test_get_current_user_auto_provisioning():
     db_mock = MagicMock()
+    # First call returns None (user not found), second call (if rollback happens) returns None
     db_mock.query().filter().first.return_value = None
     
-    with pytest.raises(HTTPException) as exc:
-        get_current_user({"sub": "unknown"}, db=db_mock)
-    assert exc.value.status_code == 401
-    assert exc.value.detail == "User not found"
+    # We must patch the User instance's is_active because the mock db won't set defaults
+    with patch('app.api.deps.User') as user_cls_mock:
+        user_instance = MagicMock()
+        user_instance.is_active = True
+        user_instance.clerk_user_id = "unknown"
+        user_cls_mock.return_value = user_instance
+        
+        result = get_current_user({"sub": "unknown"}, db=db_mock)
+        
+        db_mock.add.assert_called_once_with(user_instance)
+        db_mock.commit.assert_called_once()
+        assert result.clerk_user_id == "unknown"
 
 def test_get_current_admin_success():
     user_mock = User(id="1", clerk_user_id="user_123", is_active=True, role=UserRole.ADMIN)

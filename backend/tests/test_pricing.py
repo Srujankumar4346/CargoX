@@ -27,26 +27,30 @@ def cleanup_database():
     def _do_cleanup():
         db = SessionLocal()
         try:
-            db.execute(text("DELETE FROM trip_expenses"))
-            db.execute(text("DELETE FROM vehicle_maintenance"))
-            db.execute(text("DELETE FROM notifications"))
-            db.execute(text("DELETE FROM payments"))
-            db.execute(text("DELETE FROM invoices"))
             db.execute(text("DELETE FROM location_histories"))
+            db.execute(text("DELETE FROM payments"))
+            db.execute(text("DELETE FROM trip_expenses"))
             db.execute(text("DELETE FROM proof_of_deliveries"))
             db.execute(text("DELETE FROM vehicle_assignments"))
             db.execute(text("DELETE FROM trips"))
+            db.execute(text("DELETE FROM driver_settlements"))
+            db.execute(text("DELETE FROM invoices"))
             db.execute(text("DELETE FROM quotations"))
             db.execute(text("DELETE FROM delivery_requests"))
-            db.execute(text("DELETE FROM recipient_companies"))
-            db.execute(text("DELETE FROM pricing_configs"))
+            db.execute(text("DELETE FROM compliance_documents"))
+            db.execute(text("DELETE FROM vehicle_maintenance"))
+            db.execute(text("DELETE FROM notifications"))
             db.execute(text("DELETE FROM drivers"))
             db.execute(text("DELETE FROM vehicles"))
+            db.execute(text("DELETE FROM pricing_configs"))
             db.execute(text("DELETE FROM users"))
+            db.execute(text("DELETE FROM recipient_companies"))
             db.execute(text("DELETE FROM customer_companies"))
             db.commit()
-        except Exception:
+        except Exception as e:
+            print("CLEANUP ERROR:", e)
             db.rollback()
+            raise
         finally:
             db.close()
 
@@ -244,6 +248,10 @@ def test_pricing_config_validation(client, db_session, admin_user):
 def test_generate_quotation_success(client, db_session, admin_user, active_pricing_config, delivery_request_a):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
     app.dependency_overrides[get_db] = lambda: db_session
+
+    print(f"Configs: {db_session.query(PricingConfig).all()}")
+    for c in db_session.query(PricingConfig).all():
+        print(c.id, c.base_rate_per_km, c.active)
 
     # 250 km: base = 250*20 = 5000, margin = 250*2 = 500, total = 5500
     resp = client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={

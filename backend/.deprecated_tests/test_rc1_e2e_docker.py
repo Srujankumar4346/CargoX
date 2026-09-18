@@ -4,19 +4,20 @@ import sys
 
 BASE_URL = "http://localhost"
 # If running via Docker Compose, wait for Nginx and backend to be up
-print("Waiting for CargoX Backend to become available...")
-for _ in range(30):
-    try:
-        r = requests.get(f"{BASE_URL}/api/docs")
-        if r.status_code == 200:
-            print("Backend is up!")
-            break
-    except requests.exceptions.ConnectionError:
-        pass
-    time.sleep(2)
-else:
-    print("Backend did not start in time. Exiting.")
-    sys.exit(1)
+def wait_for_backend():
+    print("Waiting for CargoX Backend to become available...")
+    for _ in range(30):
+        try:
+            r = requests.get(f"{BASE_URL}/api/docs")
+            if r.status_code == 200:
+                print("Backend is up!")
+                break
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(2)
+    else:
+        print("Backend did not start in time. Exiting.")
+        sys.exit(1)
 
 def get_token(username, password):
     res = requests.post(f"{BASE_URL}/api/auth/login", data={"username": username, "password": password})
@@ -27,13 +28,6 @@ def run_e2e():
     print("1. Customer Login")
     cust_token = get_token("cust_e2e@cargox.test", "pass")
     
-    # We assume setup data is seeded by Alembic/startup scripts for E2E tests.
-    # We will simulate fetching the customer ID directly from token or just know it's 2.
-    
-    # In a real Docker env, we might need a dedicated endpoint to fetch our own profile.
-    # For now, let's just make the booking assuming customer_id = 2 (if seeded).
-    # To be robust, let's just rely on the API.
-
     print("2. Customer Creates Booking")
     res = requests.post(
         f"{BASE_URL}/api/bookings/", 
@@ -125,4 +119,5 @@ def run_e2e():
     print("E2E Docker execution passed successfully! ✅")
 
 if __name__ == "__main__":
+    wait_for_backend()
     run_e2e()

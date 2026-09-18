@@ -23,11 +23,13 @@ services:
       - key: PYTHON_VERSION
         value: 3.12
       - key: CLERK_ISSUER_URL
-        value: https://gentle-hamster-3926.clerk.accounts.dev
+        value: https://awaited-raptor-7824.clerk.accounts.dev
       - key: CLERK_JWKS_URL
-        value: https://gentle-hamster-3926.clerk.accounts.dev/.well-known/jwks.json
+        value: https://awaited-raptor-7824.clerk.accounts.dev/.well-known/jwks.json
       - key: CLERK_SECRET_KEY
         sync: false # Set this manually in the Render Dashboard
+      - key: CARGOX_PRIMARY_ADMIN_CLERK_ID
+        sync: false
 
   # 3. React Frontend
   - type: web

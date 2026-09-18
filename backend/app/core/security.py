@@ -32,5 +32,6 @@ def decode_token(token: str) -> dict:
         )
         return payload
     except jwt.PyJWTError as e:
-        # Never log the token or the secret details here.
-        raise ValueError("Token validation failed")
+        # Log the specific error for debugging
+        print(f"Token validation failed with error: {e}")
+        raise ValueError(f"Token validation failed: {e}")

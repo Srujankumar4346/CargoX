@@ -1,18 +1,33 @@
-const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api";
+const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api/v1";
+
+let tokenGetter: (() => Promise<string | null>) | null = null;
+
+export function setTokenGetter(getter: () => Promise<string | null>) {
+  tokenGetter = getter;
+}
 
 async function authFetch(url: string, options: RequestInit = {}) {
   let token = null;
   
-  // Try to get Clerk token first
-  if (typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
+  // 1. Try registered tokenGetter first (from Clerk React hook)
+  if (tokenGetter) {
+    try {
+      token = await tokenGetter();
+    } catch (e) {
+      console.warn("[authFetch] Failed to get token from tokenGetter:", e);
+    }
+  }
+
+  // 2. Try window.Clerk fallback
+  if (!token && typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
     try {
       token = await (window as any).Clerk.session.getToken();
     } catch (e) {
-      console.warn("Failed to fetch Clerk token", e);
+      console.warn("[authFetch] Failed to fetch Clerk token from window:", e);
     }
   }
   
-  // Fallback to localStorage
+  // 3. Fallback to localStorage
   if (!token) {
     token = localStorage.getItem('access_token');
   }
@@ -20,10 +35,17 @@ async function authFetch(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+  } else {
+    console.warn(`[authFetch] No auth token found for ${url}`);
   }
   
-  return fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    console.warn(`[authFetch] 401 Unauthorized for ${url}`);
+  }
+  return res;
 }
+
 
 
 export const api = {
@@ -53,12 +75,17 @@ export const api = {
     return res.json();
   },
   getBookings: async () => {
-    const res = await authFetch(`${API_URL}/admin/dispatch/requests`);
+    const res = await authFetch(`${API_URL}/admin/requests`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
   cancelBooking: async (id: string) => {
-    const res = await authFetch(`${API_URL}/admin/dispatch/requests/${id}/cancel`, { method: "POST" });
+    const res = await authFetch(`${API_URL}/admin/requests/${id}/cancel`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  approveBooking: async (id: string) => {
+    const res = await authFetch(`${API_URL}/admin/requests/${id}/approve`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -99,12 +126,17 @@ export const api = {
   createTrip: async (data: any) => {
     // The backend dispatch route expects request_id in path and dispatch payload in body
     const requestId = data.booking_id || data.request_id;
-    const res = await authFetch(`${API_URL}/admin/dispatch/requests/${requestId}/dispatch`, {
+    const res = await authFetch(`${API_URL}/admin/requests/${requestId}/dispatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  getTrips: async () => {
+    const res = await authFetch(`${API_URL}/admin/trips`);
+    if (!res.ok) return [];
     return res.json();
   },
   updateTripStatus: async (tripId: number, status: string) => {
@@ -211,6 +243,23 @@ export const api = {
       body: JSON.stringify({ query })
     });
     if (!res.ok) throw new Error("Failed to query assistant");
+    return res.json();
+  },
+  
+  // Pricing
+  getActivePricing: async () => {
+    const res = await authFetch(`${API_URL}/admin/pricing-configs/active`);
+    if (!res.ok) throw new Error("Failed to fetch active pricing");
+    return res.json();
+  },
+  
+  updatePricing: async (base_rate_per_km: number, margin_per_km: number = 0) => {
+    const res = await authFetch(`${API_URL}/admin/pricing-configs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_rate_per_km, margin_per_km })
+    });
+    if (!res.ok) throw new Error("Failed to update pricing");
     return res.json();
   },
   

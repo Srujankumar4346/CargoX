@@ -17,6 +17,8 @@ from app.api.v1.routes.admin_maintenance import router as admin_maintenance_rout
 from app.api.v1.routes.admin_settlements import router as admin_settlements_router
 from app.api.v1.routes.admin_compliance import router as admin_compliance_router
 from app.api.v1.routes.driver_compliance import router as driver_compliance_router
+from app.api.v1.routes.admin_users import router as admin_users_router
+from app.api.v1.routes.notifications import router as notifications_router
 
 api_router = APIRouter()
 api_router.include_router(admin_pricing_router, prefix="/admin", tags=["Admin Pricing & Quotations"])
@@ -26,8 +28,10 @@ api_router.include_router(admin_invoices_router, prefix="/admin", tags=["Admin I
 api_router.include_router(admin_analytics_router, prefix="/admin/analytics", tags=["Admin Analytics"])
 api_router.include_router(admin_expenses_router, prefix="/admin", tags=["Admin Expenses"])
 api_router.include_router(admin_maintenance_router, prefix="/admin", tags=["Admin Maintenance"])
-api_router.include_router(admin_settlements_router, prefix="/admin/settlements", tags=["admin-settlements"])
+api_router.include_router(admin_settlements_router, prefix="/admin", tags=["admin-settlements"])
 api_router.include_router(admin_compliance_router, prefix="/admin/compliance", tags=["admin-compliance"])
+api_router.include_router(admin_users_router, prefix="/admin/users", tags=["Admin - Users"])
+api_router.include_router(notifications_router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(customer_quotations_router, prefix="/customer/quotations", tags=["Customer Quotations"])
 api_router.include_router(customer_invoices_router, prefix="/customer/invoices", tags=["Customer Invoices"])
 api_router.include_router(driver_pwa_router, prefix="/driver", tags=["Driver PWA"])

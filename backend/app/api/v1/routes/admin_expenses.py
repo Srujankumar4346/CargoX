@@ -43,3 +43,11 @@ def update_expense_status(
     current_admin: User = Depends(get_current_admin)
 ):
     return ExpenseService.change_expense_status(db, expense_id, status_in.status, current_admin)
+
+@router.get("/expenses", response_model=List[TripExpenseRead])
+def list_all_expenses(
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_current_admin)
+):
+    from app.models.operations import TripExpense
+    return db.query(TripExpense).order_by(TripExpense.date.desc()).all()

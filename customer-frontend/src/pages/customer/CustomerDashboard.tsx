@@ -13,10 +13,11 @@ export default function CustomerDashboard() {
   const [formData, setFormData] = useState({ 
     pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", 
     drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", 
-    cargo: "", weight: "" 
+    cargo: "", weight: "", distance: "" 
   });
   const [trackingTrip, setTrackingTrip] = useState<any>(null);
   const [trackingLocations, setTrackingLocations] = useState<any[]>([]);
+  const [pricePerKm, setPricePerKm] = useState<number>(22);
 
   const loadData = async () => {
     try {
@@ -24,6 +25,15 @@ export default function CustomerDashboard() {
       // Filter invoices for customer 1 (Mock)
       const allInvoices = await api.getInvoices();
       setInvoices(allInvoices.filter((i: any) => i.customer_id === 1));
+      
+      try {
+          const pricing = await api.getActivePricing();
+          if (pricing && pricing.base_rate_per_km) {
+              setPricePerKm(parseFloat(pricing.base_rate_per_km));
+          }
+      } catch (e) {
+          console.error("Failed to load active pricing config", e);
+      }
     } catch (e) {
       console.error("Failed to load data", e);
     }
@@ -91,7 +101,8 @@ export default function CustomerDashboard() {
   
   const handleTrackBooking = async (bookingId: number) => {
       try {
-          const tripsResp = await fetch("http://127.0.0.1:8000/api/trips/");
+          const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api";
+          const tripsResp = await fetch(`${API_URL}/trips/`);
           if(tripsResp.ok) {
               const trips = await tripsResp.json();
               const trip = trips.find((t: any) => t.booking_id === bookingId);
@@ -183,6 +194,19 @@ export default function CustomerDashboard() {
                   <label className="block text-sm font-medium text-foreground">Cargo Weight (Tons)</label>
                   <input type="number" required step="0.1" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. 3.5" />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-foreground">Distance (Kilometers)</label>
+                  <input type="number" required step="1" value={formData.distance} onChange={e => setFormData({...formData, distance: e.target.value})} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. 150" />
+                </div>
+                {formData.distance && (
+                  <div className="md:col-span-2 bg-blue-50 border border-blue-200 p-4 rounded-md flex justify-between items-center text-blue-900 shadow-sm mt-2">
+                    <div>
+                      <span className="font-bold block">Estimated Delivery Charge</span>
+                      <span className="text-xs text-blue-700">Calculated at ₹{pricePerKm} per kilometer</span>
+                    </div>
+                    <span className="text-2xl font-black">₹{(parseFloat(formData.distance) * pricePerKm).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded-md font-bold hover:bg-blue-700">Confirm Booking Request</button>
                 </div>

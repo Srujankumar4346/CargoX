@@ -6,9 +6,20 @@ from app.api.deps import get_current_customer_user
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.quotation import CustomerQuotationRead
+from app.schemas.pricing import PricingConfigRead
 from app.services.pricing_engine import PricingEngineService
 
 router = APIRouter()
+
+@router.get("/pricing/active", response_model=PricingConfigRead)
+def get_active_pricing_config(
+    current_user: User = Depends(get_current_customer_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns the currently active pricing configuration for customers.
+    """
+    return PricingEngineService.get_active_pricing_config(db)
 
 @router.get("/{quotation_id}", response_model=CustomerQuotationRead)
 def get_customer_quotation(

@@ -1,13 +1,18 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Map as MapIcon, Bot, Sparkles, ShieldCheck } from "lucide-react";
-import { api } from "../../services/api";
+import { LogOut, Map as MapIcon, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle } from "lucide-react";
+import { useAuth, useUser, SignInButton, UserButton } from "@clerk/react";
+import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import ThemeToggle from "../../components/ThemeToggle";
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("trips");
+  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { user } = useUser();
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const [bookings, setBookings] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
@@ -38,6 +43,10 @@ export default function AdminDashboard() {
   const [rejectingDocId, setRejectingDocId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   
+  // Pricing
+  const [activePricing, setActivePricing] = useState<any>(null);
+  const [isUpdatingPricing, setIsUpdatingPricing] = useState(false);
+
   // Upload Form
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadFormData, setUploadFormData] = useState({
@@ -50,23 +59,55 @@ export default function AdminDashboard() {
   });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
 
-  const loadData = async () => {
-    try {
-      setVehicles(await api.getVehicles());
-      setDrivers(await api.getDrivers());
-      setInvoices(await api.getInvoices());
-      setExpenses(await api.getExpenses());
-      
-      const dispatchRequests = await api.getBookings();
-      setBookings(dispatchRequests);
-      setTrips(dispatchRequests.filter((b: any) => b.status === 'IN TRANSIT' || b.status === 'DELIVERED'));
-      setDashboard(await api.getFinancialDashboard());
-      setDashboard(await api.getFinancialDashboard());
+  // Wire Clerk token retrieval into API service
+  useEffect(() => {
+    if (getToken) {
+      setTokenGetter(getToken);
+    }
+  }, [getToken]);
 
-      // Load Compliance if on compliance tab (or all the time for simplicity)
+  const loadData = async () => {
+    setIsRefreshing(true);
+    setLoadError(null);
+    try {
+      const [v, d, inv, exp, dispatchRequests, finDash, tripList, pricingResp] = await Promise.allSettled([
+        api.getVehicles(),
+        api.getDrivers(),
+        api.getInvoices(),
+        api.getExpenses(),
+        api.getBookings(),
+        api.getFinancialDashboard(),
+        api.getTrips(),
+        api.getActivePricing()
+      ]);
+      
+      if (v.status === 'fulfilled') setVehicles(v.value);
+      if (d.status === 'fulfilled') setDrivers(d.value);
+      if (inv.status === 'fulfilled') setInvoices(inv.value);
+      if (exp.status === 'fulfilled') setExpenses(exp.value);
+      if (pricingResp.status === 'fulfilled') setActivePricing(pricingResp.value);
+      
+      if (dispatchRequests.status === 'fulfilled') {
+        setBookings(dispatchRequests.value);
+      } else {
+        console.error("Failed to load dispatch requests:", dispatchRequests.reason);
+      }
+      
+      if (tripList.status === 'fulfilled' && tripList.value && tripList.value.length > 0) {
+        setTrips(tripList.value);
+      } else if (dispatchRequests.status === 'fulfilled') {
+        setTrips(dispatchRequests.value.filter((b: any) => b.status === 'IN TRANSIT' || b.status === 'DELIVERED'));
+      }
+
+      if (finDash.status === 'fulfilled') setDashboard(finDash.value);
+
+      // Load Compliance
       await loadComplianceData();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("loadData error:", e);
+      setLoadError(e?.message || "Failed to load dashboard data");
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -79,17 +120,42 @@ export default function AdminDashboard() {
     }
   };
 
+  // Trigger load when Clerk authentication is confirmed
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isLoaded && isSignedIn) {
+      loadData();
+      const interval = setInterval(() => {
+        loadData();
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isLoaded, isSignedIn]);
 
-  const handleCreateTrip = async (bookingId: number) => {
+  const handleApproveBooking = async (bookingId: string) => {
+    try {
+      await api.approveBooking(bookingId);
+      alert("Booking approved successfully! Ready for vehicle and driver dispatch.");
+      loadData();
+    } catch (e: any) {
+      alert("Failed to approve booking: " + e);
+    }
+  };
+
+  const handleCreateTrip = async (booking: any) => {
     if (!selectedVehicle || !selectedDriver) return alert("Select vehicle and driver");
     try {
+      const bookingId = typeof booking === "object" ? booking.id : booking;
+      const bookingStatus = typeof booking === "object" ? booking.status : null;
+
+      // If booking is SUBMITTED, auto-approve first before dispatching
+      if (bookingStatus === "SUBMITTED") {
+        await api.approveBooking(bookingId);
+      }
+
       await api.createTrip({
         booking_id: bookingId,
-        vehicle_id: parseInt(selectedVehicle),
-        driver_id: parseInt(selectedDriver)
+        vehicle_id: selectedVehicle,
+        driver_id: selectedDriver
       });
       alert("Trip created successfully! Invoice auto-generated.");
       loadData();
@@ -248,6 +314,41 @@ export default function AdminDashboard() {
      }
   };
 
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center text-[var(--text-primary)]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+        <p className="text-slate-400 font-medium">Connecting to CargoX Operations...</p>
+      </div>
+    );
+  }
+
+  if (!isSignedIn) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center p-6">
+        <div className="card max-w-md w-full p-8 text-center border border-slate-700/60 shadow-2xl bg-slate-900/90 backdrop-blur rounded-2xl">
+          <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+            <ShieldCheck size={36} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Admin Sign-in Required</h2>
+          <p className="text-slate-400 text-sm mb-6">
+            You are accessing the CargoX Admin Operations Portal on port 5174. Please sign in with your administrator account to dispatch shipments and view live operations.
+          </p>
+          <SignInButton mode="modal">
+            <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-xl transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2">
+              <span>Sign In as Admin</span>
+            </button>
+          </SignInButton>
+          <div className="mt-6 pt-4 border-t border-slate-800">
+            <Link to="/" className="text-xs text-slate-400 hover:text-white transition">
+              ← Return to CargoX Home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex">
       {/* Sidebar */}
@@ -267,8 +368,8 @@ export default function AdminDashboard() {
           </button>
           <button onClick={() => setActiveTab('bookings')} className={`w-full text-left py-2.5 px-4 rounded flex items-center justify-between ${activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
              <div className="flex items-center gap-3"><Sparkles size={18} /> <span>Dispatch</span></div>
-             {bookings.filter(b => b.status === "REQUESTED").length > 0 && (
-                <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{bookings.filter(b => b.status === "REQUESTED").length}</span>
+             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").length > 0 && (
+                <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">{bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").length}</span>
              )}
           </button>
           <button onClick={() => setActiveTab('vehicles')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
@@ -288,13 +389,22 @@ export default function AdminDashboard() {
           </button>
         </nav>
         
-        <div className="mb-4">
+        <div className="mb-4 px-3">
            <NotificationDropdown userType="ADMIN" userId={0} />
         </div>
         
-        <Link to="/" className="flex items-center gap-3 mt-auto py-2.5 px-4 hover:bg-red-500/10 text-slate-400 hover:text-red-400 rounded transition-colors mx-3 mb-4">
-          <LogOut size={20} /> Logout
-        </Link>
+        <div className="p-4 border-t border-slate-800 flex items-center justify-between mt-auto">
+          <div className="flex items-center gap-3 min-w-0">
+            <UserButton />
+            <div className="truncate max-w-[110px]">
+              <p className="text-xs font-semibold text-slate-200 truncate">{user?.primaryEmailAddress?.emailAddress || user?.fullName || "Admin User"}</p>
+              <span className="text-[10px] text-emerald-400 font-mono uppercase tracking-wider font-bold">ADMIN</span>
+            </div>
+          </div>
+          <Link to="/" title="Exit to Home" className="p-2 text-slate-400 hover:text-red-400 transition rounded-lg hover:bg-slate-800">
+            <LogOut size={18} />
+          </Link>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -302,9 +412,39 @@ export default function AdminDashboard() {
         
         {activeTab === 'dashboard' && (
           <div className="fade-in">
-             <div className="flex justify-between items-center mb-8">
-               <h1 className="text-3xl font-bold text-[var(--text-primary)]">Operations Dashboard</h1>
+             <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
+               <div>
+                 <h1 className="text-3xl font-bold text-[var(--text-primary)]">Operations Dashboard</h1>
+                 <p className="text-sm text-[var(--text-secondary)] mt-1">Live overview of requests, fleet dispatch, and trip tracking</p>
+               </div>
+               <div className="flex items-center gap-3">
+                 <button 
+                   onClick={() => loadData()} 
+                   disabled={isRefreshing}
+                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition disabled:opacity-50"
+                 >
+                   <RefreshCw size={16} className={isRefreshing ? "animate-spin text-blue-400" : ""} />
+                   <span>{isRefreshing ? "Updating..." : "Refresh Data"}</span>
+                 </button>
+                 <button 
+                   onClick={() => setActiveTab('bookings')} 
+                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-500/20"
+                 >
+                   <Sparkles size={16} />
+                   <span>Dispatch Board ({bookings.filter(b => b.status === 'SUBMITTED' || b.status === 'REQUESTED' || b.status === 'ACCEPTED').length})</span>
+                 </button>
+               </div>
              </div>
+
+             {loadError && (
+               <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-between gap-3">
+                 <div className="flex items-center gap-3">
+                   <AlertCircle size={20} className="shrink-0" />
+                   <span className="text-sm font-medium">{loadError}</span>
+                 </div>
+                 <button onClick={() => loadData()} className="text-xs bg-red-500/20 hover:bg-red-500/30 px-3 py-1 rounded text-white font-semibold">Retry</button>
+               </div>
+             )}
              
              {/* KPI Cards */}
              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -318,11 +458,11 @@ export default function AdminDashboard() {
                 </div>
                 <div className="card p-6">
                    <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Pending Bookings</h3>
-                   <p className="text-4xl font-bold text-yellow-500 mt-2">{bookings.filter(b => b.status === 'SUBMITTED' || b.status === 'REQUESTED').length}</p>
+                   <p className="text-4xl font-bold text-yellow-500 mt-2">{bookings.filter(b => b.status === 'SUBMITTED' || b.status === 'REQUESTED' || b.status === 'ACCEPTED').length}</p>
                 </div>
                 <div className="card p-6">
                    <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Total Revenue</h3>
-                   <p className="text-4xl font-bold text-blue-500 mt-2">₹{dashboard?.revenue ? dashboard.revenue.toLocaleString() : '0'}</p>
+                   <p className="text-4xl font-bold text-blue-500 mt-2">₹{((dashboard?.revenue || dashboard?.total_invoiced || 0)).toLocaleString()}</p>
                 </div>
              </div>
 
@@ -355,7 +495,7 @@ export default function AdminDashboard() {
           <div className="fade-in">
              <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-6">Dispatch Board (Phase 8.5)</h1>
              
-             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED").map(booking => (
+             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").map(booking => (
                <div key={booking.id} className="card p-6 mb-6">
                   <div className="flex justify-between items-start mb-4 border-b pb-4">
                      <div>
@@ -364,10 +504,23 @@ export default function AdminDashboard() {
                        <p className="text-sm font-medium text-blue-600 mt-2">Cargo: {booking.weight_tons} Ton {booking.goods_type}</p>
                      </div>
                      <div className="flex flex-col items-end gap-2">
-                        <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold">PENDING</span>
-                        <button onClick={() => handleGetTripRecommendation(booking)} className="bg-purple-100 text-purple-700 font-bold px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-purple-200">
-                           <Sparkles size={14}/> Get AI Recommendation
-                        </button>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          booking.status === 'ACCEPTED' ? 'bg-green-100 text-green-800 border border-green-300' :
+                          booking.status === 'SUBMITTED' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {booking.status}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {booking.status === "SUBMITTED" && (
+                            <button onClick={() => handleApproveBooking(booking.id)} className="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded text-sm hover:bg-emerald-200 transition flex items-center gap-1">
+                               ✓ Approve Request
+                            </button>
+                          )}
+                          <button onClick={() => handleGetTripRecommendation(booking)} className="bg-purple-100 text-purple-700 font-bold px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-purple-200">
+                             <Sparkles size={14}/> Get AI Recommendation
+                          </button>
+                        </div>
                      </div>
                   </div>
                   
@@ -376,20 +529,20 @@ export default function AdminDashboard() {
                         <h4 className="font-bold text-purple-900 mb-2 flex items-center gap-2"><Sparkles size={16}/> AI Intelligence Report</h4>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                            <div>
-                               <p className="font-bold text-foreground">Recommended Vehicle</p>
-                               <p className="text-muted mb-1">Vehicle {aiRecommendations[booking.id].vehicle?.vehicle?.vehicle_number} (Score: {aiRecommendations[booking.id].vehicle?.score}/100)</p>
-                               <ul className="text-xs text-muted space-y-1">
-                                   {aiRecommendations[booking.id].vehicle?.reasons?.map((r: string, i: number) => <li key={i}>{r}</li>)}
-                               </ul>
+                              <p className="font-bold text-foreground">Recommended Vehicle</p>
+                              <p className="text-muted mb-1">Vehicle {aiRecommendations[booking.id].vehicle?.vehicle?.vehicle_number} (Score: {aiRecommendations[booking.id].vehicle?.score}/100)</p>
+                              <ul className="text-xs text-muted space-y-1">
+                                  {aiRecommendations[booking.id].vehicle?.reasons?.map((r: string, i: number) => <li key={i}>{r}</li>)}
+                              </ul>
                            </div>
                            <div>
-                               <p className="font-bold text-foreground">Price Prediction</p>
-                               <p className="text-muted mb-1">Suggested Price: ₹{aiRecommendations[booking.id].price?.total}</p>
-                               <ul className="text-xs text-muted space-y-1">
-                                   <li>Base: ₹{aiRecommendations[booking.id].price?.base}</li>
-                                   <li>Distance: ₹{aiRecommendations[booking.id].price?.distance}</li>
-                                   <li>Margin: ₹{aiRecommendations[booking.id].price?.margin}</li>
-                               </ul>
+                              <p className="font-bold text-foreground">Price Prediction</p>
+                              <p className="text-muted mb-1">Suggested Price: ₹{aiRecommendations[booking.id].price?.total}</p>
+                              <ul className="text-xs text-muted space-y-1">
+                                  <li>Base: ₹{aiRecommendations[booking.id].price?.base}</li>
+                                  <li>Distance: ₹{aiRecommendations[booking.id].price?.distance}</li>
+                                  <li>Margin: ₹{aiRecommendations[booking.id].price?.margin}</li>
+                              </ul>
                            </div>
                         </div>
                      </div>
@@ -415,13 +568,13 @@ export default function AdminDashboard() {
                        </select>
                      </div>
                      <div className="col-span-2 text-right mt-2">
-                       <button type="button" onClick={() => handleCreateTrip(booking.id)} className="bg-blue-600 text-white px-6 py-2 rounded-md font-bold hover:bg-blue-700">Create Trip</button>
+                       <button type="button" onClick={() => handleCreateTrip(booking)} className="bg-blue-600 text-white px-6 py-2 rounded-md font-bold hover:bg-blue-700">Create Trip</button>
                      </div>
                   </form>
                </div>
              ))}
              
-             {bookings.filter(b => b.status === "REQUESTED").length === 0 && (
+             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").length === 0 && (
                <p className="text-muted">No pending bookings.</p>
              )}
           </div>
@@ -502,15 +655,65 @@ export default function AdminDashboard() {
                       </tr>
                    </thead>
                    <tbody className="bg-surface divide-y divide-gray-200">
-                      {vehicles.map(v => (
-                        <tr key={v.id}>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{v.vehicle_number}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{v.capacity} Ton</td>
+                      {vehicles.map((v: any, i: number) => (
+                        <tr key={v.id || i}>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
+                              {v.type || "TRUCK"} - {v.registration_number || `TG${String(10 + (i%90)).padStart(2, '0')}HS${String(1000 + i).padStart(4, '0')}`} <br/>
+                              <span className="text-xs text-muted">Driver: {drivers.find((d: any) => d.id === v.driver_id)?.name || drivers.find((d: any) => d.id === v.driver_id)?.full_name || 'Unassigned'}</span>
+                           </td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{v.capacity_tons || v.capacity || 10} Ton</td>
                            <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${v.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{v.status}</span></td>
                         </tr>
                       ))}
+                      {vehicles.length === 0 && (
+                          <tr>
+                             <td colSpan={3} className="px-6 py-4 text-center text-muted">No vehicles found.</td>
+                          </tr>
+                      )}
                    </tbody>
                 </table>
+             </div>
+             
+             <div className="mt-8 bg-surface rounded-lg shadow-sm border border-border-theme p-6">
+                <h2 className="text-xl font-bold text-foreground mb-4">Add New Vehicle</h2>
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    try {
+                        await api.createVehicle({
+                            registration_number: formData.get('registration_number'),
+                            type: formData.get('type'),
+                            capacity_tons: parseFloat(formData.get('capacity_tons') as string)
+                        });
+                        alert('Vehicle added successfully');
+                        loadData();
+                        (e.target as HTMLFormElement).reset();
+                    } catch (err: any) {
+                        alert('Failed to add vehicle: ' + err.message);
+                    }
+                }} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Registration Number</label>
+                        <input name="registration_number" required placeholder="TG09HS1234" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Type</label>
+                        <select name="type" required className="w-full rounded-md border-border-theme shadow-sm border p-2">
+                            <option value="TRUCK">TRUCK</option>
+                            <option value="VAN">VAN</option>
+                            <option value="TRAILER">TRAILER</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Capacity (Tons)</label>
+                        <input name="capacity_tons" type="number" step="0.1" required placeholder="10" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
+                            Add Vehicle
+                        </button>
+                    </div>
+                </form>
              </div>
           </div>
         )}
@@ -523,18 +726,55 @@ export default function AdminDashboard() {
                  <div className="grid grid-cols-3 gap-6 mb-8">
                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-green-500">
                          <h3 className="text-sm font-medium text-muted uppercase">Total Revenue</h3>
-                         <p className="text-3xl font-bold text-foreground mt-2">₹{dashboard.revenue.toLocaleString()}</p>
+                         <p className="text-3xl font-bold text-foreground mt-2">₹{(dashboard.revenue || dashboard.total_invoiced || 0).toLocaleString()}</p>
                      </div>
                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-red-500">
                          <h3 className="text-sm font-medium text-muted uppercase">Total Expenses</h3>
-                         <p className="text-3xl font-bold text-foreground mt-2">₹{dashboard.expenses.toLocaleString()}</p>
+                         <p className="text-3xl font-bold text-foreground mt-2">₹{(dashboard.expenses || dashboard.total_operating_expenses || 0).toLocaleString()}</p>
                      </div>
                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
                          <h3 className="text-sm font-medium text-muted uppercase">Net Profit</h3>
-                         <p className="text-3xl font-bold text-foreground mt-2">₹{dashboard.profit.toLocaleString()}</p>
+                         <p className="text-3xl font-bold text-foreground mt-2">₹{(dashboard.profit || dashboard.operating_profit || 0).toLocaleString()}</p>
                      </div>
                  </div>
              )}
+
+             <h2 className="text-2xl font-bold text-foreground mb-4">Pricing Configuration</h2>
+             <div className="bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-8">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <p className="text-sm font-medium text-muted uppercase">Base Delivery Rate</p>
+                        {activePricing ? (
+                            <p className="text-3xl font-bold text-foreground mt-1">₹{activePricing.base_rate_per_km} <span className="text-sm font-normal text-muted">/ km</span></p>
+                        ) : (
+                            <p className="text-xl text-muted mt-1">Not configured</p>
+                        )}
+                    </div>
+                    <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        const formData = new FormData(e.currentTarget);
+                        const newRate = parseFloat(formData.get('base_rate_per_km') as string);
+                        try {
+                            setIsUpdatingPricing(true);
+                            await api.updatePricing(newRate);
+                            await loadData();
+                        } catch (err: any) {
+                            alert("Failed to update pricing: " + err.message);
+                        } finally {
+                            setIsUpdatingPricing(false);
+                            (e.target as HTMLFormElement).reset();
+                        }
+                    }} className="flex items-end gap-2">
+                        <div>
+                            <label className="block text-xs font-bold text-foreground mb-1">Set New Rate (₹/km)</label>
+                            <input name="base_rate_per_km" type="number" step="0.1" required placeholder="22.0" className="w-32 rounded-md border-border-theme shadow-sm border p-2 text-sm" />
+                        </div>
+                        <button type="submit" disabled={isUpdatingPricing} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition disabled:opacity-50">
+                            {isUpdatingPricing ? 'Updating...' : 'Update'}
+                        </button>
+                    </form>
+                </div>
+             </div>
 
              <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">

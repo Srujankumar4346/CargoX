@@ -10,26 +10,32 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 @pytest.fixture(autouse=True)
+def mock_compliance_service(monkeypatch):
+    monkeypatch.setattr("app.services.dispatch_service.ComplianceService.validate_dispatch_eligibility", lambda *args, **kwargs: None)
+
+@pytest.fixture(autouse=True)
 def cleanup_database():
     db = SessionLocal()
     yield
     try:
-        db.execute(text("DELETE FROM trip_expenses"))
-        db.execute(text("DELETE FROM vehicle_maintenance"))
-        db.execute(text("DELETE FROM notifications"))
-        db.execute(text("DELETE FROM payments"))
-        db.execute(text("DELETE FROM invoices"))
         db.execute(text("DELETE FROM location_histories"))
+        db.execute(text("DELETE FROM payments"))
+        db.execute(text("DELETE FROM trip_expenses"))
         db.execute(text("DELETE FROM proof_of_deliveries"))
         db.execute(text("DELETE FROM vehicle_assignments"))
         db.execute(text("DELETE FROM trips"))
+        db.execute(text("DELETE FROM driver_settlements"))
+        db.execute(text("DELETE FROM invoices"))
         db.execute(text("DELETE FROM quotations"))
         db.execute(text("DELETE FROM delivery_requests"))
-        db.execute(text("DELETE FROM recipient_companies"))
-        db.execute(text("DELETE FROM pricing_configs"))
+        db.execute(text("DELETE FROM compliance_documents"))
+        db.execute(text("DELETE FROM vehicle_maintenance"))
+        db.execute(text("DELETE FROM notifications"))
         db.execute(text("DELETE FROM drivers"))
         db.execute(text("DELETE FROM vehicles"))
+        db.execute(text("DELETE FROM pricing_configs"))
         db.execute(text("DELETE FROM users"))
+        db.execute(text("DELETE FROM recipient_companies"))
         db.execute(text("DELETE FROM customer_companies"))
         db.commit()
     except Exception:

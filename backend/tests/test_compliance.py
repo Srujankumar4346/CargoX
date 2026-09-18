@@ -155,14 +155,14 @@ def test_compliance_notifications(db_session, admin_user, setup_compliance_entit
     # Verify notifications were created
     from app.models.notifications import Notification
     
-    n1 = db_session.query(Notification).filter(Notification.event_type == "COMPLIANCE_EXPIRING_SOON").first()
+    n1 = db_session.query(Notification).filter(Notification.event_type == "COMPLIANCE_EXPIRING_SOON").order_by(Notification.created_at.desc()).first()
     assert n1 is not None
     assert "INSURANCE" in n1.message
     
-    n2 = db_session.query(Notification).filter(Notification.event_type == "COMPLIANCE_EXPIRING_URGENT").first()
+    n2 = db_session.query(Notification).filter(Notification.event_type == "COMPLIANCE_EXPIRING_URGENT").order_by(Notification.created_at.desc()).first()
     assert n2 is not None
     assert "PUC" in n2.message
     
-    n3 = db_session.query(Notification).filter(Notification.event_type == "COMPLIANCE_EXPIRED").first()
+    n3 = db_session.query(Notification).filter(Notification.event_type == "COMPLIANCE_EXPIRED").order_by(Notification.created_at.desc()).first()
     assert n3 is not None
     assert "PERMIT for VEHICLE has expired" in n3.message

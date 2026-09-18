@@ -52,6 +52,21 @@ class CustomerPortalService:
                 "destination_lng": payload.destination_lng,
             }
 
+        # Update customer company details if pending/placeholder
+        if user.customer_company_id:
+            from app.models.company import CustomerCompany
+            comp = db.query(CustomerCompany).filter(CustomerCompany.id == user.customer_company_id).first()
+            if comp and ("Pending" in (comp.billing_address or "") or "Logistics Co" in (comp.name or "")):
+                if payload.pickup_company_name and payload.pickup_company_name != "Unknown Company":
+                    comp.name = payload.pickup_company_name
+                if payload.pickup_address and payload.pickup_address != "Unknown Address":
+                    comp.billing_address = payload.pickup_address
+                try:
+                    db.add(comp)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
         # 2. Retry loop for request number collision
         max_retries = 5
         for attempt in range(max_retries):

@@ -15,28 +15,53 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 @pytest.fixture(autouse=True)
+def mock_compliance_service(monkeypatch):
+    monkeypatch.setattr("app.services.dispatch_service.ComplianceService.validate_dispatch_eligibility", lambda *args, **kwargs: None)
+
+@pytest.fixture(autouse=True)
 def cleanup_database():
     db = SessionLocal()
     yield
     try:
-        db.execute(text("DELETE FROM trip_expenses"))
-        db.execute(text("DELETE FROM vehicle_maintenance"))
-        db.execute(text("UPDATE trips SET settlement_id = NULL"))
-        db.execute(text("DELETE FROM driver_settlements"))
-        db.execute(text("DELETE FROM notifications"))
-        db.execute(text("DELETE FROM payments"))
-        db.execute(text("DELETE FROM invoices"))
         db.execute(text("DELETE FROM location_histories"))
+        db.execute(text("DELETE FROM payments"))
+        db.execute(text("DELETE FROM trip_expenses"))
         db.execute(text("DELETE FROM proof_of_deliveries"))
         db.execute(text("DELETE FROM vehicle_assignments"))
         db.execute(text("DELETE FROM trips"))
+        db.execute(text("DELETE FROM driver_settlements"))
+        db.execute(text("DELETE FROM invoices"))
         db.execute(text("DELETE FROM quotations"))
         db.execute(text("DELETE FROM delivery_requests"))
-        db.execute(text("DELETE FROM recipient_companies"))
-        db.execute(text("DELETE FROM pricing_configs"))
+        db.execute(text("DELETE FROM compliance_documents"))
+        db.execute(text("DELETE FROM vehicle_maintenance"))
+        db.execute(text("DELETE FROM notifications"))
         db.execute(text("DELETE FROM drivers"))
         db.execute(text("DELETE FROM vehicles"))
+        db.execute(text("DELETE FROM pricing_configs"))
         db.execute(text("DELETE FROM users"))
+        db.execute(text("DELETE FROM recipient_companies"))
+        db.execute(text("DELETE FROM customer_companies"))
+        db.commit()
+        db.execute(text("UPDATE trips SET settlement_id = NULL"))
+        db.execute(text("DELETE FROM location_histories"))
+        db.execute(text("DELETE FROM payments"))
+        db.execute(text("DELETE FROM trip_expenses"))
+        db.execute(text("DELETE FROM proof_of_deliveries"))
+        db.execute(text("DELETE FROM vehicle_assignments"))
+        db.execute(text("DELETE FROM trips"))
+        db.execute(text("DELETE FROM driver_settlements"))
+        db.execute(text("DELETE FROM invoices"))
+        db.execute(text("DELETE FROM quotations"))
+        db.execute(text("DELETE FROM delivery_requests"))
+        db.execute(text("DELETE FROM compliance_documents"))
+        db.execute(text("DELETE FROM vehicle_maintenance"))
+        db.execute(text("DELETE FROM notifications"))
+        db.execute(text("DELETE FROM drivers"))
+        db.execute(text("DELETE FROM vehicles"))
+        db.execute(text("DELETE FROM pricing_configs"))
+        db.execute(text("DELETE FROM users"))
+        db.execute(text("DELETE FROM recipient_companies"))
         db.execute(text("DELETE FROM customer_companies"))
         db.commit()
     except Exception:
@@ -156,6 +181,8 @@ def test_settlement_lifecycle_and_immutability(client, db_session, admin_user):
         "deductions": "200.00",
         "deduction_reason": "Advance"
     })
+    if gen_resp.status_code != 200:
+        print("GENERATE ERROR:", gen_resp.json())
     assert gen_resp.status_code == 200
     s = gen_resp.json()
     assert s["status"] == "DRAFT"
@@ -205,6 +232,8 @@ def test_concurrency_protection(client, db_session, admin_user):
 
     # Call 1
     resp1 = client.post("/api/v1/admin/settlements/generate", json=payload)
+    if resp1.status_code != 200:
+        print("GENERATE CONCURRENCY ERROR:", resp1.json())
     assert resp1.status_code == 200
 
     # Call 2

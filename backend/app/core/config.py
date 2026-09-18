@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from typing import List
 
 class Settings(BaseSettings):
@@ -11,16 +12,30 @@ class Settings(BaseSettings):
     # Security / Clerk
     # These must be configured in environment (.env).
     # We do not use symmetric keys; we use asymmetric JWKS verification.
-    CLERK_ISSUER_URL: str = "https://gentle-hamster-3926.clerk.accounts.dev"
-    CLERK_JWKS_URL: str = "https://gentle-hamster-3926.clerk.accounts.dev/.well-known/jwks.json"
+    CLERK_ISSUER_URL: str = "https://awaited-raptor-7824.clerk.accounts.dev"
+    CLERK_JWKS_URL: str = "https://awaited-raptor-7824.clerk.accounts.dev/.well-known/jwks.json"
     
     # Optional backend internal secret if needed for non-Clerk internal flows
     # Must be set securely in prod.
     SECRET_KEY: str = "unsafe_default_key"
     ALGORITHM: str = "HS256"
     
+    # RBAC
+    CARGOX_PRIMARY_ADMIN_CLERK_ID: str | None = None
+    
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000"
+    ]
+    
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: str | List[str]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
     
     # Paths
     UPLOAD_DIR: str = "uploads"

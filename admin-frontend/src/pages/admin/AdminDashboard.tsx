@@ -558,19 +558,27 @@ export default function AdminDashboard() {
                   <form className="grid grid-cols-2 gap-4 border-t pt-4">
                      <div>
                        <label className="block text-sm font-medium text-foreground">Assign Vehicle</label>
-                       <select value={selectedVehicle} onChange={e => setSelectedVehicle(e.target.value)} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
-                          <option value="">Select Available Vehicle...</option>
+                       <select 
+                          value={selectedVehicle} 
+                          onChange={e => setSelectedVehicle(e.target.value)} 
+                          className="mt-1 block w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                       >
+                          <option value="" className="bg-[#0f172a] text-[#f8fafc]">Select Available Vehicle...</option>
                           {vehicles.filter(v => v.status === "AVAILABLE").map(v => (
-                            <option key={v.id} value={v.id}>[ {v.registration_number || v.vehicle_number} ] {v.capacity_tons || v.capacity} Ton</option>
+                            <option key={v.id} value={v.id} className="bg-[#0f172a] text-[#f8fafc]">[ {v.registration_number || v.vehicle_number} ] {v.capacity_tons || v.capacity} Ton</option>
                           ))}
                        </select>
                      </div>
                      <div>
                        <label className="block text-sm font-medium text-foreground">Assign Driver</label>
-                       <select value={selectedDriver} onChange={e => setSelectedDriver(e.target.value)} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
-                          <option value="">Select Available Driver...</option>
+                       <select 
+                          value={selectedDriver} 
+                          onChange={e => setSelectedDriver(e.target.value)} 
+                          className="mt-1 block w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
+                       >
+                          <option value="" className="bg-[#0f172a] text-[#f8fafc]">Select Available Driver...</option>
                           {drivers.filter(d => d.status === "AVAILABLE").map(d => (
-                            <option key={d.id} value={d.id}>[ {d.name || d.full_name} ]</option>
+                            <option key={d.id} value={d.id} className="bg-[#0f172a] text-[#f8fafc]">[ {d.name || d.full_name} ]</option>
                           ))}
                        </select>
                      </div>
@@ -701,19 +709,19 @@ export default function AdminDashboard() {
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Registration Number</label>
-                        <input name="registration_number" required placeholder="TG09HS1234" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <input name="registration_number" required placeholder="TG09HS1234" className="w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm border p-2" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Type</label>
-                        <select name="type" required className="w-full rounded-md border-border-theme shadow-sm border p-2">
-                            <option value="OPEN">OPEN (Open Truck / Flatbed)</option>
-                            <option value="CONTAINER">CONTAINER (Closed Container)</option>
-                            <option value="TRAILER">TRAILER (Heavy Trailer)</option>
+                        <select name="type" required className="w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm border p-2">
+                            <option value="OPEN" className="bg-[#0f172a] text-[#f8fafc]">OPEN (Open Truck / Flatbed)</option>
+                            <option value="CONTAINER" className="bg-[#0f172a] text-[#f8fafc]">CONTAINER (Closed Container)</option>
+                            <option value="TRAILER" className="bg-[#0f172a] text-[#f8fafc]">TRAILER (Heavy Trailer)</option>
                         </select>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Capacity (Tons)</label>
-                        <input name="capacity_tons" type="number" step="0.1" required placeholder="10" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <input name="capacity_tons" type="number" step="0.1" required placeholder="10" className="w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm border p-2" />
                     </div>
                     <div>
                         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
@@ -937,16 +945,16 @@ export default function AdminDashboard() {
               <div className="flex justify-between items-center mb-4">
                  <h2 className="text-xl font-bold text-foreground">Document History</h2>
                  <div className="flex gap-2">
-                    <select value={compStatusFilter} onChange={(e) => setCompStatusFilter(e.target.value)} className="text-sm border-border-theme rounded shadow-sm p-1.5 border">
-                       <option value="ALL">All Status</option>
-                       <option value="VERIFIED">Verified</option>
-                       <option value="ARCHIVED">Archived</option>
-                       <option value="REJECTED">Rejected</option>
+                    <select value={compStatusFilter} onChange={(e) => setCompStatusFilter(e.target.value)} className="text-sm border-border-theme bg-[#0f172a] text-[#f8fafc] rounded shadow-sm p-1.5 border">
+                       <option value="ALL" className="bg-[#0f172a] text-[#f8fafc]">All Status</option>
+                       <option value="VERIFIED" className="bg-[#0f172a] text-[#f8fafc]">Verified</option>
+                       <option value="ARCHIVED" className="bg-[#0f172a] text-[#f8fafc]">Archived</option>
+                       <option value="REJECTED" className="bg-[#0f172a] text-[#f8fafc]">Rejected</option>
                     </select>
-                    <select value={compOwnerFilter} onChange={(e) => setCompOwnerFilter(e.target.value)} className="text-sm border-border-theme rounded shadow-sm p-1.5 border">
-                       <option value="ALL">All Owners</option>
-                       <option value="VEHICLE">Vehicles</option>
-                       <option value="DRIVER">Drivers</option>
+                    <select value={compOwnerFilter} onChange={(e) => setCompOwnerFilter(e.target.value)} className="text-sm border-border-theme bg-[#0f172a] text-[#f8fafc] rounded shadow-sm p-1.5 border">
+                       <option value="ALL" className="bg-[#0f172a] text-[#f8fafc]">All Owners</option>
+                       <option value="VEHICLE" className="bg-[#0f172a] text-[#f8fafc]">Vehicles</option>
+                       <option value="DRIVER" className="bg-[#0f172a] text-[#f8fafc]">Drivers</option>
                     </select>
                  </div>
               </div>
@@ -1095,54 +1103,54 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-2 gap-4">
                      <div>
                         <label className="block text-xs font-bold text-foreground mb-1">Owner Type</label>
-                        <select className="w-full border rounded p-2 text-sm" value={uploadFormData.owner_type} onChange={e => setUploadFormData({...uploadFormData, owner_type: e.target.value, owner_id: "", document_type: e.target.value === 'DRIVER' ? 'DRIVING_LICENSE' : 'REGISTRATION'})}>
-                           <option value="DRIVER">Driver</option>
-                           <option value="VEHICLE">Vehicle</option>
+                        <select className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.owner_type} onChange={e => setUploadFormData({...uploadFormData, owner_type: e.target.value, owner_id: "", document_type: e.target.value === 'DRIVER' ? 'DRIVING_LICENSE' : 'REGISTRATION'})}>
+                           <option value="DRIVER" className="bg-[#0f172a] text-[#f8fafc]">Driver</option>
+                           <option value="VEHICLE" className="bg-[#0f172a] text-[#f8fafc]">Vehicle</option>
                         </select>
                      </div>
                      <div>
                         <label className="block text-xs font-bold text-foreground mb-1">Select {uploadFormData.owner_type}</label>
-                        <select className="w-full border rounded p-2 text-sm" value={uploadFormData.owner_id} onChange={e => setUploadFormData({...uploadFormData, owner_id: e.target.value})} required>
-                           <option value="">Select...</option>
+                        <select className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.owner_id} onChange={e => setUploadFormData({...uploadFormData, owner_id: e.target.value})} required>
+                           <option value="" className="bg-[#0f172a] text-[#f8fafc]">Select...</option>
                            {uploadFormData.owner_type === 'DRIVER' 
-                              ? drivers.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)
-                              : vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicle_number}</option>)
+                              ? drivers.map(d => <option key={d.id} value={d.id} className="bg-[#0f172a] text-[#f8fafc]">{d.full_name}</option>)
+                              : vehicles.map(v => <option key={v.id} value={v.id} className="bg-[#0f172a] text-[#f8fafc]">{v.vehicle_number}</option>)
                            }
                         </select>
                      </div>
                   </div>
                   <div>
                      <label className="block text-xs font-bold text-foreground mb-1">Document Type</label>
-                     <select className="w-full border rounded p-2 text-sm" value={uploadFormData.document_type} onChange={e => setUploadFormData({...uploadFormData, document_type: e.target.value})}>
+                     <select className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.document_type} onChange={e => setUploadFormData({...uploadFormData, document_type: e.target.value})}>
                         {uploadFormData.owner_type === 'DRIVER' ? (
                            <>
-                              <option value="DRIVING_LICENSE">Driving License</option>
-                              <option value="BACKGROUND_CHECK">Background Check</option>
-                              <option value="MEDICAL_CERTIFICATE">Medical Certificate</option>
+                              <option value="DRIVING_LICENSE" className="bg-[#0f172a] text-[#f8fafc]">Driving License</option>
+                              <option value="BACKGROUND_CHECK" className="bg-[#0f172a] text-[#f8fafc]">Background Check</option>
+                              <option value="MEDICAL_CERTIFICATE" className="bg-[#0f172a] text-[#f8fafc]">Medical Certificate</option>
                            </>
                         ) : (
                            <>
-                              <option value="REGISTRATION">Registration (RC)</option>
-                              <option value="INSURANCE">Insurance</option>
-                              <option value="FITNESS_CERTIFICATE">Fitness Certificate</option>
-                              <option value="PERMIT">Permit</option>
-                              <option value="PUC">PUC (Pollution)</option>
+                              <option value="REGISTRATION" className="bg-[#0f172a] text-[#f8fafc]">Registration (RC)</option>
+                              <option value="INSURANCE" className="bg-[#0f172a] text-[#f8fafc]">Insurance</option>
+                              <option value="FITNESS_CERTIFICATE" className="bg-[#0f172a] text-[#f8fafc]">Fitness Certificate</option>
+                              <option value="PERMIT" className="bg-[#0f172a] text-[#f8fafc]">Permit</option>
+                              <option value="PUC" className="bg-[#0f172a] text-[#f8fafc]">PUC (Pollution)</option>
                            </>
                         )}
                      </select>
                   </div>
                   <div>
                      <label className="block text-xs font-bold text-foreground mb-1">Document Number (Optional)</label>
-                     <input type="text" className="w-full border rounded p-2 text-sm" value={uploadFormData.document_number} onChange={e => setUploadFormData({...uploadFormData, document_number: e.target.value})} placeholder="e.g. MH01-..." />
+                     <input type="text" className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.document_number} onChange={e => setUploadFormData({...uploadFormData, document_number: e.target.value})} placeholder="e.g. MH01-..." />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                      <div>
                         <label className="block text-xs font-bold text-foreground mb-1">Issue Date</label>
-                        <input type="date" className="w-full border rounded p-2 text-sm" value={uploadFormData.issued_date} onChange={e => setUploadFormData({...uploadFormData, issued_date: e.target.value})} />
+                        <input type="date" className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.issued_date} onChange={e => setUploadFormData({...uploadFormData, issued_date: e.target.value})} />
                      </div>
                      <div>
                         <label className="block text-xs font-bold text-foreground mb-1">Expiry Date</label>
-                        <input type="date" className="w-full border rounded p-2 text-sm" value={uploadFormData.expiry_date} onChange={e => setUploadFormData({...uploadFormData, expiry_date: e.target.value})} />
+                        <input type="date" className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.expiry_date} onChange={e => setUploadFormData({...uploadFormData, expiry_date: e.target.value})} />
                      </div>
                   </div>
                   <div>

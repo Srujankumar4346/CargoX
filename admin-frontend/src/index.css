@@ -27,6 +27,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --background: #020617; /* Slate 950 */
     --surface: #0f172a;    /* Slate 900 */
     --surface-elevated: #1e293b; /* Slate 800 */
@@ -39,6 +40,20 @@
     --success: #10b981;    /* Emerald 500 */
     --warning: #f59e0b;    /* Amber 500 */
     --danger: #ef4444;     /* Red 500 */
+  }
+
+  select, input, textarea {
+    color-scheme: dark;
+  }
+
+  select {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+
+  select option {
+    background-color: #0f172a;
+    color: #f8fafc;
   }
 
   body {

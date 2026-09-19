@@ -55,15 +55,15 @@ async def admin_list_compliance_documents(
     status: Optional[DocumentVerificationStatus] = None,
     current_admin: User = Depends(get_current_admin)
 ):
-    query = db.query(ComplianceDocument)
+    filters = {}
     if owner_type:
-        query = query.filter(ComplianceDocument.owner_type == owner_type)
+        filters["owner_type"] = owner_type
     if owner_id:
-        query = query.filter(ComplianceDocument.owner_id == owner_id)
+        filters["owner_id"] = owner_id
     if status:
-        query = query.filter(ComplianceDocument.status == status)
+        filters["status"] = status
         
-    return query.order_by(ComplianceDocument.created_at.desc()).all()
+    return await ComplianceDocument.find(filters).sort("-created_at").to_list()
 
 @router.post("/documents/{document_id}/verify", response_model=ComplianceDocumentResponse)
 async def admin_verify_compliance_document(
@@ -83,9 +83,9 @@ async def admin_compliance_dashboard(
     current_admin: User = Depends(get_current_admin)
 ):
     # Fetch all verified documents
-    verified_docs = db.query(ComplianceDocument).filter(
+    verified_docs = await ComplianceDocument.find(
         ComplianceDocument.status == DocumentVerificationStatus.VERIFIED
-    ).all()
+    ).to_list()
     
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     

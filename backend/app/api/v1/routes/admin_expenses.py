@@ -44,4 +44,4 @@ async def list_all_expenses(
     current_admin: User = Depends(get_current_admin)
 ):
     from app.models.operations import TripExpense
-    return db.query(TripExpense).order_by(TripExpense.date.desc()).all()
+    return await TripExpense.find_all().sort("-date").to_list()

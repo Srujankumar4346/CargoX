@@ -25,8 +25,7 @@ async def get_notifications(
     """
     Get in-app notifications for user or admin.
     """
-    query = db.query(Notification)
-    notifs = query.order_by(Notification.created_at.desc()).limit(50).all()
+    notifs = await Notification.find_all().sort("-created_at").limit(50).to_list()
     
     return [
         NotificationResponse(

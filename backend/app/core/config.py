@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
-from typing import List
+from typing import List, Any
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "CargoX API"
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     CARGOX_PRIMARY_ADMIN_CLERK_ID: str | None = None
     
     # CORS
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: Any = [
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:3000",
@@ -33,9 +33,13 @@ class Settings(BaseSettings):
     
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: str | List[str]) -> List[str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",") if i.strip()]
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            v_clean = v.strip()
+            if v_clean == "*":
+                return ["*"]
+            if not v_clean.startswith("["):
+                return [i.strip() for i in v_clean.split(",") if i.strip()]
         return v
     
     # Paths

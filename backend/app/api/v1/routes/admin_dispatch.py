@@ -20,7 +20,7 @@ async def list_requests(
     """
     List all delivery requests for admin dashboard.
     """
-    return db.query(DeliveryRequest).order_by(DeliveryRequest.created_at.desc()).all()
+    return await DeliveryRequest.find_all().sort("-created_at").to_list()
 
 @router.post("/requests/{request_id}/approve", response_model=DeliveryRequestRead)
 async def approve_request(
@@ -30,15 +30,14 @@ async def approve_request(
     """
     Approves a delivery request, transitioning it from SUBMITTED to ACCEPTED.
     """
-    req = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
+    req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
     if not req:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
     if req.status != DeliveryRequestStatus.SUBMITTED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot approve request in {req.status} status")
     
     req.status = DeliveryRequestStatus.ACCEPTED
-    db.commit()
-    db.refresh(req)
+    await req.save()
     return req
 
 @router.post("/requests/{request_id}/dispatch", response_model=DispatchRead, status_code=status.HTTP_201_CREATED)
@@ -72,26 +71,27 @@ async def list_trips(
     """
     List all trips for admin dashboard.
     """
-    trips = db.query(Trip).order_by(Trip.assigned_at.desc()).all()
+    trips = await Trip.find_all().sort("-assigned_at").to_list()
     results = []
     for trip in trips:
+        req = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
         results.append({
             "id": trip.id,
             "request_id": trip.request_id,
             "assigned_at": trip.assigned_at,
             "current_lat": trip.current_lat,
             "current_lng": trip.current_lng,
-            "status": trip.delivery_request.status.value if trip.delivery_request else None,
+            "status": req.status.value if req else None,
             "request": {
-                "id": trip.delivery_request.id if trip.delivery_request else None,
-                "request_number": trip.delivery_request.request_number if trip.delivery_request else None,
-                "pickup_company_name": trip.delivery_request.pickup_company_name if trip.delivery_request else None,
-                "pickup_address": trip.delivery_request.pickup_address if trip.delivery_request else None,
-                "destination_company_name": trip.delivery_request.destination_company_name if trip.delivery_request else None,
-                "destination_address": trip.delivery_request.destination_address if trip.delivery_request else None,
-                "weight_tons": trip.delivery_request.weight_tons if trip.delivery_request else None,
-                "goods_type": trip.delivery_request.goods_type if trip.delivery_request else None,
-            } if trip.delivery_request else None
+                "id": req.id if req else None,
+                "request_number": req.request_number if req else None,
+                "pickup_company_name": req.pickup_company_name if req else None,
+                "pickup_address": req.pickup_address if req else None,
+                "destination_company_name": req.destination_company_name if req else None,
+                "destination_address": req.destination_address if req else None,
+                "weight_tons": req.weight_tons if req else None,
+                "goods_type": req.goods_type if req else None,
+            } if req else None
         })
     return results
 
@@ -103,16 +103,20 @@ async def get_trip_detail(
     """
     Gets details of a trip and its current assignment. Requires Admin privileges.
     """
-    trip = db.query(Trip).filter(Trip.id == trip_id).first()
+    trip = await Trip.find_one(Trip.id == trip_id)
     if not trip:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+    assignment = await VehicleAssignment.find_one(
+        VehicleAssignment.trip_id == trip.id,
+        VehicleAssignment.released_at == None
+    )
     return {
         "id": trip.id,
         "request_id": trip.request_id,
         "assigned_at": trip.assigned_at,
         "current_lat": trip.current_lat,
         "current_lng": trip.current_lng,
-        "assignment": trip.assignment
+        "assignment": assignment
     }
 
 @router.post("/trips/{trip_id}/verify-pod", response_model=PODRead)

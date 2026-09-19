@@ -18,11 +18,11 @@ async def get_quotation_for_customer(
     """
     Returns a quotation with internal cost/margin fields hidden.
     """
-    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    quotation = await Quotation.find_one(Quotation.id == quotation_id)
     if not quotation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         
-    request = db.query(DeliveryRequest).filter(DeliveryRequest.id == quotation.request_id).first()
+    request = await DeliveryRequest.find_one(DeliveryRequest.id == quotation.request_id)
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         
@@ -39,7 +39,7 @@ async def get_quotation_for_admin(
     """
     Returns a quotation with ALL internal fields visible.
     """
-    quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+    quotation = await Quotation.find_one(Quotation.id == quotation_id)
     if not quotation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         

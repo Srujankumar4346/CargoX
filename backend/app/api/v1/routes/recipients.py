@@ -12,9 +12,9 @@ router = APIRouter()
 async def list_recipients(
     current_user: User = Depends(get_current_customer_user)
 ):
-    recipients = db.query(RecipientCompany).filter(
+    recipients = await RecipientCompany.find(
         RecipientCompany.customer_company_id == current_user.customer_company_id
-    ).all()
+    ).to_list()
     return recipients
 
 @router.post("", response_model=RecipientCompanyRead, status_code=status.HTTP_201_CREATED)
@@ -26,9 +26,7 @@ async def create_recipient(
         customer_company_id=current_user.customer_company_id,
         **payload.model_dump()
     )
-    db.add(recipient)
-    db.commit()
-    db.refresh(recipient)
+    await recipient.insert()
     return recipient
 
 @router.get("/{recipient_id}", response_model=RecipientCompanyRead)
@@ -36,7 +34,7 @@ async def get_recipient(
     recipient_id: uuid.UUID,
     current_user: User = Depends(get_current_customer_user)
 ):
-    recipient = db.query(RecipientCompany).filter(RecipientCompany.id == recipient_id).first()
+    recipient = await RecipientCompany.find_one(RecipientCompany.id == recipient_id)
     if not recipient or recipient.customer_company_id != current_user.customer_company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     return recipient
@@ -47,7 +45,7 @@ async def update_recipient(
     payload: RecipientCompanyUpdate,
     current_user: User = Depends(get_current_customer_user)
 ):
-    recipient = db.query(RecipientCompany).filter(RecipientCompany.id == recipient_id).first()
+    recipient = await RecipientCompany.find_one(RecipientCompany.id == recipient_id)
     if not recipient or recipient.customer_company_id != current_user.customer_company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         
@@ -55,8 +53,7 @@ async def update_recipient(
     for k, v in update_data.items():
         setattr(recipient, k, v)
         
-    db.commit()
-    db.refresh(recipient)
+    await recipient.save()
     return recipient
 
 @router.delete("/{recipient_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -64,9 +61,8 @@ async def delete_recipient(
     recipient_id: uuid.UUID,
     current_user: User = Depends(get_current_customer_user)
 ):
-    recipient = db.query(RecipientCompany).filter(RecipientCompany.id == recipient_id).first()
+    recipient = await RecipientCompany.find_one(RecipientCompany.id == recipient_id)
     if not recipient or recipient.customer_company_id != current_user.customer_company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         
-    db.delete(recipient)
-    db.commit()
+    await recipient.delete()

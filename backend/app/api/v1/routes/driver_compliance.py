@@ -58,9 +58,9 @@ async def driver_list_compliance_documents(
     if not driver:
         raise HTTPException(status_code=403, detail="Not a valid driver")
         
-    docs = db.query(ComplianceDocument).filter(
+    docs = await ComplianceDocument.find(
         ComplianceDocument.owner_type == DocumentOwnerType.DRIVER,
         ComplianceDocument.owner_id == driver.id
-    ).order_by(ComplianceDocument.created_at.desc()).all()
+    ).sort("-created_at").to_list()
     
     return docs

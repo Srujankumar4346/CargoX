@@ -1,7 +1,5 @@
 services:
-
-
-  # 2. FastAPI Backend
+  # 1. FastAPI Backend
   - type: web
     name: cargox-backend
     env: python
@@ -10,7 +8,7 @@ services:
     startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
-        sync: false # Set this to your MongoDB Atlas connection string
+        sync: false # Set this to your MongoDB Atlas connection string in Render Dashboard
       - key: GEMINI_API_KEY
         sync: false
       - key: PYTHON_VERSION
@@ -20,16 +18,19 @@ services:
       - key: CLERK_JWKS_URL
         value: https://awaited-raptor-7824.clerk.accounts.dev/.well-known/jwks.json
       - key: CLERK_SECRET_KEY
-        sync: false # Set this manually in the Render Dashboard
+        sync: false # Set manually in Render Dashboard
       - key: CARGOX_PRIMARY_ADMIN_CLERK_ID
         sync: false
+      - key: CORS_ORIGINS
+        value: "*"
 
-  # 3. React Frontend
+  # 2. Customer Frontend (Static Site)
   - type: web
-    name: cargox-frontend
+    name: cargox-customer-frontend
     env: static
-    buildCommand: "cd frontend && npm install && npm run build"
-    staticPublishPath: "./frontend/dist"
+    rootDir: customer-frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "./dist"
     routes:
       # Catch-all route to serve index.html for React Router
       - type: rewrite
@@ -41,3 +42,26 @@ services:
           type: web
           name: cargox-backend
           envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
+
+  # 3. Admin Frontend (Static Site)
+  - type: web
+    name: cargox-admin-frontend
+    env: static
+    rootDir: admin-frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "./dist"
+    routes:
+      # Catch-all route to serve index.html for React Router
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: cargox-backend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false

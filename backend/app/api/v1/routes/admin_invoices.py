@@ -96,9 +96,9 @@ async def list_payments(
     from app.models.finance import Payment, Invoice
     from fastapi import HTTPException, status
     
-    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    invoice = await Invoice.find_one(Invoice.id == invoice_id)
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
         
-    payments = db.query(Payment).filter(Payment.invoice_id == invoice_id).all()
+    payments = await Payment.find(Payment.invoice_id == invoice_id).to_list()
     return payments

@@ -13,9 +13,9 @@ router = APIRouter()
 async def list_requests(
     current_user: User = Depends(get_current_customer_user)
 ):
-    requests = db.query(DeliveryRequest).filter(
+    requests = await DeliveryRequest.find(
         DeliveryRequest.customer_company_id == current_user.customer_company_id
-    ).all()
+    ).sort("-created_at").to_list()
     return requests
 
 @router.post("", response_model=DeliveryRequestRead, status_code=status.HTTP_201_CREATED)
@@ -31,7 +31,7 @@ async def get_request(
     request_id: uuid.UUID,
     current_user: User = Depends(get_current_customer_user)
 ):
-    req = db.query(DeliveryRequest).filter(DeliveryRequest.id == request_id).first()
+    req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
     if not req or req.customer_company_id != current_user.customer_company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     return req

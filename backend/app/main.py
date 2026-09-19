@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.rate_limit import limiter
 from app.db.database import init_db, client
 from app.api.v1.routes import api_router
-from app.api.v1.routes import api_router
 from app.core.config import settings
 
 # Setup structured logging
@@ -42,6 +41,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import JSONResponse
+
 # Logging and Security Headers Middleware
 @app.middleware("http")
 async def security_and_logging_middleware(request: Request, call_next):
@@ -56,7 +57,18 @@ async def security_and_logging_middleware(request: Request, call_next):
     except Exception as e:
         process_time = (time.time() - start_time) * 1000
         logger.error(f"Request {request_id} failed after {process_time:.2f}ms: {str(e)}", exc_info=True)
-        raise
+        # Ensure CORS header on 500 error responses so browsers can inspect the actual failure
+        origin = request.headers.get("origin")
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error", "error": str(e)}
+        )
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
         
     process_time = (time.time() - start_time) * 1000
     logger.info(f"Response {request_id}: {response.status_code} in {process_time:.2f}ms")

@@ -28,7 +28,7 @@ async def get_users(current_admin: User = Depends(get_current_admin)):
     """
     List all users (Admin only). Returns safe information for management UI.
     """
-    return await AdminUserService.get_users(db)
+    return await AdminUserService.get_users()
 
 @router.put("/{user_id}/role", response_model=UserResponse)
 async def update_user_role(

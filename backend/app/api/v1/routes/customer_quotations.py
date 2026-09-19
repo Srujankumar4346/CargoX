@@ -16,7 +16,7 @@ async def get_active_pricing_config(
     """
     Returns the currently active pricing configuration for customers.
     """
-    return await PricingEngineService.get_active_pricing_config(db)
+    return await PricingEngineService.get_active_pricing_config()
 
 @router.get("/{quotation_id}", response_model=CustomerQuotationRead)
 async def get_customer_quotation(

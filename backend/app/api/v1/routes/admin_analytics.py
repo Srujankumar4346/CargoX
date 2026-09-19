@@ -15,4 +15,4 @@ async def get_dashboard(
     Returns aggregated dashboard metrics for admins.
     Access restricted to Admin role.
     """
-    return await AnalyticsService.get_dashboard(db)
+    return await AnalyticsService.get_dashboard()

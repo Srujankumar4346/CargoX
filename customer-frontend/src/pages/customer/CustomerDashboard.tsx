@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { LogOut, Truck, FileText, Map as MapIcon } from "lucide-react";
-import { api } from "../../services/api";
+import { useAuth, UserButton } from "@clerk/react";
+import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import StructuredAddressForm, { type AddressData } from "../../components/StructuredAddressForm";
 
 export default function CustomerDashboard() {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [bookings, setBookings] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -19,20 +21,32 @@ export default function CustomerDashboard() {
   const [trackingLocations, setTrackingLocations] = useState<any[]>([]);
   const [pricePerKm, setPricePerKm] = useState<number>(22);
 
+  // Wire Clerk token retrieval into API service
+  useEffect(() => {
+    if (getToken) {
+      setTokenGetter(getToken);
+    }
+  }, [getToken]);
+
   const loadData = async () => {
     try {
-      setBookings(await api.getBookings());
-      // Filter invoices for customer 1 (Mock)
-      const allInvoices = await api.getInvoices();
-      setInvoices(allInvoices.filter((i: any) => i.customer_id === 1));
+      const b = await api.getBookings();
+      setBookings(Array.isArray(b) ? b : []);
       
       try {
-          const pricing = await api.getActivePricing();
-          if (pricing && pricing.base_rate_per_km) {
-              setPricePerKm(parseFloat(pricing.base_rate_per_km));
-          }
+        const allInvoices = await api.getInvoices();
+        setInvoices(Array.isArray(allInvoices) ? allInvoices : []);
+      } catch (invErr) {
+        console.warn("Could not fetch invoices:", invErr);
+      }
+      
+      try {
+        const pricing = await api.getActivePricing();
+        if (pricing && pricing.base_rate_per_km) {
+          setPricePerKm(parseFloat(pricing.base_rate_per_km));
+        }
       } catch (e) {
-          console.error("Failed to load active pricing config", e);
+        console.error("Failed to load active pricing config", e);
       }
     } catch (e) {
       console.error("Failed to load data", e);
@@ -40,8 +54,10 @@ export default function CustomerDashboard() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (isLoaded) {
+      loadData();
+    }
+  }, [isLoaded, isSignedIn]);
   
   // Track location history if a tracking trip is active
   useEffect(() => {
@@ -141,6 +157,7 @@ export default function CustomerDashboard() {
           </div>
           <div className="flex items-center gap-6">
             <NotificationDropdown userType="CUSTOMER" userId={1} />
+            <UserButton />
             <Link to="/" className="flex items-center gap-2 hover:text-gray-200">
               <LogOut size={20} /> Logout
             </Link>

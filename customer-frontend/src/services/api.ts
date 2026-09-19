@@ -1,10 +1,25 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api/v1";
 
+let tokenGetter: (() => Promise<string | null>) | null = null;
+
+export function setTokenGetter(getter: () => Promise<string | null>) {
+  tokenGetter = getter;
+}
+
 async function authFetch(url: string, options: RequestInit = {}) {
   let token = null;
   
-  // Try to get Clerk token first
-  if (typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
+  // 1. Try registered tokenGetter first (from Clerk React hook)
+  if (tokenGetter) {
+    try {
+      token = await tokenGetter();
+    } catch (e) {
+      console.warn("[authFetch] Failed to get token from tokenGetter:", e);
+    }
+  }
+
+  // 2. Try to get Clerk token from window
+  if (!token && typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
     try {
       token = await (window as any).Clerk.session.getToken();
     } catch (e) {

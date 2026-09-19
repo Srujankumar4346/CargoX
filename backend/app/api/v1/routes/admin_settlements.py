@@ -28,7 +28,7 @@ async def generate_settlement(
 async def list_settlements(
     current_admin: User = Depends(get_current_admin)
 ):
-    return await SettlementService.get_settlements(db)
+    return await SettlementService.get_settlements()
 
 @router.get("/settlements/{id}", response_model=DriverSettlementRead)
 async def get_settlement(

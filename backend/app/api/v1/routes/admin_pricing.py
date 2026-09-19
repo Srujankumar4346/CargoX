@@ -27,7 +27,7 @@ async def get_active_pricing_config(
     """
     Returns the currently active pricing configuration.
     """
-    return await PricingEngineService.get_active_pricing_config(db)
+    return await PricingEngineService.get_active_pricing_config()
 
 @router.post("/requests/{request_id}/quote", response_model=AdminQuotationRead, status_code=status.HTTP_201_CREATED)
 async def generate_quotation(

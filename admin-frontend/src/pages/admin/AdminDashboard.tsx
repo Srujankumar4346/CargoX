@@ -706,9 +706,9 @@ export default function AdminDashboard() {
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Type</label>
                         <select name="type" required className="w-full rounded-md border-border-theme shadow-sm border p-2">
-                            <option value="TRUCK">TRUCK</option>
-                            <option value="VAN">VAN</option>
-                            <option value="TRAILER">TRAILER</option>
+                            <option value="OPEN">OPEN (Open Truck / Flatbed)</option>
+                            <option value="CONTAINER">CONTAINER (Closed Container)</option>
+                            <option value="TRAILER">TRAILER (Heavy Trailer)</option>
                         </select>
                     </div>
                     <div>

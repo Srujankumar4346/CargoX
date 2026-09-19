@@ -46,10 +46,17 @@ class PricingEngineService:
         """
         config = await PricingConfig.find_one(PricingConfig.active == True)
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No active pricing configuration found. Please create a pricing config first."
+            # Auto-provision default pricing config if database was newly created
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            config = PricingConfig(
+                base_rate_per_km=Decimal("25.00"),
+                margin_per_km=Decimal("5.00"),
+                effective_from=now,
+                active=True,
+                created_by=uuid.uuid4(),
+                created_at=now
             )
+            await config.insert()
         return config
 
     @staticmethod

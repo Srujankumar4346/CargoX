@@ -10,16 +10,17 @@ from app.models.finance import DriverSettlement
 
 class AnalyticsService:
     @staticmethod
-    async def _get_sum(model_class, match_query, sum_field: str) -> Decimal:
-        pipeline = [
-            {"$match": match_query},
-            {"$group": {"_id": None, "total": {"$sum": {"$toDecimal": f"${sum_field}"}}}}
-        ]
-        result = await model_class.aggregate(pipeline).to_list()
-        if result:
-            # result[0]['total'] will be a Decimal128, we convert to python Decimal
-            return Decimal(str(result[0]["total"]))
-        return Decimal("0.0")
+    async def _get_sum(model_class, match_query: dict, sum_field: str) -> Decimal:
+        try:
+            docs = await model_class.find(match_query).to_list()
+            total = Decimal("0.0")
+            for doc in docs:
+                val = getattr(doc, sum_field, 0)
+                if val is not None:
+                    total += Decimal(str(val))
+            return total
+        except Exception:
+            return Decimal("0.0")
 
     @staticmethod
     async def get_dashboard() -> AdminDashboardRead:

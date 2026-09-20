@@ -7,6 +7,25 @@ import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import ThemeToggle from "../../components/ThemeToggle";
 
+// ── Validation / formatting helpers ─────────────────────────────────────────
+/** Title-case every word: "john doe" → "John Doe" */
+const toTitleCase = (val: string) =>
+  val.replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** Format Aadhaar: digits only → XXXX XXXX XXXX */
+const formatAadhaar = (val: string) => {
+  const digits = val.replace(/\D/g, "").slice(0, 12);
+  return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+};
+
+/** Indian vehicle registration: XX 00 XX 0000 (uppercase, no spaces stored) */
+// Accepts: XX00XX0000 or XX0XX0000 — state(2) + district(2) + series(1-2) + num(4)
+const VEHICLE_REG_REGEX = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/;
+
+/** Indian driving licence hint: SSYYNNNNNNNNN (state 2 letters + RTO 2 digits + year 4 + 7 digits) */
+// Common formats: TN0120210012345 or DL-0120110012345 — validated at submit
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function AdminDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
@@ -642,14 +661,20 @@ export default function AdminDashboard() {
                 <form onSubmit={async (e) => {
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
+                    const phone = (formData.get('phone') as string).replace(/\D/g, '');
+                    const aadhaar = (formData.get('aadhaar_number') as string).replace(/\s/g, '');
+                    if (phone.length !== 10) { alert('Mobile number must be exactly 10 digits.'); return; }
+                    if (aadhaar.length !== 12) { alert('Aadhaar must be exactly 12 digits (XXXX XXXX XXXX).'); return; }
+                    const age = parseInt(formData.get('age') as string, 10);
+                    if (isNaN(age) || age < 18 || age > 75) { alert('Age must be between 18 and 75.'); return; }
                     try {
                         await api.createDriver({
                             email: formData.get('email'),
-                            aadhaar_number: formData.get('aadhaar_number'),
-                            age: parseInt(formData.get('age') as string, 10),
+                            aadhaar_number: aadhaar,
+                            age,
                             name: formData.get('name'),
-                            phone: formData.get('phone'),
-                            license_number: formData.get('license_number')
+                            phone,
+                            license_number: (formData.get('license_number') as string).toUpperCase().replace(/[^A-Z0-9-]/g, '')
                         });
                         alert('Driver added successfully');
                         loadData();
@@ -657,32 +682,91 @@ export default function AdminDashboard() {
                     } catch (err: any) {
                         alert('Failed to add driver: ' + err.message);
                     }
-                }} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                }} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Email / Gmail</label>
-                        <input type="email" name="email" required placeholder="driver@gmail.com" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <input
+                          type="email" name="email" required
+                          placeholder="driver@gmail.com"
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Aadhaar Number</label>
-                        <input name="aadhaar_number" required placeholder="1234 5678 9012" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Aadhaar Number <span className="text-xs text-muted">(XXXX XXXX XXXX)</span>
+                        </label>
+                        <input
+                          name="aadhaar_number" required
+                          placeholder="1234 5678 9012"
+                          maxLength={14}
+                          inputMode="numeric"
+                          pattern="\d{4} \d{4} \d{4}"
+                          title="Enter 12-digit Aadhaar in format: XXXX XXXX XXXX"
+                          onChange={(e) => { e.target.value = formatAadhaar(e.target.value); }}
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Age</label>
-                        <input type="number" name="age" required placeholder="30" min="18" max="75" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Age <span className="text-xs text-muted">(18–75)</span>
+                        </label>
+                        <input
+                          type="number" name="age" required
+                          placeholder="30" min="18" max="75"
+                          inputMode="numeric"
+                          onInput={(e) => {
+                            const el = e.currentTarget;
+                            // allow only 2-digit entry
+                            if (el.value.length > 2) el.value = el.value.slice(0, 2);
+                          }}
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Full Name</label>
-                        <input name="name" required placeholder="John Doe" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Full Name <span className="text-xs text-muted">(Title Case)</span>
+                        </label>
+                        <input
+                          name="name" required
+                          placeholder="John Doe"
+                          pattern="[A-Za-z ]+"
+                          title="Name should contain letters only (each word starts with capital)"
+                          onChange={(e) => { e.target.value = toTitleCase(e.target.value.replace(/[^a-zA-Z ]/g, "")); }}
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Mobile Number</label>
-                        <input name="phone" required placeholder="+91 9876543210" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Mobile Number <span className="text-xs text-muted">(10 digits)</span>
+                        </label>
+                        <input
+                          name="phone" required
+                          placeholder="9876543210"
+                          inputMode="numeric"
+                          maxLength={10}
+                          pattern="[0-9]{10}"
+                          title="Enter exactly 10-digit mobile number without country code"
+                          onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); }}
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">License Number</label>
-                        <input name="license_number" required placeholder="DL-XXXX" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Licence Number <span className="text-xs text-muted">(Indian DL format)</span>
+                        </label>
+                        <input
+                          name="license_number" required
+                          placeholder="TN0120210012345"
+                          maxLength={20}
+                          title="Indian driving licence format e.g. TN0120210012345"
+                          onChange={(e) => {
+                            // uppercase, allow only alphanumeric and hyphen
+                            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                          }}
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
-                    <div>
+                    <div className="md:col-span-3 lg:col-span-6">
                         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
                             Add Driver
                         </button>
@@ -773,9 +857,14 @@ export default function AdminDashboard() {
                 <form onSubmit={async (e) => {
                     e.preventDefault();
                     const formData = new FormData(e.currentTarget);
+                    const regRaw = (formData.get('registration_number') as string).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    if (!VEHICLE_REG_REGEX.test(regRaw)) {
+                      alert('Invalid vehicle registration number.\nFormat: 2 letters + 2 digits + 1-2 letters + 4 digits\nExample: TG09HS1234 or MH02A1234');
+                      return;
+                    }
                     try {
                         await api.createVehicle({
-                            registration_number: formData.get('registration_number'),
+                            registration_number: regRaw,
                             type: formData.get('type'),
                             capacity_tons: parseFloat(formData.get('capacity_tons') as string)
                         });
@@ -787,8 +876,25 @@ export default function AdminDashboard() {
                     }
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Registration Number</label>
-                        <input name="registration_number" required placeholder="TG09HS1234" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <label className="block text-sm font-medium text-foreground mb-1">
+                          Registration Number
+                          <span className="text-xs text-muted ml-1">(e.g. TG09HS1234)</span>
+                        </label>
+                        <input
+                          name="registration_number" required
+                          placeholder="TG09HS1234"
+                          maxLength={11}
+                          title="Indian vehicle registration format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g. TG09HS1234)"
+                          onChange={(e) => {
+                            // uppercase, only alphanum
+                            const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                            e.target.value = raw;
+                            const valid = VEHICLE_REG_REGEX.test(raw);
+                            e.target.setCustomValidity(valid || raw.length === 0 ? "" : "Format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g. TG09HS1234)");
+                          }}
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2 font-mono tracking-widest"
+                        />
+                        <p className="text-xs text-muted mt-1">State (2) + District (2) + Series (1-2) + Number (4)</p>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Type</label>
@@ -800,7 +906,11 @@ export default function AdminDashboard() {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Capacity (Tons)</label>
-                        <input name="capacity_tons" type="number" step="0.1" required placeholder="10" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                        <input
+                          name="capacity_tons" type="number" step="0.1" required
+                          placeholder="10" min="0.5" max="50"
+                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
+                        />
                     </div>
                     <div>
                         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">

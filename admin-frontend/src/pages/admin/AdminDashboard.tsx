@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
-import { LogOut, Truck, ChevronDown, ChevronUp, Pencil, Trash2, X, Check, PlusCircle, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users } from "lucide-react";
-import { useAuth, UserButton } from "@clerk/react";
+import { useState, useEffect } from "react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users } from "lucide-react";
+import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
+import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";

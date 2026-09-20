@@ -237,6 +237,27 @@ export default function AdminDashboard() {
       } catch (e) {}
   };
 
+  const handleMarkInTransit = async (tripId: string) => {
+    try {
+      await api.markInTransit(tripId);
+      alert("Trip marked as In Transit!");
+      loadData();
+    } catch (e: any) {
+      alert("Failed: " + e.message);
+    }
+  };
+
+  const handleForceComplete = async (tripId: string) => {
+    if (!confirm("Mark this trip as COMPLETED and generate invoice?")) return;
+    try {
+      await api.forceCompleteTrip(tripId);
+      alert("Trip completed! Invoice has been generated. Check Financials tab.");
+      loadData();
+    } catch (e: any) {
+      alert("Failed: " + e.message);
+    }
+  };
+
   useEffect(() => {
      let interval: any;
      if (trackingTrip && trackingTrip.status === "IN TRANSIT") {
@@ -552,16 +573,40 @@ export default function AdminDashboard() {
                  <p className="p-4 text-muted text-center">No active trips found.</p>
                ) : (
                  trips.map(trip => (
-                   <div key={trip.id} className="p-4 flex justify-between items-center">
+                   <div key={trip.id} className="p-4 flex flex-wrap justify-between items-center gap-3">
                       <div>
                          <p className="font-bold text-foreground">Trip #{trip.id} (Booking #{trip.request?.request_number || trip.request_id})</p>
                          <p className="text-sm text-muted">{trip.request?.pickup_address || 'Unknown'} → {trip.request?.destination_address || 'Unknown'}</p>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="bg-surface-elevated text-foreground px-3 py-1 rounded-full text-xs font-bold">{trip.status}</span>
-                        {trip.status !== "TRIP CREATED" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          trip.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
+                          trip.status === 'IN_TRANSIT' ? 'bg-amber-100 text-amber-800' :
+                          'bg-surface-elevated text-foreground'
+                        }`}>{trip.status}</span>
+
+                        {/* Action buttons based on status */}
+                        {(trip.status === 'DRIVER_ASSIGNED' || trip.status === 'VEHICLE_ASSIGNED') && (
+                          <button
+                            onClick={() => handleMarkInTransit(trip.id)}
+                            className="bg-amber-500 text-white font-bold px-3 py-1 rounded hover:bg-amber-600 text-sm"
+                          >
+                            🚛 Mark In Transit
+                          </button>
+                        )}
+
+                        {trip.status !== 'COMPLETED' && (
+                          <button
+                            onClick={() => handleForceComplete(trip.id)}
+                            className="bg-green-600 text-white font-bold px-3 py-1 rounded hover:bg-green-700 text-sm flex items-center gap-1"
+                          >
+                            ✓ Complete & Invoice
+                          </button>
+                        )}
+
+                        {trip.status !== 'TRIP CREATED' && (
                             <button onClick={() => handleTrackTrip(trip)} className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded hover:bg-blue-200 text-sm flex items-center gap-1">
-                               <MapIcon size={14}/> View Map
+                               <MapIcon size={14}/> View Tracking
                             </button>
                         )}
                       </div>

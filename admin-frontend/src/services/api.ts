@@ -171,11 +171,22 @@ export const api = {
     if (!res.ok) return [];
     return res.json();
   },
+  markInTransit: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}/mark-in-transit`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  forceCompleteTrip: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}/admin-force-complete`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   updateTripStatus: async (tripId: number, status: string) => {
     const res = await authFetch(`${API_URL}/trips/${tripId}/status?new_status=${encodeURIComponent(status)}`, { method: "PUT" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+
 
   // Financials
   getInvoices: async () => {

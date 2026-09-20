@@ -1,17 +1,24 @@
-import { CheckCircle2, Circle, Truck, PackageCheck, Package, MapPin, Clock } from "lucide-react";
+import { CheckCircle2, Circle, Truck, PackageCheck, Package, MapPin, Clock, Flag } from "lucide-react";
 
 export default function TrackingMap({ trip, locations }: { trip: any, locations: any[] }) {
   if (!trip) return null;
 
-  // Derive current step from status
-  const statusLevels = {
-    "TRIP CREATED": 1,
-    "IN TRANSIT": 2,
+  const normalizeStatus = (s: string) => (s || "").toUpperCase().replace(/ /g, "_");
+
+  const statusLevels: Record<string, number> = {
+    "TRIP_CREATED": 1,
+    "DRIVER_ASSIGNED": 1,
+    "VEHICLE_ASSIGNED": 1,
+    "PICKUP_IN_PROGRESS": 2,
+    "IN_TRANSIT": 2,
+    "ARRIVED": 3,
+    "POD_SUBMITTED": 3,
     "DELIVERED": 3,
-    "COMPLETED": 4
+    "COMPLETED": 4,
   };
 
-  const currentLevel = statusLevels[trip.status as keyof typeof statusLevels] || 1;
+  const normalized = normalizeStatus(trip.status);
+  const currentLevel = statusLevels[normalized] ?? 1;
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "";
@@ -44,10 +51,19 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
       level: 3,
       title: "Delivered",
       description: `Arrived at ${trip.request?.destination_address || 'Destination address'}`,
-      timestamp: trip.delivered_at ? formatDate(trip.delivered_at) : (currentLevel >= 3 ? "Just now" : ""),
+      timestamp: trip.delivered_at ? formatDate(trip.delivered_at) : (currentLevel >= 3 ? "Delivery complete" : ""),
       icon: <PackageCheck size={24} />,
       activeColor: "text-green-500",
       activeBg: "bg-green-100"
+    },
+    {
+      level: 4,
+      title: "Completed",
+      description: "Trip closed, invoice generated",
+      timestamp: trip.completed_at ? formatDate(trip.completed_at) : (currentLevel >= 4 ? "Just now" : ""),
+      icon: <Flag size={24} />,
+      activeColor: "text-purple-500",
+      activeBg: "bg-purple-100"
     }
   ];
 
@@ -58,9 +74,14 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
              <span className="text-sm text-[var(--text-secondary)] block">Current Status</span>
              <span className="text-xl font-bold text-[var(--text-primary)]">{trip.status}</span>
          </div>
-         {trip.status === "IN TRANSIT" && (
+         {(trip.status === "IN_TRANSIT" || trip.status === "IN TRANSIT") && (
              <span className="text-blue-500 font-bold bg-blue-500/10 px-3 py-1 rounded-full text-sm animate-pulse flex items-center gap-2">
                 <Clock size={16} /> Live Tracking Active
+             </span>
+         )}
+         {trip.status === "COMPLETED" && (
+             <span className="text-purple-500 font-bold bg-purple-500/10 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                <CheckCircle2 size={16} /> Trip Completed
              </span>
          )}
       </div>
@@ -74,13 +95,11 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
                
                return (
                  <div key={idx} className="relative pl-8">
-                    {/* Timeline Node */}
                     <div className={`absolute -left-[17px] top-1 h-8 w-8 rounded-full flex items-center justify-center border-4 border-[var(--bg-secondary)]
                       ${isCompleted ? step.activeBg + ' ' + step.activeColor : 'bg-gray-100 text-gray-400 dark:bg-gray-800'}`}>
                        {isCompleted ? <CheckCircle2 size={18} className="fill-current text-white" /> : <Circle size={12} />}
                     </div>
                     
-                    {/* Content */}
                     <div>
                        <div className="flex items-center gap-3">
                           <h4 className={`text-lg font-bold ${isCompleted ? 'text-[var(--text-primary)]' : 'text-gray-400'}`}>
@@ -96,7 +115,6 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
                           {step.description}
                        </p>
 
-                       {/* Location History Log (Nested Timeline) */}
                        {step.showLocations && isCompleted && locations && locations.length > 0 && (
                           <div className="mt-4 bg-[var(--bg-elevated)] rounded-lg p-4 border border-[var(--border-color)]">
                              <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-3">Location Log</h5>
@@ -106,7 +124,7 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
                                       <MapPin size={16} className="text-amber-500 mt-0.5 shrink-0" />
                                       <div>
                                          <p className="text-[var(--text-primary)] font-medium">
-                                            Location Update ({loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)})
+                                            Location Update ({(loc.lat ?? loc.latitude ?? 0).toFixed(4)}, {(loc.lng ?? loc.longitude ?? 0).toFixed(4)})
                                          </p>
                                          <p className="text-xs text-[var(--text-secondary)]">
                                             {formatDate(loc.recorded_at)}

@@ -148,3 +148,143 @@ async def complete_trip(
         "status": "COMPLETED"
     }
 
+@router.post("/trips/{trip_id}/admin-force-complete")
+async def admin_force_complete(
+    trip_id: uuid.UUID,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Admin-only: Force-completes any active trip regardless of current status.
+    Sets all missing timestamps, releases resources, and auto-generates invoice.
+    Bypasses POD requirement for admin convenience.
+    """
+    from app.models.finance import Invoice
+    from app.models.pricing import Quotation
+    from app.models.enums import QuotationStatus, InvoiceStatus
+    from app.schemas.invoice import InvoiceCreate
+    from app.services.invoice_service import InvoiceService
+    from decimal import Decimal
+    import random
+
+    trip = await Trip.find_one(Trip.id == trip_id)
+    if not trip:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+    request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+    if not request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
+
+    # Skip if already completed
+    if request.status == DeliveryRequestStatus.COMPLETED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trip is already completed")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Set all missing timestamps so tracking timeline shows correctly
+    if not trip.started_at:
+        trip.started_at = now
+    if not trip.arrived_at:
+        trip.arrived_at = now
+    if not trip.delivered_at:
+        trip.delivered_at = now
+    trip.completed_at = now
+
+    # Mark request as COMPLETED
+    request.status = DeliveryRequestStatus.COMPLETED
+    await trip.save()
+    await request.save()
+
+    # Release vehicle and driver
+    from app.models.fleet import VehicleAssignment
+    from app.models.enums import VehicleStatus, DriverStatus
+    from app.models.fleet import Vehicle, Driver
+    assignment = await VehicleAssignment.find_one(
+        VehicleAssignment.trip_id == trip.id,
+        VehicleAssignment.released_at == None
+    )
+    if assignment:
+        assignment.released_at = now
+        await assignment.save()
+        vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
+        if vehicle:
+            vehicle.status = VehicleStatus.AVAILABLE
+            await vehicle.save()
+        driver = await Driver.find_one(Driver.id == assignment.driver_id)
+        if driver:
+            driver.status = DriverStatus.AVAILABLE
+            await driver.save()
+
+    # Auto-generate invoice — create quotation if none exists
+    existing_invoice = await Invoice.find_one(Invoice.request_id == request.id)
+    if not existing_invoice:
+        # Ensure we have an accepted quotation; create a synthetic one if missing
+        quotation = await Quotation.find_one(Quotation.request_id == request.id)
+        if not quotation or quotation.status != QuotationStatus.ACCEPTED:
+            # Build synthetic quotation from request weight (base rate Rs. 50/km, est. 500km)
+            weight = Decimal(str(request.weight_tons or 1))
+            base_rate = Decimal("50")
+            distance_km = Decimal("500")
+            base_cost = base_rate * distance_km
+            margin = base_cost * Decimal("0.15")
+            customer_charge = base_cost + margin + (weight * Decimal("500"))
+
+            from datetime import timedelta
+            if not quotation:
+                quotation = Quotation(
+                    request_id=request.id,
+                    pricing_config_id=uuid.uuid4(),  # synthetic config id
+                    distance_km=float(distance_km),
+                    base_rate_per_km=float(base_rate),
+                    internal_base_cost=float(base_cost),
+                    cargox_margin=float(margin),
+                    customer_total_charge=float(customer_charge),
+                    status=QuotationStatus.ACCEPTED,
+                    created_at=now,
+                    accepted_at=now,
+                    expires_at=now + timedelta(days=30),
+                )
+                await quotation.insert()
+            else:
+                quotation.status = QuotationStatus.ACCEPTED
+                quotation.accepted_at = now
+                await quotation.save()
+
+        # Generate invoice
+        try:
+            await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), current_admin)
+        except Exception as e:
+            print(f"[admin-force-complete] Invoice generation error: {e}")
+
+    return {
+        "id": trip.id,
+        "request_id": request.id,
+        "status": "COMPLETED",
+        "completed_at": trip.completed_at,
+        "message": "Trip completed and invoice generated successfully"
+    }
+
+@router.post("/trips/{trip_id}/mark-in-transit")
+async def mark_in_transit(
+    trip_id: uuid.UUID,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Admin: Advance trip status to IN_TRANSIT and set started_at timestamp.
+    """
+    trip = await Trip.find_one(Trip.id == trip_id)
+    if not trip:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+    request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+    if not request:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    trip.started_at = now
+    request.status = DeliveryRequestStatus.IN_TRANSIT
+    await trip.save()
+    await request.save()
+
+    return {"id": trip.id, "status": "IN_TRANSIT", "started_at": now}
+
+

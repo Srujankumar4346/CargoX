@@ -56,6 +56,14 @@ export default function AdminDashboard() {
   const [activePricing, setActivePricing] = useState<any>(null);
   const [isUpdatingPricing, setIsUpdatingPricing] = useState(false);
 
+  // Form states for strict validation
+  const [newDriverAadhaar, setNewDriverAadhaar] = useState("");
+  const [newDriverPhone, setNewDriverPhone] = useState("");
+  const [newDriverAge, setNewDriverAge] = useState("");
+  const [newDriverName, setNewDriverName] = useState("");
+  const [newDriverLicense, setNewDriverLicense] = useState("");
+  const [newVehicleReg, setNewVehicleReg] = useState("");
+
   // Wire Clerk token retrieval into API service
   useEffect(() => {
     if (getToken) {
@@ -672,13 +680,18 @@ export default function AdminDashboard() {
                             email: formData.get('email'),
                             aadhaar_number: aadhaar,
                             age,
-                            name: formData.get('name'),
-                            phone,
-                            license_number: (formData.get('license_number') as string).toUpperCase().replace(/[^A-Z0-9-]/g, '')
+                            name: newDriverName,
+                            phone: newDriverPhone,
+                            license_number: newDriverLicense
                         });
                         alert('Driver added successfully');
                         loadData();
                         (e.target as HTMLFormElement).reset();
+                        setNewDriverAadhaar("");
+                        setNewDriverPhone("");
+                        setNewDriverAge("");
+                        setNewDriverName("");
+                        setNewDriverLicense("");
                     } catch (err: any) {
                         alert('Failed to add driver: ' + err.message);
                     }
@@ -702,7 +715,8 @@ export default function AdminDashboard() {
                           inputMode="numeric"
                           pattern="\d{4} \d{4} \d{4}"
                           title="Enter 12-digit Aadhaar in format: XXXX XXXX XXXX"
-                          onChange={(e) => { e.target.value = formatAadhaar(e.target.value); }}
+                          value={newDriverAadhaar}
+                          onChange={(e) => { setNewDriverAadhaar(formatAadhaar(e.target.value)); }}
                           className="w-full rounded-md border-border-theme shadow-sm border p-2"
                         />
                     </div>
@@ -714,10 +728,11 @@ export default function AdminDashboard() {
                           type="number" name="age" required
                           placeholder="30" min="18" max="75"
                           inputMode="numeric"
-                          onInput={(e) => {
-                            const el = e.currentTarget;
-                            // allow only 2-digit entry
-                            if (el.value.length > 2) el.value = el.value.slice(0, 2);
+                          value={newDriverAge}
+                          onChange={(e) => {
+                            let val = e.target.value;
+                            if (val.length > 2) val = val.slice(0, 2);
+                            setNewDriverAge(val);
                           }}
                           className="w-full rounded-md border-border-theme shadow-sm border p-2"
                         />
@@ -731,7 +746,8 @@ export default function AdminDashboard() {
                           placeholder="John Doe"
                           pattern="[A-Za-z ]+"
                           title="Name should contain letters only (each word starts with capital)"
-                          onChange={(e) => { e.target.value = toTitleCase(e.target.value.replace(/[^a-zA-Z ]/g, "")); }}
+                          value={newDriverName}
+                          onChange={(e) => { setNewDriverName(toTitleCase(e.target.value.replace(/[^a-zA-Z ]/g, ""))); }}
                           className="w-full rounded-md border-border-theme shadow-sm border p-2"
                         />
                     </div>
@@ -746,7 +762,8 @@ export default function AdminDashboard() {
                           maxLength={10}
                           pattern="[0-9]{10}"
                           title="Enter exactly 10-digit mobile number without country code"
-                          onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 10); }}
+                          value={newDriverPhone}
+                          onChange={(e) => { setNewDriverPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); }}
                           className="w-full rounded-md border-border-theme shadow-sm border p-2"
                         />
                     </div>
@@ -759,9 +776,9 @@ export default function AdminDashboard() {
                           placeholder="TN0120210012345"
                           maxLength={20}
                           title="Indian driving licence format e.g. TN0120210012345"
+                          value={newDriverLicense}
                           onChange={(e) => {
-                            // uppercase, allow only alphanumeric and hyphen
-                            e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+                            setNewDriverLicense(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""));
                           }}
                           className="w-full rounded-md border-border-theme shadow-sm border p-2"
                         />
@@ -885,10 +902,10 @@ export default function AdminDashboard() {
                           placeholder="TG09HS1234"
                           maxLength={11}
                           title="Indian vehicle registration format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g. TG09HS1234)"
+                          value={newVehicleReg}
                           onChange={(e) => {
-                            // uppercase, only alphanum
                             const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                            e.target.value = raw;
+                            setNewVehicleReg(raw);
                             const valid = VEHICLE_REG_REGEX.test(raw);
                             e.target.setCustomValidity(valid || raw.length === 0 ? "" : "Format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g. TG09HS1234)");
                           }}

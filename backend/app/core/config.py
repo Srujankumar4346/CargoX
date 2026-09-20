@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # We do not use symmetric keys; we use asymmetric JWKS verification.
     CLERK_ISSUER_URL: str = "https://awaited-raptor-7824.clerk.accounts.dev"
     CLERK_JWKS_URL: str = "https://awaited-raptor-7824.clerk.accounts.dev/.well-known/jwks.json"
+    CLERK_SECRET_KEY: str | None = None
     
     # Optional backend internal secret if needed for non-Clerk internal flows
     # Must be set securely in prod.

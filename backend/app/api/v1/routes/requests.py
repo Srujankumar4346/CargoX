@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.user import User
 from app.models.delivery import DeliveryRequest
-from app.schemas.delivery_request import DeliveryRequestCreate, DeliveryRequestRead
+from app.schemas.delivery_request import DeliveryRequestCreate, DeliveryRequestRead, DeliveryRequestUpdate, CancelRequestSchema
 from app.api.deps import get_current_customer_user
 from app.services.customer_portal import CustomerPortalService
 
@@ -39,7 +39,18 @@ async def get_request(
 @router.post("/{request_id}/cancel", response_model=DeliveryRequestRead)
 async def cancel_request(
     request_id: uuid.UUID,
+    payload: CancelRequestSchema = None,
     current_user: User = Depends(get_current_customer_user)
 ):
-    req = await CustomerPortalService.cancel_delivery_request(current_user, request_id)
+    reason = payload.reason if payload else None
+    req = await CustomerPortalService.cancel_delivery_request(current_user, request_id, reason)
+    return req
+
+@router.put("/{request_id}", response_model=DeliveryRequestRead)
+async def update_request(
+    request_id: uuid.UUID,
+    payload: DeliveryRequestUpdate,
+    current_user: User = Depends(get_current_customer_user)
+):
+    req = await CustomerPortalService.update_delivery_request(current_user, request_id, payload)
     return req

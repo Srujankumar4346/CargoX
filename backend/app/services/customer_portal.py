@@ -7,7 +7,7 @@ from app.models.user import User
 from app.models.delivery import DeliveryRequest
 from app.models.company import RecipientCompany
 from app.models.enums import DeliveryRequestStatus
-from app.schemas.delivery_request import DeliveryRequestCreate
+from app.schemas.delivery_request import DeliveryRequestCreate, DeliveryRequestUpdate
 from app.schemas.recipient import RecipientCompanyCreate, RecipientCompanyUpdate
 
 class CustomerPortalService:
@@ -108,15 +108,42 @@ class CustomerPortalService:
                 # Retry
 
     @staticmethod
-    async def cancel_delivery_request(user: User, request_id: uuid.UUID) -> DeliveryRequest:
+    async def cancel_delivery_request(user: User, request_id: uuid.UUID, reason: str = None) -> DeliveryRequest:
         req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
         if not req or req.customer_company_id != user.customer_company_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
             
-        if req.status not in [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]:
+        # Allowed before IN_TRANSIT
+        if req.status in [DeliveryRequestStatus.IN_TRANSIT, DeliveryRequestStatus.DELIVERED, DeliveryRequestStatus.COMPLETED]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot cancel request in state {req.status.value}")
             
+        # Require reason if accepted
+        if req.status not in [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]:
+            if not reason:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"A cancellation reason is required for state {req.status.value}")
+            
         req.status = DeliveryRequestStatus.CUSTOMER_CANCELLED
+        if reason:
+            req.cancellation_reason = reason
         req.updated_at = datetime.datetime.now(datetime.timezone.utc)
         await req.save()
         return req
+
+    @staticmethod
+    async def update_delivery_request(user: User, request_id: uuid.UUID, payload: DeliveryRequestUpdate) -> DeliveryRequest:
+        req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
+        if not req or req.customer_company_id != user.customer_company_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+            
+        # Only allow edits if SUBMITTED or UNDER_REVIEW
+        if req.status not in [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot edit request in state {req.status.value}")
+            
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(req, key, value)
+            
+        req.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        await req.save()
+        return req
+

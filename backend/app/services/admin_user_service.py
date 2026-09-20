@@ -5,6 +5,7 @@ from app.models.enums import UserRole
 from app.core.config import settings
 from datetime import datetime
 import uuid
+import httpx
 
 logger = logging.getLogger("cargox")
 
@@ -12,8 +13,33 @@ class AdminUserService:
     @staticmethod
     async def get_users():
         users = await User.find_all().to_list()
-        return users
         
+        if settings.CLERK_SECRET_KEY:
+            sync_needed = False
+            async with httpx.AsyncClient() as client:
+                for user in users:
+                    if user.email and user.email.endswith("@placeholder.cargox.com"):
+                        try:
+                            response = await client.get(
+                                f"https://api.clerk.com/v1/users/{user.clerk_user_id}",
+                                headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"}
+                            )
+                            if response.status_code == 200:
+                                clerk_data = response.json()
+                                primary_email_id = clerk_data.get("primary_email_address_id")
+                                email_addresses = clerk_data.get("email_addresses", [])
+                                for email_obj in email_addresses:
+                                    if email_obj.get("id") == primary_email_id:
+                                        user.email = email_obj.get("email_address")
+                                        await user.save()
+                                        sync_needed = True
+                                        break
+                        except Exception as e:
+                            logger.error(f"Failed to sync email for user {user.clerk_user_id}: {e}")
+            if sync_needed:
+                users = await User.find_all().to_list()
+
+        return users
     @staticmethod
     async def update_user_role(target_user_id: str, new_role: UserRole, current_admin: User):
         try:

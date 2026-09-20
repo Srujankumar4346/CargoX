@@ -11,7 +11,6 @@ from app.models.enums import DeliveryRequestStatus, VehicleStatus, DriverStatus,
 from app.schemas.dispatch import DispatchRequest
 from app.services.notification_service import NotificationService
 from app.models.notifications import NotificationChannel
-from app.services.compliance_service import ComplianceService
 
 class DispatchService:
     @staticmethod
@@ -24,9 +23,6 @@ class DispatchService:
         Dispatches an ACCEPTED delivery request to a vehicle and driver.
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-
-        # Verify Compliance before anything
-        await ComplianceService.validate_dispatch_eligibility(dispatch_in.vehicle_id, dispatch_in.driver_id)
 
         # 1. Lock and validate DeliveryRequest
         request = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
@@ -80,13 +76,7 @@ class DispatchService:
                 detail=f"Driver is currently unavailable for assignment (status: {driver.status.value})"
             )
 
-        driver_user = await User.find_one(User.id == driver.user_id)
 
-        if not driver_user or not driver_user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Driver user account is inactive or invalid"
-            )
 
         # 4. Atomic Execution
         trip = Trip(
@@ -113,15 +103,8 @@ class DispatchService:
         await driver.save()
 
         # Notification: TRIP_DISPATCHED
-        # Driver notification
-        await NotificationService.create_notification(
-            event_id=f"TRIP_DISPATCHED:{trip.id}:DRIVER",
-            event_type="TRIP_DISPATCHED",
-            recipient_user_id=driver_user.id,
-            channel=NotificationChannel.IN_APP,
-            title="Trip Dispatched",
-            message=f"You have been assigned to trip {trip.id} for request {request.request_number}."
-        )
+        # Driver notification (Skipped because Drivers no longer have User accounts for in-app notifications)
+        # await NotificationService.create_notification(...)
         
         # Customer notification
         customer_users = await NotificationService.resolve_customer_recipients(request.customer_company_id)
@@ -159,9 +142,6 @@ class DispatchService:
         Preserves assignment history by setting released_at on the previous assignment.
         """
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-
-        # Verify Compliance before anything
-        await ComplianceService.validate_dispatch_eligibility(dispatch_in.vehicle_id, dispatch_in.driver_id)
 
         # 1. Lock DeliveryRequest & Trip
         request = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
@@ -237,13 +217,7 @@ class DispatchService:
                 detail=f"New driver is currently unavailable for assignment (status: {new_driver.status.value})"
             )
 
-        new_driver_user = await User.find_one(User.id == new_driver.user_id)
 
-        if not new_driver_user or not new_driver_user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="New driver user account is inactive or invalid"
-            )
 
         # 5. Create new assignment under existing Trip
         new_assignment = VehicleAssignment(

@@ -71,8 +71,21 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  cancelBooking: async (id: string) => { // id is now a UUID string
-    const res = await authFetch(`${API_URL}/customer/requests/${id}/cancel`, { method: "POST" });
+  cancelBooking: async (id: string, reason?: string) => { 
+    const res = await authFetch(`${API_URL}/customer/requests/${id}/cancel`, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason || "No reason provided" })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  updateBooking: async (id: string, data: any) => {
+    const res = await authFetch(`${API_URL}/customer/requests/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -95,7 +108,7 @@ export const api = {
 
   // Drivers
   getDrivers: async () => {
-    const res = await authFetch(`${API_URL}/drivers/`);
+    const res = await authFetch(`${API_URL}/customer/fleet/drivers`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -172,6 +185,11 @@ export const api = {
   },
   getLocationHistory: async (tripId: number) => {
     const res = await authFetch(`${API_URL}/tracking/${tripId}/location`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  getTracking: async (requestId: string) => {
+    const res = await authFetch(`${API_URL}/customer/requests/${requestId}/tracking`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -271,47 +289,4 @@ export const api = {
     return res.json();
   },
 
-  // --- Phase 12: Compliance Management ---
-  getComplianceDashboard: async () => {
-    const res = await authFetch(`${API_URL}/admin/compliance/dashboard`);
-    if (!res.ok) throw new Error("Failed to fetch compliance dashboard");
-    return res.json();
-  },
-  
-  getComplianceDocuments: async (ownerType?: string, ownerId?: string, status?: string) => {
-    let query = "";
-    const params = new URLSearchParams();
-    if (ownerType) params.append("owner_type", ownerType);
-    if (ownerId) params.append("owner_id", ownerId);
-    if (status) params.append("status", status);
-    
-    if (params.toString()) query = `?${params.toString()}`;
-    
-    const res = await authFetch(`${API_URL}/admin/compliance/documents${query}`);
-    if (!res.ok) throw new Error("Failed to fetch compliance documents");
-    return res.json();
-  },
-  
-  verifyComplianceDocument: async (documentId: string, isVerified: boolean, rejectionReason?: string) => {
-    const res = await authFetch(`${API_URL}/admin/compliance/documents/${documentId}/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        is_verified: isVerified,
-        rejection_reason: rejectionReason || null
-      }),
-    });
-    if (!res.ok) throw new Error("Failed to verify document");
-    return res.json();
-  },
-  
-  uploadComplianceDocument: async (formData: FormData) => {
-    // FormData requires omitting the Content-Type header so the browser sets it with the boundary
-    const res = await authFetch(`${API_URL}/admin/compliance/documents`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) throw new Error("Failed to upload document");
-    return res.json();
-  }
 };

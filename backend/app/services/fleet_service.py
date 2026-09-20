@@ -63,22 +63,27 @@ class FleetService:
         return vehicle
 
     @staticmethod
-    async def create_driver(driver_in: DriverCreate) -> Driver:
-        # Validate target user exists and role is DRIVER
-        user = await User.find_one(User.id == driver_in.user_id)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        if user.role != UserRole.DRIVER:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"User must have role '{UserRole.DRIVER.value}' to be assigned as driver"
-            )
+    async def delete_vehicle(vehicle_id: uuid.UUID) -> bool:
+        vehicle = await FleetService.get_vehicle(vehicle_id)
+        # Note: We should ideally check for active assignments before deleting.
+        # Assuming a hard delete for now.
+        await vehicle.delete()
+        return True
 
-        existing_user_driver = await Driver.find_one(Driver.user_id == driver_in.user_id)
-        if existing_user_driver:
+    @staticmethod
+    async def create_driver(driver_in: DriverCreate) -> Driver:
+        existing_email = await Driver.find_one(Driver.email == driver_in.email)
+        if existing_email:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="A driver profile already exists for this user"
+                detail=f"Driver with email '{driver_in.email}' already exists"
+            )
+            
+        existing_aadhaar = await Driver.find_one(Driver.aadhaar_number == driver_in.aadhaar_number)
+        if existing_aadhaar:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Driver with aadhaar number '{driver_in.aadhaar_number}' already exists"
             )
 
         existing_license = await Driver.find_one(Driver.license_number == driver_in.license_number)
@@ -89,7 +94,9 @@ class FleetService:
             )
 
         driver = Driver(
-            user_id=driver_in.user_id,
+            email=driver_in.email,
+            aadhaar_number=driver_in.aadhaar_number,
+            age=driver_in.age,
             name=driver_in.name,
             phone=driver_in.phone,
             license_number=driver_in.license_number,
@@ -125,6 +132,12 @@ class FleetService:
 
         if driver_in.name is not None:
             driver.name = driver_in.name
+        if driver_in.email is not None:
+            driver.email = driver_in.email
+        if driver_in.aadhaar_number is not None:
+            driver.aadhaar_number = driver_in.aadhaar_number
+        if driver_in.age is not None:
+            driver.age = driver_in.age
         if driver_in.phone is not None:
             driver.phone = driver_in.phone
         if driver_in.status is not None:
@@ -132,3 +145,10 @@ class FleetService:
 
         await driver.save()
         return driver
+
+    @staticmethod
+    async def delete_driver(driver_id: uuid.UUID) -> bool:
+        driver = await FleetService.get_driver(driver_id)
+        # Note: We should ideally check for active assignments before deleting.
+        await driver.delete()
+        return True

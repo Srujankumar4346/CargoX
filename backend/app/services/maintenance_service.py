@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from fastapi import HTTPException
 
+from beanie.operators import In
 from app.models.operations import VehicleMaintenance
 from app.models.fleet import Vehicle
 from app.models.enums import MaintenanceType, MaintenanceStatus, VehicleStatus, UserRole
@@ -28,7 +29,7 @@ class MaintenanceService:
         # Check if already has active maintenance
         active_maint = await VehicleMaintenance.find_one(
             VehicleMaintenance.vehicle_id == vehicle_id,
-            VehicleMaintenance.status.in_([MaintenanceStatus.SCHEDULED.value, MaintenanceStatus.IN_PROGRESS.value])
+            In(VehicleMaintenance.status, [MaintenanceStatus.SCHEDULED.value, MaintenanceStatus.IN_PROGRESS.value])
         )
         if active_maint:
             raise HTTPException(status_code=409, detail="Vehicle already has scheduled or in-progress maintenance")

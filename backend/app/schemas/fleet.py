@@ -25,12 +25,17 @@ class VehicleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class DriverCreate(BaseModel):
-    user_id: uuid.UUID
+    email: str
+    aadhaar_number: str
+    age: int
     name: str = Field(..., min_length=1)
     phone: str = Field(..., min_length=1)
     license_number: str = Field(..., min_length=1)
 
 class DriverUpdate(BaseModel):
+    email: Optional[str] = None
+    aadhaar_number: Optional[str] = None
+    age: Optional[int] = None
     name: Optional[str] = None
     phone: Optional[str] = None
     license_number: Optional[str] = None
@@ -38,7 +43,9 @@ class DriverUpdate(BaseModel):
 
 class DriverRead(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
+    email: str
+    aadhaar_number: str
+    age: int
     name: str
     phone: str
     license_number: str

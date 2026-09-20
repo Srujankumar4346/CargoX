@@ -25,40 +25,17 @@ export default function AdminDashboard() {
   
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [selectedDriver, setSelectedDriver] = useState("");
+  const [editingDriver, setEditingDriver] = useState<any>(null);
+  const [editingVehicle, setEditingVehicle] = useState<any>(null);
   
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiRecommendations, setAiRecommendations] = useState<Record<number, any>>({});
 
-  // Phase 12: Compliance State
-  const [complianceDashboard, setComplianceDashboard] = useState<any>(null);
-  const [complianceDocs, setComplianceDocs] = useState<any[]>([]);
-  
-  // Compliance Filters
-  const [compStatusFilter, setCompStatusFilter] = useState<string>("ALL");
-  const [compOwnerFilter, setCompOwnerFilter] = useState<string>("ALL");
-  const [_compTypeFilter, _setCompTypeFilter] = useState<string>("ALL");
-  
-  // Rejection Modal
-  const [rejectingDocId, setRejectingDocId] = useState<string | null>(null);
-  const [rejectionReason, setRejectionReason] = useState("");
-  
   // Pricing
   const [activePricing, setActivePricing] = useState<any>(null);
   const [isUpdatingPricing, setIsUpdatingPricing] = useState(false);
-
-  // Upload Form
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadFormData, setUploadFormData] = useState({
-     owner_type: "DRIVER",
-     owner_id: "",
-     document_type: "DRIVING_LICENSE",
-     document_number: "",
-     issued_date: "",
-     expiry_date: ""
-  });
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   // Wire Clerk token retrieval into API service
   useEffect(() => {
@@ -104,23 +81,11 @@ export default function AdminDashboard() {
       }
 
       if (finDash.status === 'fulfilled') setDashboard(finDash.value);
-
-      // Load Compliance
-      await loadComplianceData();
     } catch (e: any) {
       console.error("loadData error:", e);
       setLoadError(e?.message || "Failed to load dashboard data");
     } finally {
       setIsRefreshing(false);
-    }
-  };
-
-  const loadComplianceData = async () => {
-    try {
-      setComplianceDashboard(await api.getComplianceDashboard());
-      setComplianceDocs(await api.getComplianceDocuments());
-    } catch (e) {
-      console.error(e);
     }
   };
 
@@ -261,63 +226,6 @@ export default function AdminDashboard() {
      };
   }, [trackingTrip]);
 
-  const handleApproveDocument = async (id: string) => {
-     try {
-        await api.verifyComplianceDocument(id, true);
-        loadComplianceData();
-     } catch (e: any) {
-        alert("Failed to approve document: " + e.message);
-     }
-  };
-
-  const handleRejectDocument = async () => {
-     if (!rejectingDocId) return;
-     if (!rejectionReason.trim()) {
-        alert("Rejection reason is mandatory.");
-        return;
-     }
-     try {
-        await api.verifyComplianceDocument(rejectingDocId, false, rejectionReason);
-        setRejectingDocId(null);
-        setRejectionReason("");
-        loadComplianceData();
-     } catch (e: any) {
-        alert("Failed to reject document: " + e.message);
-     }
-  };
-
-  const handleUploadDocument = async (e: React.FormEvent) => {
-     e.preventDefault();
-     if (!uploadFile) {
-        alert("Please select a file.");
-        return;
-     }
-     if (!uploadFormData.owner_id) {
-        alert("Please select an owner.");
-        return;
-     }
-
-     const formData = new FormData();
-     formData.append("owner_type", uploadFormData.owner_type);
-     formData.append("owner_id", uploadFormData.owner_id);
-     formData.append("document_type", uploadFormData.document_type);
-     if (uploadFormData.document_number) formData.append("document_number", uploadFormData.document_number);
-     if (uploadFormData.issued_date) formData.append("issued_date", uploadFormData.issued_date);
-     if (uploadFormData.expiry_date) formData.append("expiry_date", uploadFormData.expiry_date);
-     formData.append("file", uploadFile);
-
-     try {
-        await api.uploadComplianceDocument(formData);
-        setShowUploadModal(false);
-        setUploadFile(null);
-        setUploadFormData({ ...uploadFormData, document_number: "", issued_date: "", expiry_date: "", owner_id: "" });
-        loadComplianceData();
-        alert("Document uploaded successfully.");
-     } catch (e: any) {
-        alert("Failed to upload document: " + e.message);
-     }
-  };
-
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center text-[var(--text-primary)]">
@@ -378,9 +286,6 @@ export default function AdminDashboard() {
           </button>
           <button onClick={() => setActiveTab('vehicles')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
              <MapIcon size={18}/> <span>Fleet Status</span>
-          </button>
-          <button onClick={() => setActiveTab('compliance')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'compliance' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
-             <ShieldCheck size={18}/> <span>Compliance</span>
           </button>
           <button onClick={() => setActiveTab('trips')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'trips' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
              <MapIcon size={18}/> <span>Active Trips</span>
@@ -558,27 +463,19 @@ export default function AdminDashboard() {
                   <form className="grid grid-cols-2 gap-4 border-t pt-4">
                      <div>
                        <label className="block text-sm font-medium text-foreground">Assign Vehicle</label>
-                       <select 
-                          value={selectedVehicle} 
-                          onChange={e => setSelectedVehicle(e.target.value)} 
-                          className="mt-1 block w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                       >
-                          <option value="" className="bg-[#0f172a] text-[#f8fafc]">Select Available Vehicle...</option>
+                       <select value={selectedVehicle} onChange={e => setSelectedVehicle(e.target.value)} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
+                          <option value="">Select Available Vehicle...</option>
                           {vehicles.filter(v => v.status === "AVAILABLE").map(v => (
-                            <option key={v.id} value={v.id} className="bg-[#0f172a] text-[#f8fafc]">[ {v.registration_number || v.vehicle_number} ] {v.capacity_tons || v.capacity} Ton</option>
+                            <option key={v.id} value={v.id}>[ {v.registration_number || v.vehicle_number} ] {v.capacity_tons || v.capacity} Ton</option>
                           ))}
                        </select>
                      </div>
                      <div>
                        <label className="block text-sm font-medium text-foreground">Assign Driver</label>
-                       <select 
-                          value={selectedDriver} 
-                          onChange={e => setSelectedDriver(e.target.value)} 
-                          className="mt-1 block w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"
-                       >
-                          <option value="" className="bg-[#0f172a] text-[#f8fafc]">Select Available Driver...</option>
+                       <select value={selectedDriver} onChange={e => setSelectedDriver(e.target.value)} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
+                          <option value="">Select Available Driver...</option>
                           {drivers.filter(d => d.status === "AVAILABLE").map(d => (
-                            <option key={d.id} value={d.id} className="bg-[#0f172a] text-[#f8fafc]">[ {d.name || d.full_name} ]</option>
+                            <option key={d.id} value={d.id}>[ {d.name || d.full_name} ]</option>
                           ))}
                        </select>
                      </div>
@@ -630,8 +527,8 @@ export default function AdminDashboard() {
                  trips.map(trip => (
                    <div key={trip.id} className="p-4 flex justify-between items-center">
                       <div>
-                         <p className="font-bold text-foreground">Trip #{trip.id} (Booking #CX100{trip.booking_id})</p>
-                         <p className="text-sm text-muted">{trip.booking.pickup_address} → {trip.booking.drop_address}</p>
+                         <p className="font-bold text-foreground">Trip #{trip.id} (Booking #{trip.request?.request_number || trip.request_id})</p>
+                         <p className="text-sm text-muted">{trip.request?.pickup_address || 'Unknown'} → {trip.request?.destination_address || 'Unknown'}</p>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="bg-surface-elevated text-foreground px-3 py-1 rounded-full text-xs font-bold">{trip.status}</span>
@@ -660,6 +557,140 @@ export default function AdminDashboard() {
         {activeTab === 'vehicles' && (
           <div>
              <h1 className="text-3xl font-bold text-foreground mb-6">Fleet Status</h1>
+
+             <h2 className="text-2xl font-bold text-foreground mb-4">Driver Profiles</h2>
+             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
+                <table className="min-w-full divide-y divide-gray-200">
+                   <thead className="bg-surface-elevated">
+                      <tr>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Driver Name</th>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Contact & Email</th>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">License / Aadhaar</th>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
+                         <th className="px-6 py-3 text-right text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
+                      </tr>
+                   </thead>
+                   <tbody className="bg-surface divide-y divide-gray-200">
+                      {drivers.map((d: any, i: number) => (
+                        editingDriver?.id === d.id ? (
+                           <tr key={d.id}>
+                               <td colSpan={5} className="px-6 py-4">
+                                   <form onSubmit={async (e) => {
+                                       e.preventDefault();
+                                       const formData = new FormData(e.currentTarget);
+                                       try {
+                                           await api.updateDriver(d.id, {
+                                               email: formData.get('email'),
+                                               aadhaar_number: formData.get('aadhaar_number'),
+                                               age: parseInt(formData.get('age') as string, 10),
+                                               name: formData.get('name'),
+                                               phone: formData.get('phone'),
+                                               license_number: formData.get('license_number'),
+                                               status: formData.get('status')
+                                           });
+                                           setEditingDriver(null);
+                                           loadData();
+                                       } catch (err: any) { alert('Failed to update driver: ' + err.message); }
+                                   }} className="flex items-center gap-2">
+                                       <input name="name" defaultValue={d.name} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <input type="email" name="email" defaultValue={d.email} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <input name="phone" defaultValue={d.phone} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <input name="aadhaar_number" defaultValue={d.aadhaar_number} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <input type="number" name="age" defaultValue={d.age} required min="18" max="75" className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <input name="license_number" defaultValue={d.license_number} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <select name="status" defaultValue={d.status} className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2">
+                                           <option value="AVAILABLE">AVAILABLE</option>
+                                           <option value="ON_TRIP">ON_TRIP</option>
+                                           <option value="INACTIVE">INACTIVE</option>
+                                       </select>
+                                       <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium">Save</button>
+                                       <button type="button" onClick={() => setEditingDriver(null)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-medium">Cancel</button>
+                                   </form>
+                               </td>
+                           </tr>
+                        ) : (
+                        <tr key={d.id || i}>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{d.name}<div className="text-xs text-muted font-normal">Age: {d.age || 'N/A'}</div></td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.phone}<br/>{d.email}</td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.license_number}<br/>{d.aadhaar_number}</td>
+                           <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${d.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{d.status}</span></td>
+                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                               <button onClick={() => setEditingDriver(d)} className="text-blue-500 hover:text-blue-400 mr-3">Edit</button>
+                               <button onClick={async () => {
+                                   if(confirm('Are you sure you want to delete this driver?')) {
+                                       try {
+                                           await api.deleteDriver(d.id);
+                                           loadData();
+                                       } catch (err: any) { alert('Failed to delete driver: ' + err.message); }
+                                   }
+                               }} className="text-red-500 hover:text-red-400">Delete</button>
+                           </td>
+                        </tr>
+                        )
+                      ))}
+                      {drivers.length === 0 && (
+                          <tr>
+                             <td colSpan={5} className="px-6 py-4 text-center text-muted">No drivers found.</td>
+                          </tr>
+                      )}
+                   </tbody>
+                </table>
+             </div>
+
+             <div className="mt-4 bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-12">
+                <h2 className="text-xl font-bold text-foreground mb-4">Add New Driver</h2>
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    try {
+                        await api.createDriver({
+                            email: formData.get('email'),
+                            aadhaar_number: formData.get('aadhaar_number'),
+                            age: parseInt(formData.get('age') as string, 10),
+                            name: formData.get('name'),
+                            phone: formData.get('phone'),
+                            license_number: formData.get('license_number')
+                        });
+                        alert('Driver added successfully');
+                        loadData();
+                        (e.target as HTMLFormElement).reset();
+                    } catch (err: any) {
+                        alert('Failed to add driver: ' + err.message);
+                    }
+                }} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Email / Gmail</label>
+                        <input type="email" name="email" required placeholder="driver@gmail.com" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Aadhaar Number</label>
+                        <input name="aadhaar_number" required placeholder="1234 5678 9012" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Age</label>
+                        <input type="number" name="age" required placeholder="30" min="18" max="75" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Full Name</label>
+                        <input name="name" required placeholder="John Doe" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">Mobile Number</label>
+                        <input name="phone" required placeholder="+91 9876543210" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-foreground mb-1">License Number</label>
+                        <input name="license_number" required placeholder="DL-XXXX" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
+                    </div>
+                    <div>
+                        <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
+                            Add Driver
+                        </button>
+                    </div>
+                </form>
+             </div>
+
+             <h2 className="text-2xl font-bold text-foreground mb-4">Vehicles</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
                 <table className="min-w-full divide-y divide-gray-200">
                    <thead className="bg-surface-elevated">
@@ -667,10 +698,46 @@ export default function AdminDashboard() {
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Vehicle</th>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Capacity</th>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
+                         <th className="px-6 py-3 text-right text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
                       </tr>
                    </thead>
                    <tbody className="bg-surface divide-y divide-gray-200">
                       {vehicles.map((v: any, i: number) => (
+                        editingVehicle?.id === v.id ? (
+                            <tr key={v.id}>
+                               <td colSpan={4} className="px-6 py-4">
+                                   <form onSubmit={async (e) => {
+                                       e.preventDefault();
+                                       const formData = new FormData(e.currentTarget);
+                                       try {
+                                           await api.updateVehicle(v.id, {
+                                               registration_number: formData.get('registration_number'),
+                                               type: formData.get('type'),
+                                               capacity_tons: formData.get('capacity_tons'),
+                                               status: formData.get('status')
+                                           });
+                                           setEditingVehicle(null);
+                                           loadData();
+                                       } catch (err: any) { alert('Failed to update vehicle: ' + err.message); }
+                                   }} className="flex items-center gap-2">
+                                       <input name="registration_number" defaultValue={v.registration_number || `TG${String(10 + (i%90)).padStart(2, '0')}HS${String(1000 + i).padStart(4, '0')}`} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <select name="type" defaultValue={v.type || "TRUCK"} className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2">
+                                           <option value="OPEN">OPEN (Open Truck / Flatbed)</option>
+                                           <option value="CONTAINER">CONTAINER (Closed Body)</option>
+                                           <option value="TRAILER">TRAILER (Heavy Trailer)</option>
+                                       </select>
+                                       <input name="capacity_tons" type="number" step="0.1" defaultValue={v.capacity_tons || v.capacity || 10} required className="w-24 rounded border-border-theme bg-surface-elevated text-foreground p-2" />
+                                       <select name="status" defaultValue={v.status} className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2">
+                                           <option value="AVAILABLE">AVAILABLE</option>
+                                           <option value="MAINTENANCE">MAINTENANCE</option>
+                                           <option value="ON_TRIP">ON_TRIP</option>
+                                       </select>
+                                       <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium">Save</button>
+                                       <button type="button" onClick={() => setEditingVehicle(null)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-medium">Cancel</button>
+                                   </form>
+                               </td>
+                           </tr>
+                        ) : (
                         <tr key={v.id || i}>
                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                               {v.type || "TRUCK"} - {v.registration_number || `TG${String(10 + (i%90)).padStart(2, '0')}HS${String(1000 + i).padStart(4, '0')}`} <br/>
@@ -678,11 +745,23 @@ export default function AdminDashboard() {
                            </td>
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{v.capacity_tons || v.capacity || 10} Ton</td>
                            <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${v.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{v.status}</span></td>
+                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                               <button onClick={() => setEditingVehicle(v)} className="text-blue-500 hover:text-blue-400 mr-3">Edit</button>
+                               <button onClick={async () => {
+                                   if(confirm('Are you sure you want to delete this vehicle?')) {
+                                       try {
+                                           await api.deleteVehicle(v.id);
+                                           loadData();
+                                       } catch (err: any) { alert('Failed to delete vehicle: ' + err.message); }
+                                   }
+                               }} className="text-red-500 hover:text-red-400">Delete</button>
+                           </td>
                         </tr>
+                        )
                       ))}
                       {vehicles.length === 0 && (
                           <tr>
-                             <td colSpan={3} className="px-6 py-4 text-center text-muted">No vehicles found.</td>
+                             <td colSpan={4} className="px-6 py-4 text-center text-muted">No vehicles found.</td>
                           </tr>
                       )}
                    </tbody>
@@ -709,19 +788,19 @@ export default function AdminDashboard() {
                 }} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Registration Number</label>
-                        <input name="registration_number" required placeholder="TG09HS1234" className="w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm border p-2" />
+                        <input name="registration_number" required placeholder="TG09HS1234" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Type</label>
-                        <select name="type" required className="w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm border p-2">
-                            <option value="OPEN" className="bg-[#0f172a] text-[#f8fafc]">OPEN (Open Truck / Flatbed)</option>
-                            <option value="CONTAINER" className="bg-[#0f172a] text-[#f8fafc]">CONTAINER (Closed Container)</option>
-                            <option value="TRAILER" className="bg-[#0f172a] text-[#f8fafc]">TRAILER (Heavy Trailer)</option>
+                        <select name="type" required className="w-full rounded-md border-border-theme shadow-sm border p-2">
+                            <option value="OPEN">OPEN (Open Truck / Flatbed)</option>
+                            <option value="CONTAINER">CONTAINER (Closed Container)</option>
+                            <option value="TRAILER">TRAILER (Heavy Trailer)</option>
                         </select>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-foreground mb-1">Capacity (Tons)</label>
-                        <input name="capacity_tons" type="number" step="0.1" required placeholder="10" className="w-full rounded-md border-border-theme bg-[#0f172a] text-[#f8fafc] shadow-sm border p-2" />
+                        <input name="capacity_tons" type="number" step="0.1" required placeholder="10" className="w-full rounded-md border-border-theme shadow-sm border p-2" />
                     </div>
                     <div>
                         <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
@@ -732,7 +811,6 @@ export default function AdminDashboard() {
              </div>
           </div>
         )}
-
         {activeTab === 'financials' && (
           <div>
              <h1 className="text-3xl font-bold text-foreground mb-6">Business Dashboard</h1>
@@ -849,152 +927,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'compliance' && (
-           <div className="fade-in">
-              <div className="flex justify-between items-center mb-6">
-                 <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-                    <ShieldCheck size={32} className="text-blue-600" /> Compliance Management
-                 </h1>
-                 <button onClick={() => setShowUploadModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700">
-                    Upload Document
-                 </button>
-              </div>
-
-              {/* Compliance Dashboard */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                 <div className="bg-surface rounded-lg shadow-sm border p-6 border-l-4 border-l-blue-500">
-                    <h3 className="font-bold text-foreground mb-4 border-b pb-2">Vehicle Documents</h3>
-                    <div className="flex justify-between text-center">
-                       <div>
-                          <p className="text-2xl font-bold text-green-600">{complianceDashboard?.vehicles?.valid || 0}</p>
-                          <p className="text-xs text-muted uppercase tracking-wider">Valid</p>
-                       </div>
-                       <div>
-                          <p className="text-2xl font-bold text-yellow-500">{complianceDashboard?.vehicles?.expiring_soon || 0}</p>
-                          <p className="text-xs text-muted uppercase tracking-wider">Expiring Soon</p>
-                       </div>
-                       <div>
-                          <p className="text-2xl font-bold text-red-600">{complianceDashboard?.vehicles?.expired || 0}</p>
-                          <p className="text-xs text-muted uppercase tracking-wider">Expired</p>
-                       </div>
-                    </div>
-                 </div>
-                 <div className="bg-surface rounded-lg shadow-sm border p-6 border-l-4 border-l-purple-500">
-                    <h3 className="font-bold text-foreground mb-4 border-b pb-2">Driver Documents</h3>
-                    <div className="flex justify-between text-center">
-                       <div>
-                          <p className="text-2xl font-bold text-green-600">{complianceDashboard?.drivers?.valid || 0}</p>
-                          <p className="text-xs text-muted uppercase tracking-wider">Valid</p>
-                       </div>
-                       <div>
-                          <p className="text-2xl font-bold text-yellow-500">{complianceDashboard?.drivers?.expiring_soon || 0}</p>
-                          <p className="text-xs text-muted uppercase tracking-wider">Expiring Soon</p>
-                       </div>
-                       <div>
-                          <p className="text-2xl font-bold text-red-600">{complianceDashboard?.drivers?.expired || 0}</p>
-                          <p className="text-xs text-muted uppercase tracking-wider">Expired</p>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
-              {/* Pending Queue */}
-              <h2 className="text-xl font-bold text-foreground mb-4">Pending Verification</h2>
-              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
-                 <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-surface-elevated">
-                       <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Document</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Owner</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Expiry Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Uploaded At</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
-                       </tr>
-                    </thead>
-                    <tbody className="bg-surface divide-y divide-gray-200">
-                       {complianceDocs.filter(d => d.status === 'PENDING').length === 0 && (
-                          <tr><td colSpan={5} className="px-6 py-4 text-center text-sm text-muted">No pending documents.</td></tr>
-                       )}
-                       {complianceDocs.filter(d => d.status === 'PENDING').map(doc => (
-                          <tr key={doc.id}>
-                             <td className="px-6 py-4 whitespace-nowrap">
-                                <p className="font-bold text-sm text-foreground">{doc.document_type}</p>
-                                <p className="text-xs text-muted">{doc.document_number || 'N/A'}</p>
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${doc.owner_type === 'VEHICLE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{doc.owner_type}</span>
-                                <p className="text-xs text-muted mt-1">ID: {doc.owner_id.substring(0,8)}...</p>
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                                {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'N/A'}
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                                {new Date(doc.created_at).toLocaleDateString()}
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                <button onClick={() => handleApproveDocument(doc.id)} className="bg-green-100 text-green-700 font-bold px-3 py-1 rounded hover:bg-green-200 mr-2">Approve</button>
-                                <button onClick={() => setRejectingDocId(doc.id)} className="bg-red-100 text-red-700 font-bold px-3 py-1 rounded hover:bg-red-200">Reject</button>
-                             </td>
-                          </tr>
-                       ))}
-                    </tbody>
-                 </table>
-              </div>
-
-              {/* Verified & Archived History */}
-              <div className="flex justify-between items-center mb-4">
-                 <h2 className="text-xl font-bold text-foreground">Document History</h2>
-                 <div className="flex gap-2">
-                    <select value={compStatusFilter} onChange={(e) => setCompStatusFilter(e.target.value)} className="text-sm border-border-theme bg-[#0f172a] text-[#f8fafc] rounded shadow-sm p-1.5 border">
-                       <option value="ALL" className="bg-[#0f172a] text-[#f8fafc]">All Status</option>
-                       <option value="VERIFIED" className="bg-[#0f172a] text-[#f8fafc]">Verified</option>
-                       <option value="ARCHIVED" className="bg-[#0f172a] text-[#f8fafc]">Archived</option>
-                       <option value="REJECTED" className="bg-[#0f172a] text-[#f8fafc]">Rejected</option>
-                    </select>
-                    <select value={compOwnerFilter} onChange={(e) => setCompOwnerFilter(e.target.value)} className="text-sm border-border-theme bg-[#0f172a] text-[#f8fafc] rounded shadow-sm p-1.5 border">
-                       <option value="ALL" className="bg-[#0f172a] text-[#f8fafc]">All Owners</option>
-                       <option value="VEHICLE" className="bg-[#0f172a] text-[#f8fafc]">Vehicles</option>
-                       <option value="DRIVER" className="bg-[#0f172a] text-[#f8fafc]">Drivers</option>
-                    </select>
-                 </div>
-              </div>
-              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
-                 <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-surface-elevated">
-                       <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Document</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Owner</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Expiry</th>
-                       </tr>
-                    </thead>
-                    <tbody className="bg-surface divide-y divide-gray-200">
-                       {complianceDocs.filter(d => d.status !== 'PENDING' && (compStatusFilter === 'ALL' || d.status === compStatusFilter) && (compOwnerFilter === 'ALL' || d.owner_type === compOwnerFilter)).map(doc => (
-                          <tr key={doc.id} className={doc.status === 'ARCHIVED' ? 'opacity-60 bg-surface-elevated' : ''}>
-                             <td className="px-6 py-4 whitespace-nowrap">
-                                <p className="font-bold text-sm text-foreground">{doc.document_type}</p>
-                                <p className="text-xs text-muted">{doc.document_number || 'N/A'}</p>
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${doc.owner_type === 'VEHICLE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>{doc.owner_type}</span>
-                                <p className="text-xs text-muted mt-1">ID: {doc.owner_id.substring(0,8)}...</p>
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${doc.status === 'VERIFIED' ? 'bg-green-100 text-green-800' : doc.status === 'REJECTED' ? 'bg-red-100 text-red-800' : 'bg-surface-elevated text-foreground'}`}>{doc.status}</span>
-                                {doc.status === 'REJECTED' && <p className="text-xs text-red-500 mt-1">{doc.rejection_reason}</p>}
-                             </td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                                {doc.expiry_date ? new Date(doc.expiry_date).toLocaleDateString() : 'N/A'}
-                             </td>
-                          </tr>
-                       ))}
-                    </tbody>
-                 </table>
-              </div>
-           </div>
-         )}
-
-         {activeTab === 'users' && (
+          {activeTab === 'users' && (
            <div>
              <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-foreground">Team & User Management</h2>
@@ -1075,96 +1008,6 @@ export default function AdminDashboard() {
          )}
       </div>
 
-      {/* Reject Modal */}
-      {rejectingDocId && (
-         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
-               <h3 className="text-lg font-bold mb-4 text-foreground">Reject Document</h3>
-               <textarea 
-                  className="w-full border rounded p-2 text-sm min-h-[100px] mb-4"
-                  placeholder="Reason for rejection (mandatory)..."
-                  value={rejectionReason}
-                  onChange={e => setRejectionReason(e.target.value)}
-               />
-               <div className="flex justify-end gap-3">
-                  <button onClick={() => {setRejectingDocId(null); setRejectionReason("");}} className="px-4 py-2 text-muted hover:bg-surface-elevated rounded">Cancel</button>
-                  <button onClick={handleRejectDocument} className="px-4 py-2 bg-red-600 text-white font-bold rounded hover:bg-red-700">Reject</button>
-               </div>
-            </div>
-         </div>
-      )}
-
-      {/* Upload Modal */}
-      {showUploadModal && (
-         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-surface rounded-lg p-6 w-full max-w-md">
-               <h3 className="text-lg font-bold mb-4 text-foreground">Upload Compliance Document</h3>
-               <form onSubmit={handleUploadDocument} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                     <div>
-                        <label className="block text-xs font-bold text-foreground mb-1">Owner Type</label>
-                        <select className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.owner_type} onChange={e => setUploadFormData({...uploadFormData, owner_type: e.target.value, owner_id: "", document_type: e.target.value === 'DRIVER' ? 'DRIVING_LICENSE' : 'REGISTRATION'})}>
-                           <option value="DRIVER" className="bg-[#0f172a] text-[#f8fafc]">Driver</option>
-                           <option value="VEHICLE" className="bg-[#0f172a] text-[#f8fafc]">Vehicle</option>
-                        </select>
-                     </div>
-                     <div>
-                        <label className="block text-xs font-bold text-foreground mb-1">Select {uploadFormData.owner_type}</label>
-                        <select className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.owner_id} onChange={e => setUploadFormData({...uploadFormData, owner_id: e.target.value})} required>
-                           <option value="" className="bg-[#0f172a] text-[#f8fafc]">Select...</option>
-                           {uploadFormData.owner_type === 'DRIVER' 
-                              ? drivers.map(d => <option key={d.id} value={d.id} className="bg-[#0f172a] text-[#f8fafc]">{d.full_name}</option>)
-                              : vehicles.map(v => <option key={v.id} value={v.id} className="bg-[#0f172a] text-[#f8fafc]">{v.vehicle_number}</option>)
-                           }
-                        </select>
-                     </div>
-                  </div>
-                  <div>
-                     <label className="block text-xs font-bold text-foreground mb-1">Document Type</label>
-                     <select className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.document_type} onChange={e => setUploadFormData({...uploadFormData, document_type: e.target.value})}>
-                        {uploadFormData.owner_type === 'DRIVER' ? (
-                           <>
-                              <option value="DRIVING_LICENSE" className="bg-[#0f172a] text-[#f8fafc]">Driving License</option>
-                              <option value="BACKGROUND_CHECK" className="bg-[#0f172a] text-[#f8fafc]">Background Check</option>
-                              <option value="MEDICAL_CERTIFICATE" className="bg-[#0f172a] text-[#f8fafc]">Medical Certificate</option>
-                           </>
-                        ) : (
-                           <>
-                              <option value="REGISTRATION" className="bg-[#0f172a] text-[#f8fafc]">Registration (RC)</option>
-                              <option value="INSURANCE" className="bg-[#0f172a] text-[#f8fafc]">Insurance</option>
-                              <option value="FITNESS_CERTIFICATE" className="bg-[#0f172a] text-[#f8fafc]">Fitness Certificate</option>
-                              <option value="PERMIT" className="bg-[#0f172a] text-[#f8fafc]">Permit</option>
-                              <option value="PUC" className="bg-[#0f172a] text-[#f8fafc]">PUC (Pollution)</option>
-                           </>
-                        )}
-                     </select>
-                  </div>
-                  <div>
-                     <label className="block text-xs font-bold text-foreground mb-1">Document Number (Optional)</label>
-                     <input type="text" className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.document_number} onChange={e => setUploadFormData({...uploadFormData, document_number: e.target.value})} placeholder="e.g. MH01-..." />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div>
-                        <label className="block text-xs font-bold text-foreground mb-1">Issue Date</label>
-                        <input type="date" className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.issued_date} onChange={e => setUploadFormData({...uploadFormData, issued_date: e.target.value})} />
-                     </div>
-                     <div>
-                        <label className="block text-xs font-bold text-foreground mb-1">Expiry Date</label>
-                        <input type="date" className="w-full border-border-theme bg-[#0f172a] text-[#f8fafc] border rounded p-2 text-sm" value={uploadFormData.expiry_date} onChange={e => setUploadFormData({...uploadFormData, expiry_date: e.target.value})} />
-                     </div>
-                  </div>
-                  <div>
-                     <label className="block text-xs font-bold text-foreground mb-1">File</label>
-                     <input type="file" className="w-full text-sm" onChange={e => setUploadFile(e.target.files ? e.target.files[0] : null)} required />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2 border-t">
-                     <button type="button" onClick={() => setShowUploadModal(false)} className="px-4 py-2 text-muted hover:bg-surface-elevated rounded">Cancel</button>
-                     <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700">Upload</button>
-                  </div>
-               </form>
-            </div>
-         </div>
-      )}
     </div>
   );
 }

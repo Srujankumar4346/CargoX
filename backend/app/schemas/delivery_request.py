@@ -75,5 +75,28 @@ class DeliveryRequestRead(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    cancellation_reason: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
+
+class CancelRequestSchema(BaseModel):
+    reason: str = Field(..., min_length=1, description="Reason for cancellation")
+
+class DeliveryRequestUpdate(BaseModel):
+    # Cargo
+    goods_type: Optional[str] = Field(None, min_length=1)
+    goods_description: Optional[str] = None
+    weight_tons: Optional[float] = Field(None, gt=0.0)
+    special_instructions: Optional[str] = None
+    
+    # Pickup
+    pickup_company_name: Optional[str] = Field(None, min_length=1)
+    pickup_address: Optional[str] = Field(None, min_length=1)
+    pickup_contact_person: Optional[str] = None
+    pickup_phone: Optional[str] = None
+    
+    # Destination
+    destination_company_name: Optional[str] = None
+    destination_address: Optional[str] = None
+    destination_contact_person: Optional[str] = None
+    destination_phone: Optional[str] = None

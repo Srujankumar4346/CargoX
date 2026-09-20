@@ -37,6 +37,7 @@ class DeliveryRequest(Document):
     # Metrics
     distance_km: float
     status: DeliveryRequestStatus = DeliveryRequestStatus.DRAFT
+    cancellation_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

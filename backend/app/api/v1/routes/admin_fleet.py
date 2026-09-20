@@ -55,6 +55,18 @@ async def update_vehicle(
     """
     return await FleetService.update_vehicle(vehicle_id, vehicle_in)
 
+@router.delete("/vehicles/{vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/fleet/vehicles/{vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_vehicle(
+    vehicle_id: uuid.UUID,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Deletes a vehicle. Admin privileges required.
+    """
+    await FleetService.delete_vehicle(vehicle_id)
+    return None
+
 @router.post("/drivers", response_model=DriverRead, status_code=status.HTTP_201_CREATED)
 @router.post("/fleet/drivers", response_model=DriverRead, status_code=status.HTTP_201_CREATED)
 async def create_driver(
@@ -100,3 +112,15 @@ async def update_driver(
     Updates a driver profile or status. Admin privileges required.
     """
     return await FleetService.update_driver(driver_id, driver_in)
+
+@router.delete("/drivers/{driver_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/fleet/drivers/{driver_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_driver(
+    driver_id: uuid.UUID,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Deletes a driver. Admin privileges required.
+    """
+    await FleetService.delete_driver(driver_id)
+    return None

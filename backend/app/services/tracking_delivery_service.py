@@ -11,6 +11,8 @@ from app.schemas.tracking_delivery import PODSubmission, CustomerTrackingRead, L
 from app.services.authorization import AuthorizationService
 from app.services.notification_service import NotificationService
 from app.models.notifications import NotificationChannel
+from app.services.invoice_service import InvoiceService
+from app.schemas.invoice import InvoiceCreate
 
 class TrackingDeliveryService:
     @staticmethod
@@ -183,6 +185,13 @@ class TrackingDeliveryService:
         await assignment.save()
         await request.save()
         await NotificationService.process_pending_notifications()
+        
+        # Auto-generate Invoice
+        try:
+            await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), admin_user)
+        except Exception as e:
+            print(f"Failed to auto-generate invoice for trip {trip.id}: {e}")
+            
         return trip
 
     @staticmethod

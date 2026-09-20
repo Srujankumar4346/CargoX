@@ -18,7 +18,9 @@ class Vehicle(Document):
 
 class Driver(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
-    user_id: uuid.UUID # type: ignore
+    email: str
+    aadhaar_number: str
+    age: int
     name: str
     phone: str
     license_number: str # type: ignore

@@ -105,6 +105,22 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  updateVehicle: async (id: string, data: any) => {
+    const res = await authFetch(`${API_URL}/admin/fleet/vehicles/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  deleteVehicle: async (id: string) => {
+    const res = await authFetch(`${API_URL}/admin/fleet/vehicles/${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return true;
+  },
 
   // Drivers
   getDrivers: async () => {
@@ -120,6 +136,22 @@ export const api = {
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  },
+  updateDriver: async (id: string, data: any) => {
+    const res = await authFetch(`${API_URL}/admin/fleet/drivers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  deleteDriver: async (id: string) => {
+    const res = await authFetch(`${API_URL}/admin/fleet/drivers/${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return true;
   },
 
   // Trips
@@ -301,50 +333,7 @@ export const api = {
     return res.json();
   },
 
-  // --- Phase 12: Compliance Management ---
-  getComplianceDashboard: async () => {
-    const res = await authFetch(`${API_URL}/admin/compliance/dashboard`);
-    if (!res.ok) throw new Error("Failed to fetch compliance dashboard");
-    return res.json();
-  },
-  
-  getComplianceDocuments: async (ownerType?: string, ownerId?: string, status?: string) => {
-    let query = "";
-    const params = new URLSearchParams();
-    if (ownerType) params.append("owner_type", ownerType);
-    if (ownerId) params.append("owner_id", ownerId);
-    if (status) params.append("status", status);
-    
-    if (params.toString()) query = `?${params.toString()}`;
-    
-    const res = await authFetch(`${API_URL}/admin/compliance/documents${query}`);
-    if (!res.ok) throw new Error("Failed to fetch compliance documents");
-    return res.json();
-  },
-  
-  verifyComplianceDocument: async (documentId: string, isVerified: boolean, rejectionReason?: string) => {
-    const res = await authFetch(`${API_URL}/admin/compliance/documents/${documentId}/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        is_verified: isVerified,
-        rejection_reason: rejectionReason || null
-      }),
-    });
-    if (!res.ok) throw new Error("Failed to verify document");
-    return res.json();
-  },
-  
-  uploadComplianceDocument: async (formData: FormData) => {
-    // FormData requires omitting the Content-Type header so the browser sets it with the boundary
-    const res = await authFetch(`${API_URL}/admin/compliance/documents`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) throw new Error("Failed to upload document");
-    return res.json();
-  },
-  
+
   // Users (Admin Only)
   getUsers: async () => {
     const res = await authFetch(`${API_URL}/admin/users`);

@@ -23,8 +23,8 @@ def db_session():
         db.close()
 
 @pytest.fixture(autouse=True)
-def mock_compliance_service(monkeypatch):
-    monkeypatch.setattr("app.services.dispatch_service.ComplianceService.validate_dispatch_eligibility", lambda *args, **kwargs: None)
+
+
 
 @pytest.fixture(autouse=True)
 def cleanup_database():

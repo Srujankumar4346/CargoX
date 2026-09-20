@@ -20,6 +20,11 @@ export default function CustomerDashboard() {
   const [trackingTrip, setTrackingTrip] = useState<any>(null);
   const [trackingLocations, setTrackingLocations] = useState<any[]>([]);
   const [pricePerKm, setPricePerKm] = useState<number>(22);
+  
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [editBookingData, setEditBookingData] = useState<any>(null);
+
 
   // Wire Clerk token retrieval into API service
   useEffect(() => {
@@ -62,11 +67,13 @@ export default function CustomerDashboard() {
   // Track location history if a tracking trip is active
   useEffect(() => {
      let interval: any;
-     if (trackingTrip && trackingTrip.status === "IN TRANSIT") {
+      if (trackingTrip && trackingTrip.status === "IN TRANSIT") {
          const fetchLocs = async () => {
              try {
-                 const locs = await api.getLocationHistory(trackingTrip.id);
-                 setTrackingLocations(locs);
+                 const trackData = await api.getTracking(trackingTrip.request_id || trackingTrip.id);
+                 if (trackData && trackData.location_history) {
+                    setTrackingLocations(trackData.location_history);
+                 }
              } catch (e) {}
          };
          fetchLocs();
@@ -80,7 +87,7 @@ export default function CustomerDashboard() {
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.createBooking({
+      const payload = {
         goods_type: formData.cargo,
         weight_tons: parseFloat(formData.weight) || 0,
         pickup_company_name: formData.pickup_company || "Unknown Company",
@@ -91,12 +98,68 @@ export default function CustomerDashboard() {
         destination_address: formData.drop_address || "Unknown Address",
         destination_lat: formData.drop_lat !== "" ? parseFloat(formData.drop_lat) : null,
         destination_lng: formData.drop_lng !== "" ? parseFloat(formData.drop_lng) : null,
-      });
+      };
+      
+      if (editBookingData) {
+        await api.updateBooking(editBookingData.id, payload);
+        setEditBookingData(null);
+      } else {
+        await api.createBooking(payload);
+      }
+      
       setShowBookingForm(false);
       loadData();
     } catch (e) {
-      alert("Failed to create booking: " + e);
+      alert("Failed to create/update booking: " + e);
     }
+  };
+
+  const handleEditClick = (booking: any) => {
+      setEditBookingData(booking);
+      setFormData({
+         pickup_company: booking.pickup_company_name || "",
+         pickup_address: booking.pickup_address || "",
+         pickup_lat: booking.pickup_lat?.toString() || "",
+         pickup_lng: booking.pickup_lng?.toString() || "",
+         drop_company: booking.destination_company_name || "",
+         drop_address: booking.destination_address || "",
+         drop_lat: booking.destination_lat?.toString() || "",
+         drop_lng: booking.destination_lng?.toString() || "",
+         cargo: booking.goods_type || "",
+         weight: booking.weight_tons?.toString() || "",
+         distance: booking.distance_km?.toString() || "0",
+      });
+      setShowBookingForm(true);
+  };
+
+  const handleCancelClick = async (booking: any) => {
+      if (booking.status === "SUBMITTED" || booking.status === "UNDER_REVIEW") {
+          if (confirm("Are you sure you want to cancel this booking?")) {
+             try {
+                await api.cancelBooking(booking.id);
+                loadData();
+             } catch(e) {
+                alert("Failed to cancel: " + e);
+             }
+          }
+      } else {
+          setCancelBookingId(booking.id);
+          setCancelReason("");
+      }
+  };
+
+  const handleCancelConfirm = async () => {
+      if (!cancelReason.trim()) {
+          alert("Please provide a reason for cancellation.");
+          return;
+      }
+      try {
+          await api.cancelBooking(cancelBookingId!, cancelReason);
+          setCancelBookingId(null);
+          loadData();
+      } catch(e) {
+          alert("Failed to cancel: " + e);
+      }
   };
 
   const handlePayInvoice = async (invoiceId: number, amountDue: number) => {
@@ -114,21 +177,82 @@ export default function CustomerDashboard() {
       alert("Payment failed: " + e);
     }
   };
+
+  const handlePrintInvoice = (inv: any) => {
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Invoice ${inv.invoice_number}</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 40px; color: #333; }
+                        h1 { color: #2563eb; margin-bottom: 5px; }
+                        .header { border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; }
+                        .row { display: flex; justify-content: space-between; margin-bottom: 12px; }
+                        .total { font-size: 24px; font-weight: bold; border-top: 2px solid #e5e7eb; padding-top: 20px; margin-top: 30px; }
+                        .due { color: #dc2626; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>CargoX Transport Services</h1>
+                        <p style="color: #666; margin-top: 0;">Official Tax Invoice</p>
+                    </div>
+                    
+                    <div style="margin-bottom: 40px;">
+                        <div class="row">
+                            <span style="color: #666;">Invoice Number:</span>
+                            <strong>${inv.invoice_number}</strong>
+                        </div>
+                        <div class="row">
+                            <span style="color: #666;">Date Issued:</span>
+                            <strong>${new Date(inv.issued_at || inv.issue_date || new Date()).toLocaleDateString()}</strong>
+                        </div>
+                        <div class="row">
+                            <span style="color: #666;">Status:</span>
+                            <strong style="color: ${inv.status === 'PAID' ? '#16a34a' : '#dc2626'}">${inv.status}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="row total">
+                        <span>Total Amount:</span>
+                        <span>₹${parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                    </div>
+                    <div class="row">
+                        <span>Amount Paid:</span>
+                        <span style="color: #16a34a;">₹${parseFloat(inv.amount_paid).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                    </div>
+                    <div class="row total due">
+                        <span>Amount Due:</span>
+                        <span>₹${parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
+                    </div>
+                    
+                    <div style="margin-top: 60px; text-align: center; color: #999; font-size: 12px;">
+                        <p>This is a computer generated invoice and requires no signature.</p>
+                        <p>Thank you for your business!</p>
+                    </div>
+                    
+                    <script>
+                        window.onload = () => {
+                            window.print();
+                        }
+                    </script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+    }
+  };
   
-  const handleTrackBooking = async (bookingId: number) => {
+  const handleTrackBooking = async (bookingId: string) => {
       try {
-          const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api";
-          const tripsResp = await fetch(`${API_URL}/trips/`);
-          if(tripsResp.ok) {
-              const trips = await tripsResp.json();
-              const trip = trips.find((t: any) => t.booking_id === bookingId);
-              if (trip) {
-                  setTrackingTrip(trip);
-                  const locs = await api.getLocationHistory(trip.id);
-                  setTrackingLocations(locs);
-              } else {
-                  alert("Trip not yet assigned for tracking.");
-              }
+          const trackData = await api.getTracking(bookingId);
+          if (trackData) {
+             setTrackingTrip(trackData);
+             setTrackingLocations(trackData.location_history || []);
+          } else {
+             alert("Tracking not active yet. Waiting for dispatch.");
           }
       } catch (e) {
           alert("Error loading tracking.");
@@ -137,14 +261,34 @@ export default function CustomerDashboard() {
 
   return (
     <div className="min-h-screen bg-surface-elevated relative">
+      {cancelBookingId && (
+          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-surface rounded-lg shadow-xl w-full max-w-md p-6">
+                  <h3 className="text-xl font-bold mb-4">Cancel Booking</h3>
+                  <p className="text-muted text-sm mb-4">This booking has already been processed. Please provide a reason for cancellation.</p>
+                  <textarea 
+                     value={cancelReason}
+                     onChange={(e) => setCancelReason(e.target.value)}
+                     className="w-full border rounded-md p-2 mb-4"
+                     placeholder="Cancellation Reason..."
+                     rows={3}
+                  />
+                  <div className="flex justify-end gap-2">
+                     <button onClick={() => setCancelBookingId(null)} className="px-4 py-2 text-muted hover:text-black">Close</button>
+                     <button onClick={handleCancelConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md font-bold">Confirm Cancel</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {trackingTrip && (
           <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
               <div className="bg-surface rounded-lg shadow-xl w-full max-w-4xl p-6">
                   <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xl font-bold flex items-center gap-2"><MapIcon/> Live Tracking - Booking #CX100{trackingTrip.booking_id}</h3>
+                     <h3 className="text-xl font-bold flex items-center gap-2"><MapIcon/> Live Tracking - {trackingTrip.request_number}</h3>
                      <button onClick={() => setTrackingTrip(null)} className="text-muted font-bold hover:text-black text-xl">×</button>
                   </div>
-                  <TrackingMap trip={trackingTrip} locations={trackingLocations} />
+                  <TrackingMap trip={{...trackingTrip, request: trackingTrip}} locations={trackingLocations} />
               </div>
           </div>
       )}
@@ -170,7 +314,19 @@ export default function CustomerDashboard() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-foreground">My Bookings</h2>
             <button 
-              onClick={() => setShowBookingForm(!showBookingForm)}
+              onClick={() => {
+                if (showBookingForm) {
+                   setShowBookingForm(false);
+                   setEditBookingData(null);
+                } else {
+                   setFormData({
+                     pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", 
+                     drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", 
+                     cargo: "", weight: "", distance: "" 
+                   });
+                   setShowBookingForm(true);
+                }
+              }}
               className="bg-blue-600 text-white px-4 py-2 rounded-md font-medium shadow hover:bg-blue-700"
             >
               {showBookingForm ? "Cancel" : "+ Book Transport"}
@@ -179,7 +335,7 @@ export default function CustomerDashboard() {
 
           {showBookingForm && (
             <div className="bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-8">
-              <h3 className="text-xl font-bold mb-4">Request a Vehicle</h3>
+              <h3 className="text-xl font-bold mb-4">{editBookingData ? "Edit Booking" : "Request a Vehicle"}</h3>
               <form onSubmit={handleBookingSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <StructuredAddressForm 
@@ -241,14 +397,27 @@ export default function CustomerDashboard() {
                       <p className="font-bold text-foreground">{booking.pickup_company_name} - {booking.pickup_address} → {booking.destination_company_name} - {booking.destination_address}</p>
                       <p className="text-sm text-muted">{booking.weight_tons} Ton {booking.goods_type} • {booking.request_number || `REQ-${booking.id}`}</p>
                    </div>
-                   <div className="flex items-center gap-4">
-                     <span className="bg-surface-elevated text-foreground px-3 py-1 rounded-full text-xs font-bold">{booking.status}</span>
-                     {booking.status !== "REQUESTED" && booking.status !== "CANCELLED" && (
-                         <button onClick={() => handleTrackBooking(booking.id)} className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded hover:bg-blue-200 text-sm flex items-center gap-1">
-                            <MapIcon size={14}/> Track
-                         </button>
-                     )}
-                   </div>
+                     <div className="flex items-center gap-2 mt-3 sm:mt-0">
+                       <span className="bg-surface-elevated text-foreground px-3 py-1 rounded-full text-xs font-bold">{booking.status}</span>
+                       
+                       {(booking.status === "SUBMITTED" || booking.status === "UNDER_REVIEW") && (
+                           <button onClick={() => handleEditClick(booking)} className="bg-gray-100 text-gray-700 font-bold px-3 py-1 rounded hover:bg-gray-200 text-xs">
+                              Edit
+                           </button>
+                       )}
+                       
+                       {booking.status !== "CUSTOMER_CANCELLED" && booking.status !== "COMPLETED" && booking.status !== "DELIVERED" && booking.status !== "DRIVER_ASSIGNED" && booking.status !== "IN_TRANSIT" && booking.status !== "PICKUP_IN_PROGRESS" && booking.status !== "ARRIVED" && booking.status !== "POD_SUBMITTED" && (
+                           <button onClick={() => handleCancelClick(booking)} className="bg-red-100 text-red-700 font-bold px-3 py-1 rounded hover:bg-red-200 text-xs">
+                              Cancel
+                           </button>
+                       )}
+
+                       {booking.status !== "REQUESTED" && booking.status !== "SUBMITTED" && booking.status !== "CUSTOMER_CANCELLED" && (
+                           <button onClick={() => handleTrackBooking(booking.id)} className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded hover:bg-blue-200 text-xs flex items-center gap-1">
+                              <MapIcon size={12}/> Track
+                           </button>
+                       )}
+                     </div>
                 </div>
               ))
             )}
@@ -275,17 +444,24 @@ export default function CustomerDashboard() {
                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                        {inv.status} (Due: ₹{inv.amount_due})
                      </span>
-                     {inv.status !== 'PAID' && (
-                       <button onClick={() => handlePayInvoice(inv.id, inv.amount_due)} className="text-sm bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded font-bold flex items-center gap-1">
-                         Record Payment (Demo)
+                     <div className="flex gap-2">
+                       <button onClick={() => handlePrintInvoice(inv)} className="text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded font-bold flex items-center gap-1">
+                         Download PDF
                        </button>
-                     )}
+                       {inv.status !== 'PAID' && (
+                         <button onClick={() => handlePayInvoice(inv.id, inv.amount_due)} className="text-sm bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded font-bold flex items-center gap-1">
+                           Pay Now
+                         </button>
+                       )}
+                     </div>
                    </div>
                 </div>
               ))
             )}
           </div>
         </div>
+
+
       </main>
     </div>
   );

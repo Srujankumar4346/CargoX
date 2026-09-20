@@ -31,7 +31,6 @@ async def init_db():
     from app.models.delivery import DeliveryRequest, Trip, ProofOfDelivery, LocationHistory
     from app.models.finance import Invoice, Payment, DriverSettlement
     from app.models.notifications import Notification
-    from app.models.compliance import ComplianceDocument
     from app.models.operations import TripExpense, VehicleMaintenance
     
     await init_beanie(database=database, document_models=[
@@ -42,6 +41,5 @@ async def init_db():
         DeliveryRequest, Trip, ProofOfDelivery, LocationHistory,
         Invoice, Payment, DriverSettlement,
         Notification,
-        ComplianceDocument,
         TripExpense, VehicleMaintenance,
     ])

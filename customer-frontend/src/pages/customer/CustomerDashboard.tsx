@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { LogOut, Truck, FileText, Map as MapIcon, Download } from "lucide-react";
-import { useAuth, UserButton } from "@clerk/react";
+import { useAuth, UserButton, SignInButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
@@ -200,6 +200,28 @@ export default function CustomerDashboard() {
           alert("Error loading tracking.");
       }
   };
+
+  if (isLoaded && !isSignedIn) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
+        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 text-center max-w-md w-full shadow-2xl">
+          <Truck className="mx-auto h-12 w-12 text-blue-500 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
+          <p className="text-gray-400 text-sm mb-6">You must be signed in to submit bookings and view invoices.</p>
+          <div className="flex justify-center gap-4">
+            <SignInButton mode="modal">
+              <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg">
+                Sign In / Sign Up
+              </button>
+            </SignInButton>
+            <Link to="/" className="bg-slate-700 hover:bg-slate-600 text-gray-200 font-medium px-4 py-2.5 rounded-xl transition-all">
+              Home Page
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-surface-elevated relative">

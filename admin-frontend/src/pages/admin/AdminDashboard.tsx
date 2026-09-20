@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { LogOut, Map as MapIcon, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users } from "lucide-react";
-import { useAuth, useUser, SignInButton, UserButton } from "@clerk/react";
+import { useState, useEffect, useRef } from "react";
+import { LogOut, Truck, ChevronDown, ChevronUp, Pencil, Trash2, X, Check, PlusCircle, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users } from "lucide-react";
+import { useAuth, UserButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
+import { generateInvoicePDF } from "../../utils/invoicePDF";
 import ThemeToggle from "../../components/ThemeToggle";
 
 // ── Validation / formatting helpers ─────────────────────────────────────────
@@ -1047,6 +1047,7 @@ export default function AdminDashboard() {
                    <thead className="bg-surface-elevated">
                       <tr>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Invoice #</th>
+                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Booking ID</th>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Date</th>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Total Amount</th>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Amount Due</th>
@@ -1055,20 +1056,35 @@ export default function AdminDashboard() {
                       </tr>
                    </thead>
                    <tbody className="bg-surface divide-y divide-gray-200">
-                      {invoices.map(inv => (
+                      {invoices.length === 0 && (
+                        <tr><td colSpan={7} className="px-6 py-8 text-center text-muted">No invoices found. Complete a trip to generate an invoice.</td></tr>
+                      )}
+                      {invoices.map(inv => {
+                        const booking = bookings.find((b: any) => b.id === inv.request_id);
+                        return (
                         <tr key={inv.id}>
                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{inv.invoice_number}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{inv.issue_date}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">₹{inv.total_amount}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">₹{inv.amount_due}</td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-400">{booking?.request_number || '—'}</td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('en-IN') : (inv.issue_date || '—')}</td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">₹{parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-400">₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
                            <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{inv.status}</span></td>
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                               {inv.status !== 'PAID' && (
-                                   <button onClick={() => handleRecordPayment(inv.id, inv.amount_due)} className="text-blue-600 hover:text-blue-800 font-medium">Record Demo Payment</button>
-                               )}
+                               <div className="flex gap-2 items-center">
+                                 <button
+                                   onClick={() => generateInvoicePDF(inv, booking)}
+                                   className="flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 px-3 py-1 rounded font-bold text-xs"
+                                 >
+                                   <Download size={12}/> PDF
+                                 </button>
+                                 {inv.status !== 'PAID' && (
+                                     <button onClick={() => handleRecordPayment(inv.id, inv.amount_due)} className="text-blue-600 hover:text-blue-800 font-medium text-xs">Record Payment</button>
+                                 )}
+                               </div>
                            </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                    </tbody>
                 </table>
              </div>

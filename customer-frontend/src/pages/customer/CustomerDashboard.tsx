@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Truck, FileText, Map as MapIcon } from "lucide-react";
+import { LogOut, Truck, FileText, Map as MapIcon, Download } from "lucide-react";
 import { useAuth, UserButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import StructuredAddressForm, { type AddressData } from "../../components/StructuredAddressForm";
+import { generateInvoicePDF } from "../../utils/invoicePDF";
 
 export default function CustomerDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -179,70 +180,11 @@ export default function CustomerDashboard() {
   };
 
   const handlePrintInvoice = (inv: any) => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <title>Invoice ${inv.invoice_number}</title>
-                    <style>
-                        body { font-family: sans-serif; padding: 40px; color: #333; }
-                        h1 { color: #2563eb; margin-bottom: 5px; }
-                        .header { border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 30px; }
-                        .row { display: flex; justify-content: space-between; margin-bottom: 12px; }
-                        .total { font-size: 24px; font-weight: bold; border-top: 2px solid #e5e7eb; padding-top: 20px; margin-top: 30px; }
-                        .due { color: #dc2626; }
-                    </style>
-                </head>
-                <body>
-                    <div class="header">
-                        <h1>CargoX Transport Services</h1>
-                        <p style="color: #666; margin-top: 0;">Official Tax Invoice</p>
-                    </div>
-                    
-                    <div style="margin-bottom: 40px;">
-                        <div class="row">
-                            <span style="color: #666;">Invoice Number:</span>
-                            <strong>${inv.invoice_number}</strong>
-                        </div>
-                        <div class="row">
-                            <span style="color: #666;">Date Issued:</span>
-                            <strong>${new Date(inv.issued_at || inv.issue_date || new Date()).toLocaleDateString()}</strong>
-                        </div>
-                        <div class="row">
-                            <span style="color: #666;">Status:</span>
-                            <strong style="color: ${inv.status === 'PAID' ? '#16a34a' : '#dc2626'}">${inv.status}</strong>
-                        </div>
-                    </div>
-                    
-                    <div class="row total">
-                        <span>Total Amount:</span>
-                        <span>₹${parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                    </div>
-                    <div class="row">
-                        <span>Amount Paid:</span>
-                        <span style="color: #16a34a;">₹${parseFloat(inv.amount_paid).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                    </div>
-                    <div class="row total due">
-                        <span>Amount Due:</span>
-                        <span>₹${parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits: 2})}</span>
-                    </div>
-                    
-                    <div style="margin-top: 60px; text-align: center; color: #999; font-size: 12px;">
-                        <p>This is a computer generated invoice and requires no signature.</p>
-                        <p>Thank you for your business!</p>
-                    </div>
-                    
-                    <script>
-                        window.onload = () => {
-                            window.print();
-                        }
-                    </script>
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
-    }
+    // Find the matching booking to enrich the invoice with delivery details
+    const booking = bookings.find((b: any) =>
+      b.id === inv.request_id || b.request_number === inv.tracking_number
+    );
+    generateInvoicePDF(inv, booking);
   };
   
   const handleTrackBooking = async (bookingId: string) => {
@@ -433,30 +375,40 @@ export default function CustomerDashboard() {
             {invoices.length === 0 ? (
               <p className="p-4 text-muted text-center">No invoices found.</p>
             ) : (
-              invoices.map((inv: any) => (
-                <div key={inv.id} className="p-4 flex justify-between items-center">
-                   <div>
-                      <p className="font-bold text-foreground">Invoice {inv.invoice_number}</p>
-                      <p className="text-sm text-muted">Booking #CX100{inv.booking_id} • {inv.issue_date}</p>
-                      <p className="text-sm font-medium text-foreground mt-1">Total: ₹{inv.total_amount}</p>
-                   </div>
-                   <div className="flex flex-col items-end gap-2">
-                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                       {inv.status} (Due: ₹{inv.amount_due})
-                     </span>
-                     <div className="flex gap-2">
-                       <button onClick={() => handlePrintInvoice(inv)} className="text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-1 rounded font-bold flex items-center gap-1">
-                         Download PDF
-                       </button>
-                       {inv.status !== 'PAID' && (
-                         <button onClick={() => handlePayInvoice(inv.id, inv.amount_due)} className="text-sm bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1 rounded font-bold flex items-center gap-1">
-                           Pay Now
-                         </button>
-                       )}
+              invoices.map((inv: any) => {
+                // Match booking for display
+                const booking = bookings.find((b: any) => b.id === inv.request_id);
+                const bookingId = booking?.request_number || inv.invoice_number;
+                return (
+                  <div key={inv.id} className="p-4 flex flex-wrap justify-between items-start gap-3">
+                     <div className="flex-1 min-w-0">
+                        <p className="font-bold text-foreground">{inv.invoice_number}</p>
+                        <p className="text-sm text-muted">Booking: <span className="font-mono font-semibold">{bookingId}</span></p>
+                        {booking && (
+                          <p className="text-xs text-muted mt-1">
+                            {booking.pickup_address} → {booking.destination_address} &nbsp;•&nbsp; {booking.weight_tons}T {booking.goods_type}
+                          </p>
+                        )}
+                        <p className="text-sm font-bold text-foreground mt-1">Total: ₹{parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</p>
                      </div>
-                   </div>
-                </div>
-              ))
+                     <div className="flex flex-col items-end gap-2">
+                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                         {inv.status} — Due: ₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits: 2})}
+                       </span>
+                       <div className="flex gap-2">
+                         <button onClick={() => handlePrintInvoice(inv)} className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded font-bold flex items-center gap-1">
+                           <Download size={14}/> Download PDF
+                         </button>
+                         {inv.status !== 'PAID' && (
+                           <button onClick={() => handlePayInvoice(inv.id, inv.amount_due)} className="text-sm bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1.5 rounded font-bold">
+                             Pay Now
+                           </button>
+                         )}
+                       </div>
+                     </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

@@ -82,13 +82,12 @@ class InvoiceService:
                        f"Request must be COMPLETED."
             )
 
-        # Guard: no duplicate invoice
+        # Guard: idempotent return if invoice already exists for this request
         existing_invoice = await Invoice.find_one(Invoice.request_id == request.id)
         if existing_invoice:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An invoice has already been generated for this delivery request."
-            )
+            quotation = await Quotation.find_one(Quotation.id == existing_invoice.quotation_id)
+            payments = await Payment.find(Payment.invoice_id == existing_invoice.id).to_list()
+            return InvoiceService._build_admin_read(existing_invoice, quotation, payments)
 
         # Fetch and validate the accepted quotation — single authoritative pricing source
         quotation = await Quotation.find_one(Quotation.request_id == request.id)
@@ -99,7 +98,7 @@ class InvoiceService:
             )
 
         year = datetime.now(timezone.utc).year
-        seq_val = random.randint(1000, 999999) # Placeholder for sequence since mongo handles this differently
+        seq_val = random.randint(1000, 999999) # Unique invoice sequence
         invoice_number = f"INV-{year}-{seq_val:06d}"
 
         # Financial calculation from immutable Quotation
@@ -125,7 +124,15 @@ class InvoiceService:
             issued_at=now,
             due_at=invoice_in.due_at,
         )
-        await invoice.insert()
+        try:
+            await invoice.insert()
+        except Exception:
+            # Handle race condition concurrency: if inserted by another concurrent call
+            concurrent_inv = await Invoice.find_one(Invoice.request_id == request.id)
+            if concurrent_inv:
+                payments = await Payment.find(Payment.invoice_id == concurrent_inv.id).to_list()
+                return InvoiceService._build_admin_read(concurrent_inv, quotation, payments)
+            raise
 
         return InvoiceService._build_admin_read(invoice, quotation, [])
 

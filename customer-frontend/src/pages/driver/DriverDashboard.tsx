@@ -14,10 +14,14 @@ interface DriverTrip {
   pickup_address: string;
   pickup_contact_person?: string;
   pickup_phone?: string;
+  pickup_lat?: number;
+  pickup_lng?: number;
   destination_company_name: string;
   destination_address: string;
   destination_contact_person?: string;
   destination_phone?: string;
+  destination_lat?: number;
+  destination_lng?: number;
   vehicle_registration: string;
   vehicle_type: string;
   assigned_at: string;
@@ -325,12 +329,23 @@ export default function DriverDashboard() {
                   <span className="text-blue-400 font-bold block uppercase tracking-wider text-[10px]">Pickup Origin</span>
                   <span className="font-bold text-slate-100 text-sm block">{trip.pickup_company_name}</span>
                   <p className="text-slate-300 mt-0.5">{trip.pickup_address}</p>
-                  {trip.pickup_phone && (
-                    <a href={`tel:${trip.pickup_phone}`} className="mt-1 inline-flex items-center space-x-1 text-blue-400 hover:underline">
-                      <Phone className="w-3 h-3" />
-                      <span>{trip.pickup_phone} {trip.pickup_contact_person ? `(${trip.pickup_contact_person})` : ""}</span>
+                  <div className="flex flex-wrap items-center gap-3 mt-2">
+                    {trip.pickup_phone && (
+                      <a href={`tel:${trip.pickup_phone}`} className="inline-flex items-center space-x-1 text-blue-400 hover:underline">
+                        <Phone className="w-3 h-3" />
+                        <span>{trip.pickup_phone} {trip.pickup_contact_person ? `(${trip.pickup_contact_person})` : ""}</span>
+                      </a>
+                    )}
+                    <a
+                      href={trip.pickup_lat && trip.pickup_lng ? `https://www.google.com/maps/dir/?api=1&destination=${trip.pickup_lat},${trip.pickup_lng}` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(trip.pickup_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-600/20 text-blue-300 border border-blue-500/30 rounded-lg font-bold hover:bg-blue-600/30 transition text-[11px]"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      <span>Navigate to Pickup</span>
                     </a>
-                  )}
+                  </div>
                 </div>
               </div>
 
@@ -345,12 +360,23 @@ export default function DriverDashboard() {
                   <span className="text-emerald-400 font-bold block uppercase tracking-wider text-[10px]">Delivery Destination</span>
                   <span className="font-bold text-slate-100 text-sm block">{trip.destination_company_name}</span>
                   <p className="text-slate-300 mt-0.5">{trip.destination_address}</p>
-                  {trip.destination_phone && (
-                    <a href={`tel:${trip.destination_phone}`} className="mt-1 inline-flex items-center space-x-1 text-emerald-400 hover:underline">
-                      <Phone className="w-3 h-3" />
-                      <span>{trip.destination_phone} {trip.destination_contact_person ? `(${trip.destination_contact_person})` : ""}</span>
+                  <div className="flex flex-wrap items-center gap-3 mt-2">
+                    {trip.destination_phone && (
+                      <a href={`tel:${trip.destination_phone}`} className="inline-flex items-center space-x-1 text-emerald-400 hover:underline">
+                        <Phone className="w-3 h-3" />
+                        <span>{trip.destination_phone} {trip.destination_contact_person ? `(${trip.destination_contact_person})` : ""}</span>
+                      </a>
+                    )}
+                    <a
+                      href={trip.destination_lat && trip.destination_lng ? `https://www.google.com/maps/dir/?api=1&destination=${trip.destination_lat},${trip.destination_lng}` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(trip.destination_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-1 px-2.5 py-1 bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 rounded-lg font-bold hover:bg-emerald-600/30 transition text-[11px]"
+                    >
+                      <Navigation className="w-3 h-3" />
+                      <span>Navigate to Drop</span>
                     </a>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>

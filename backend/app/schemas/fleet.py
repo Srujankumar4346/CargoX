@@ -43,6 +43,7 @@ class DriverUpdate(BaseModel):
 
 class DriverRead(BaseModel):
     id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
     email: str
     aadhaar_number: str
     age: int

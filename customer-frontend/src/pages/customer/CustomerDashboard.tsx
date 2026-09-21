@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Truck, FileText, Map as MapIcon, Download } from "lucide-react";
+import { LogOut, Truck, FileText, Map as MapIcon, Download, Eye, Printer } from "lucide-react";
 import { useAuth, UserButton, SignInButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
@@ -179,12 +179,12 @@ export default function CustomerDashboard() {
     }
   };
 
-  const handlePrintInvoice = (inv: any) => {
+  const handlePrintInvoice = (inv: any, autoPrint: boolean = true) => {
     // Find the matching booking to enrich the invoice with delivery details
     const booking = bookings.find((b: any) =>
       b.id === inv.request_id || b.request_number === inv.tracking_number
     );
-    generateInvoicePDF(inv, booking);
+    generateInvoicePDF(inv, booking, autoPrint);
   };
   
   const handleTrackBooking = async (bookingId: string) => {
@@ -413,21 +413,49 @@ export default function CustomerDashboard() {
                         )}
                         <p className="text-sm font-bold text-foreground mt-1">Total: ₹{parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</p>
                      </div>
-                     <div className="flex flex-col items-end gap-2">
-                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                         {inv.status} — Due: ₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits: 2})}
-                       </span>
-                       <div className="flex gap-2">
-                         <button onClick={() => handlePrintInvoice(inv)} className="text-sm bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded font-bold flex items-center gap-1">
-                           <Download size={14}/> Download PDF
-                         </button>
-                         {inv.status !== 'PAID' && (
-                           <button onClick={() => handlePayInvoice(inv.id, inv.amount_due)} className="text-sm bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1.5 rounded font-bold">
-                             Pay Now
-                           </button>
-                         )}
-                       </div>
-                     </div>
+                     <div className="flex flex-col items-end gap-2.5">
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+                          inv.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
+                          inv.status === 'PARTIALLY_PAID' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 
+                          'bg-red-500/10 text-red-400 border border-red-500/20'
+                        }`}>
+                          {inv.status} • Due: ₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits: 2})}
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* View Invoice */}
+                          <button 
+                            onClick={() => handlePrintInvoice(inv, false)} 
+                            title="View Invoice"
+                            className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1.5 rounded text-xs font-semibold transition"
+                          >
+                            <Eye size={13}/> View
+                          </button>
+                          {/* Print Invoice */}
+                          <button 
+                            onClick={() => handlePrintInvoice(inv, true)} 
+                            title="Print Invoice"
+                            className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1.5 rounded text-xs font-semibold transition"
+                          >
+                            <Printer size={13}/> Print
+                          </button>
+                          {/* Download PDF */}
+                          <button 
+                            onClick={() => handlePrintInvoice(inv, true)} 
+                            title="Download PDF"
+                            className="inline-flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition"
+                          >
+                            <Download size={13}/> Download PDF
+                          </button>
+                          {inv.status !== 'PAID' && (
+                            <button 
+                              onClick={() => handlePayInvoice(inv.id, inv.amount_due)} 
+                              className="text-xs bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded font-semibold transition"
+                            >
+                              Pay Now
+                            </button>
+                          )}
+                        </div>
+                      </div>
                   </div>
                 );
               })

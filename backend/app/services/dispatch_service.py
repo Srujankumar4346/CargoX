@@ -44,6 +44,44 @@ class DispatchService:
                 detail="A trip has already been dispatched for this delivery request"
             )
 
+        # Quotation invariant check: Authoritative accepted quotation MUST exist before dispatch
+        from app.models.pricing import Quotation
+        from app.models.enums import QuotationStatus
+        from app.services.pricing_engine import PricingEngineService
+        from datetime import timedelta
+
+        quotation = await Quotation.find_one(Quotation.request_id == request.id)
+        if not quotation:
+            # Fallback for direct dispatch: snapshot active PricingConfig at dispatch time
+            active_config = await PricingEngineService.get_active_pricing_config()
+            dist = Decimal(str(request.distance_km)) if request.distance_km and request.distance_km > 0 else Decimal("500.00")
+            base_rate = Decimal(str(active_config.base_rate_per_km))
+            margin_rate = Decimal(str(active_config.margin_per_km))
+            
+            internal_base_cost = (dist * base_rate).quantize(Decimal("0.01"))
+            cargox_margin = (dist * margin_rate).quantize(Decimal("0.01"))
+            customer_total_charge = internal_base_cost + cargox_margin
+            
+            quotation = Quotation(
+                request_id=request.id,
+                pricing_config_id=active_config.id,
+                distance_km=dist,
+                base_rate_per_km=base_rate,
+                internal_base_cost=internal_base_cost,
+                cargox_margin=cargox_margin,
+                customer_total_charge=customer_total_charge,
+                status=QuotationStatus.ACCEPTED,
+                created_at=now,
+                accepted_at=now,
+                expires_at=now + timedelta(days=30),
+            )
+            await quotation.insert()
+        elif quotation.status != QuotationStatus.ACCEPTED:
+            quotation.status = QuotationStatus.ACCEPTED
+            quotation.accepted_at = now
+            await quotation.save()
+
+
         # 2. Lock and validate Vehicle
         vehicle = await Vehicle.find_one(Vehicle.id == dispatch_in.vehicle_id)
 

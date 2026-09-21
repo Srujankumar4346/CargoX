@@ -65,8 +65,27 @@ class FleetService:
     @staticmethod
     async def delete_vehicle(vehicle_id: uuid.UUID) -> bool:
         vehicle = await FleetService.get_vehicle(vehicle_id)
-        # Note: We should ideally check for active assignments before deleting.
-        # Assuming a hard delete for now.
+        # Check for active assignments
+        active_assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.vehicle_id == vehicle_id,
+            VehicleAssignment.released_at == None
+        )
+        if active_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete vehicle while it is currently assigned to an active trip."
+            )
+        
+        # Check for historical assignments to preserve trip audit history
+        historical_assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.vehicle_id == vehicle_id
+        )
+        if historical_assignment:
+            # Preserve operational records by updating status to MAINTENANCE instead of hard deleting
+            vehicle.status = VehicleStatus.MAINTENANCE
+            await vehicle.save()
+            return True
+
         await vehicle.delete()
         return True
 
@@ -93,7 +112,22 @@ class FleetService:
                 detail=f"Driver with license number '{driver_in.license_number}' already exists"
             )
 
+        # Check or provision user account with DRIVER role
+        user = await User.find_one(User.email == driver_in.email)
+        if not user:
+            user = User(
+                id=uuid.uuid4(),
+                email=driver_in.email,
+                role=UserRole.DRIVER,
+                is_active=True
+            )
+            await user.insert()
+        elif user.role != UserRole.DRIVER:
+            user.role = UserRole.DRIVER
+            await user.save()
+
         driver = Driver(
+            user_id=user.id,
             email=driver_in.email,
             aadhaar_number=driver_in.aadhaar_number,
             age=driver_in.age,

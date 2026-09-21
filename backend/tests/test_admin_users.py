@@ -88,3 +88,40 @@ async def test_admin_cannot_demote_primary_admin(async_client, auth_headers_prim
     )
     assert response.status_code == status.HTTP_409_CONFLICT
     assert response.json()["detail"] == "Primary administrator cannot be demoted."
+
+@pytest.mark.anyio
+async def test_admin_can_demote_eligible_admin(async_client, auth_headers_primary_admin):
+    # Seed a non-primary admin
+    secondary_admin = User(id=uuid.uuid4(), clerk_user_id="user_sec_admin", email="sec_admin@cargox.com", role=UserRole.ADMIN, is_active=True)
+    await secondary_admin.insert()
+    
+    response = await async_client.put(
+        f"/api/v1/admin/users/{str(secondary_admin.id)}/role",
+        headers=auth_headers_primary_admin,
+        json={"role": UserRole.CUSTOMER_USER.value}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    updated_user = await User.get(secondary_admin.id)
+    assert updated_user.role == UserRole.CUSTOMER_USER
+
+@pytest.mark.anyio
+async def test_invalid_role_values_rejected(async_client, auth_headers_primary_admin):
+    target_user = User(id=uuid.uuid4(), clerk_user_id="user_target_2", email="target2@cargox.com", role=UserRole.CUSTOMER_USER, is_active=True)
+    await target_user.insert()
+    
+    # "CUSTOMER" is invalid (must be CUSTOMER_USER)
+    response = await async_client.put(
+        f"/api/v1/admin/users/{str(target_user.id)}/role",
+        headers=auth_headers_primary_admin,
+        json={"role": "CUSTOMER"}
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    # Arbitrary random string is invalid
+    response2 = await async_client.put(
+        f"/api/v1/admin/users/{str(target_user.id)}/role",
+        headers=auth_headers_primary_admin,
+        json={"role": "SUPERUSER"}
+    )
+    assert response2.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+

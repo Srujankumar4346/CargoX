@@ -190,7 +190,8 @@ class TrackingDeliveryService:
         try:
             await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), admin_user)
         except Exception as e:
-            print(f"Failed to auto-generate invoice for trip {trip.id}: {e}")
+            import logging
+            logging.getLogger("cargox").error(f"Failed to auto-generate invoice for trip {trip.id}: {e}", exc_info=True)
             
         return trip
 

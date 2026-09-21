@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from app.api.deps import get_current_admin
 from app.models.user import User
 from app.models.delivery import Trip, DeliveryRequest
+from app.models.fleet import VehicleAssignment
 from app.models.enums import DeliveryRequestStatus
 from app.schemas.dispatch import DispatchRequest, DispatchRead
 from app.schemas.delivery_request import DeliveryRequestRead
@@ -30,6 +31,8 @@ async def approve_request(
     ):
     """
     Approves a delivery request, transitioning it from SUBMITTED to ACCEPTED.
+    Under the approved direct-booking workflow, an accepted quotation is established
+    using the active PricingConfig at approval time if none exists yet.
     """
     req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
     if not req:
@@ -37,9 +40,53 @@ async def approve_request(
     if req.status != DeliveryRequestStatus.SUBMITTED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot approve request in {req.status} status")
     
+    # 1. Check whether an accepted quotation already exists for this request
+    from app.models.pricing import Quotation
+    from app.models.enums import QuotationStatus
+    from app.services.pricing_engine import PricingEngineService
+    from decimal import Decimal
+    from datetime import timedelta
+
+    existing_quote = await Quotation.find_one(Quotation.request_id == req.id)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if existing_quote:
+        if existing_quote.status != QuotationStatus.ACCEPTED:
+            existing_quote.status = QuotationStatus.ACCEPTED
+            existing_quote.accepted_at = now
+            await existing_quote.save()
+    else:
+        # Direct Admin Booking Workflow: snapshot active PricingConfig at approval time
+        active_config = await PricingEngineService.get_active_pricing_config()
+        
+        # Calculate distance and charges
+        dist = Decimal(str(req.distance_km)) if req.distance_km and req.distance_km > 0 else Decimal("500.00")
+        base_rate = Decimal(str(active_config.base_rate_per_km))
+        margin_rate = Decimal(str(active_config.margin_per_km))
+        
+        internal_base_cost = (dist * base_rate).quantize(Decimal("0.01"))
+        cargox_margin = (dist * margin_rate).quantize(Decimal("0.01"))
+        customer_total_charge = internal_base_cost + cargox_margin
+        
+        quotation = Quotation(
+            request_id=req.id,
+            pricing_config_id=active_config.id,
+            distance_km=dist,
+            base_rate_per_km=base_rate,
+            internal_base_cost=internal_base_cost,
+            cargox_margin=cargox_margin,
+            customer_total_charge=customer_total_charge,
+            status=QuotationStatus.ACCEPTED,
+            created_at=now,
+            accepted_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+        await quotation.insert()
+
     req.status = DeliveryRequestStatus.ACCEPTED
     await req.save()
     return req
+
 
 @router.post("/requests/{request_id}/dispatch", response_model=DispatchRead, status_code=status.HTTP_201_CREATED)
 async def dispatch_request(
@@ -215,46 +262,12 @@ async def admin_force_complete(
             driver.status = DriverStatus.AVAILABLE
             await driver.save()
 
-    # Auto-generate invoice — create quotation if none exists
-    existing_invoice = await Invoice.find_one(Invoice.request_id == request.id)
-    if not existing_invoice:
-        # Ensure we have an accepted quotation; create a synthetic one if missing
-        quotation = await Quotation.find_one(Quotation.request_id == request.id)
-        if not quotation or quotation.status != QuotationStatus.ACCEPTED:
-            # Build synthetic quotation from request weight (base rate Rs. 50/km, est. 500km)
-            weight = Decimal(str(request.weight_tons or 1))
-            base_rate = Decimal("50")
-            distance_km = Decimal("500")
-            base_cost = base_rate * distance_km
-            margin = base_cost * Decimal("0.15")
-            customer_charge = base_cost + margin + (weight * Decimal("500"))
-
-            from datetime import timedelta
-            if not quotation:
-                quotation = Quotation(
-                    request_id=request.id,
-                    pricing_config_id=uuid.uuid4(),  # synthetic config id
-                    distance_km=float(distance_km),
-                    base_rate_per_km=float(base_rate),
-                    internal_base_cost=float(base_cost),
-                    cargox_margin=float(margin),
-                    customer_total_charge=float(customer_charge),
-                    status=QuotationStatus.ACCEPTED,
-                    created_at=now,
-                    accepted_at=now,
-                    expires_at=now + timedelta(days=30),
-                )
-                await quotation.insert()
-            else:
-                quotation.status = QuotationStatus.ACCEPTED
-                quotation.accepted_at = now
-                await quotation.save()
-
-        # Generate invoice
-        try:
-            await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), current_admin)
-        except Exception as e:
-            print(f"[admin-force-complete] Invoice generation error: {e}")
+    # Auto-generate invoice from the immutable accepted quotation
+    try:
+        await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), current_admin)
+    except Exception as e:
+        import logging
+        logging.getLogger("cargox").error(f"[admin-force-complete] Invoice generation error for trip {trip.id}: {e}")
 
     return {
         "id": trip.id,

@@ -18,6 +18,7 @@ class Vehicle(Document):
 
 class Driver(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    user_id: Optional[uuid.UUID] = None
     email: str
     aadhaar_number: str
     age: int

@@ -23,11 +23,15 @@ class DriverTripRead(BaseModel):
     pickup_address: str
     pickup_contact_person: Optional[str] = None
     pickup_phone: Optional[str] = None
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
     
     destination_company_name: str
     destination_address: str
     destination_contact_person: Optional[str] = None
     destination_phone: Optional[str] = None
+    destination_lat: Optional[float] = None
+    destination_lng: Optional[float] = None
     
     vehicle_registration: str
     vehicle_type: VehicleType

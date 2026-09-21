@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Printer } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -1042,53 +1042,85 @@ export default function AdminDashboard() {
                 </div>
              </div>
 
-             <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>
-             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
-                <table className="min-w-full divide-y divide-gray-200">
-                   <thead className="bg-surface-elevated">
-                      <tr>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Invoice #</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Booking ID</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Date</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Total Amount</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Amount Due</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Action</th>
-                      </tr>
-                   </thead>
-                   <tbody className="bg-surface divide-y divide-gray-200">
-                      {invoices.length === 0 && (
-                        <tr><td colSpan={7} className="px-6 py-8 text-center text-muted">No invoices found. Complete a trip to generate an invoice.</td></tr>
-                      )}
-                      {invoices.map(inv => {
-                        const booking = bookings.find((b: any) => b.id === inv.request_id);
-                        return (
-                        <tr key={inv.id}>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{inv.invoice_number}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-400">{booking?.request_number || '—'}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('en-IN') : (inv.issue_date || '—')}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">₹{parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-400">₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
-                           <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{inv.status}</span></td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
-                               <div className="flex gap-2 items-center">
-                                 <button
-                                   onClick={() => generateInvoicePDF(inv, booking)}
-                                   className="flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 px-3 py-1 rounded font-bold text-xs"
-                                 >
-                                   <Download size={12}/> PDF
-                                 </button>
-                                 {inv.status !== 'PAID' && (
-                                     <button onClick={() => handleRecordPayment(inv.id, inv.amount_due)} className="text-blue-600 hover:text-blue-800 font-medium text-xs">Record Payment</button>
-                                 )}
-                               </div>
-                           </td>
-                        </tr>
-                        );
-                      })}
-                   </tbody>
-                </table>
-             </div>
+              <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>
+              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
+                 <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-surface-elevated">
+                       <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Invoice #</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Customer / Request</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Total</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Paid</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Due</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
+                       </tr>
+                    </thead>
+                    <tbody className="bg-surface divide-y divide-gray-200">
+                       {invoices.length === 0 && (
+                         <tr><td colSpan={8} className="px-6 py-8 text-center text-muted">No invoices found. Complete a trip to generate an invoice.</td></tr>
+                       )}
+                       {invoices.map(inv => {
+                         const booking = bookings.find((b: any) => b.id === inv.request_id);
+                         return (
+                         <tr key={inv.id} className="hover:bg-surface-elevated/40 transition">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-foreground">{inv.invoice_number}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                              <span className="font-mono text-blue-400 font-semibold">{booking?.request_number || 'REQ-' + String(inv.request_id).slice(0, 8)}</span>
+                              {booking?.pickup_company_name && (
+                                <p className="text-xs text-muted mt-0.5">{booking.pickup_company_name}</p>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('en-IN') : '—'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-foreground">₹{parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-emerald-400">₹{parseFloat(inv.amount_paid || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-400">₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
+                                inv.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
+                                inv.status === 'PARTIALLY_PAID' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                'bg-red-500/10 text-red-400 border border-red-500/20'
+                              }`}>{inv.status}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {/* View Button */}
+                                  <button
+                                    onClick={() => generateInvoicePDF(inv, booking, false)}
+                                    title="View Invoice"
+                                    className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1 rounded text-xs font-semibold transition"
+                                  >
+                                    <Eye size={12}/> View
+                                  </button>
+                                  {/* Print Button */}
+                                  <button
+                                    onClick={() => generateInvoicePDF(inv, booking, true)}
+                                    title="Print Invoice"
+                                    className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1 rounded text-xs font-semibold transition"
+                                  >
+                                    <Printer size={12}/> Print
+                                  </button>
+                                  {/* Download PDF */}
+                                  <button
+                                    onClick={() => generateInvoicePDF(inv, booking, true)}
+                                    title="Download PDF"
+                                    className="inline-flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 px-2.5 py-1 rounded text-xs font-semibold shadow-sm transition"
+                                  >
+                                    <Download size={12}/> Download PDF
+                                  </button>
+                                  {inv.status !== 'PAID' && (
+                                      <button onClick={() => handleRecordPayment(inv.id, inv.amount_due)} className="text-xs bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded font-semibold transition ml-1">Record Payment</button>
+                                  )}
+                                </div>
+                            </td>
+                         </tr>
+                         );
+                       })}
+                    </tbody>
+                 </table>
+              </div>
+
              
               <h2 className="text-2xl font-bold text-foreground mb-4">Trip Expenses</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">

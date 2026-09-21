@@ -87,7 +87,10 @@ class CustomerInvoiceRead(BaseModel):
     invoice_number: str
     request_id: uuid.UUID
 
-    # Only what the customer needs
+    # Customer financial view
+    subtotal: Decimal
+    tax: Decimal = Decimal('0.00')
+    discount: Decimal = Decimal('0.00')
     total_amount: Decimal
     amount_paid: Decimal
     amount_due: Decimal

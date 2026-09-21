@@ -988,22 +988,38 @@ export default function AdminDashboard() {
           <div>
              <h1 className="text-3xl font-bold text-foreground mb-6">Business Dashboard</h1>
              
-             {dashboard && (
-                 <div className="grid grid-cols-3 gap-6 mb-8">
-                     <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-green-500">
-                         <h3 className="text-sm font-medium text-muted uppercase">Total Revenue</h3>
-                         <p className="text-3xl font-bold text-foreground mt-2">₹{(dashboard.revenue || dashboard.total_invoiced || 0).toLocaleString()}</p>
-                     </div>
-                     <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-red-500">
-                         <h3 className="text-sm font-medium text-muted uppercase">Total Expenses</h3>
-                         <p className="text-3xl font-bold text-foreground mt-2">₹{(dashboard.expenses || dashboard.total_operating_expenses || 0).toLocaleString()}</p>
-                     </div>
-                     <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
-                         <h3 className="text-sm font-medium text-muted uppercase">Net Profit</h3>
-                         <p className="text-3xl font-bold text-foreground mt-2">₹{(dashboard.profit || dashboard.operating_profit || 0).toLocaleString()}</p>
-                     </div>
-                 </div>
-             )}
+             {(() => {
+                 const totalInvoiced = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_amount || 0), 0) || parseFloat(dashboard?.total_invoiced || 0);
+                 const totalPaid = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_paid || 0), 0) || parseFloat(dashboard?.total_collected || 0);
+                 const totalDue = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_due || 0), 0) || parseFloat(dashboard?.outstanding_balance || 0);
+                 const totalExpenses = parseFloat(dashboard?.total_operating_expenses || dashboard?.expenses || 0);
+                 const netProfit = totalInvoiced - totalExpenses;
+
+                 return (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-green-500">
+                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Total Invoiced (Completed Trips)</h3>
+                          <p className="text-3xl font-extrabold text-foreground mt-2">₹{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                          <p className="text-xs text-muted mt-1">{invoices.length} invoices generated</p>
+                      </div>
+                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-emerald-500">
+                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Collected / Paid</h3>
+                          <p className="text-3xl font-extrabold text-emerald-400 mt-2">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                          <p className="text-xs text-muted mt-1">{invoices.filter(i => i.status === 'PAID').length} fully paid</p>
+                      </div>
+                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-amber-500">
+                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Outstanding Due</h3>
+                          <p className="text-3xl font-extrabold text-amber-400 mt-2">₹{totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                          <p className="text-xs text-muted mt-1">{invoices.filter(i => i.status === 'UNPAID').length} pending payment</p>
+                      </div>
+                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
+                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Net Revenue</h3>
+                          <p className="text-3xl font-extrabold text-blue-400 mt-2">₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                          <p className="text-xs text-muted mt-1">Expenses: ₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                  </div>
+                 );
+             })()}
 
              <h2 className="text-2xl font-bold text-foreground mb-4">Pricing Configuration</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-8">

@@ -195,10 +195,15 @@ export const api = {
     return res.json();
   },
   createPayment: async (data: any) => {
-    const res = await authFetch(`${API_URL}/admin/invoices/${data.invoice_id}/pay`, {
+    const res = await authFetch(`${API_URL}/admin/invoices/${data.invoice_id}/payments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        amount: data.amount,
+        method: data.payment_method || data.method || "BANK_TRANSFER",
+        reference_number: data.reference_number || null,
+        notes: data.notes || "Recorded by Admin"
+      }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();

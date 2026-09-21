@@ -33,3 +33,36 @@ async def get_customer_invoice(
     Excludes internal pricing fields (internal_base_cost, cargox_margin).
     """
     return await InvoiceService.get_invoice_customer(invoice_id, current_user)
+
+
+@router.post("/{invoice_id}/pay", response_model=CustomerInvoiceRead)
+async def pay_customer_invoice(
+    invoice_id: uuid.UUID,
+    payment_in: dict,
+    current_user: User = Depends(get_current_customer_user),
+    ):
+    """
+    Allows authenticated customer to pay their own invoice.
+    Enforces tenant isolation and records payment.
+    """
+    from fastapi import HTTPException, status
+    from decimal import Decimal
+    from app.schemas.invoice import PaymentCreate
+    from app.models.enums import PaymentMethod
+    from app.services.authorization import AuthorizationService
+
+    invoice = await InvoiceService.get_invoice_customer(invoice_id, current_user)
+    
+    amount = payment_in.get("amount")
+    if amount is None:
+        amount = invoice.amount_due
+    
+    pay_dto = PaymentCreate(
+        amount=Decimal(str(amount)),
+        method=PaymentMethod.BANK_TRANSFER,
+        reference_number=payment_in.get("reference_number", "CUST-ONLINE"),
+        notes=payment_in.get("notes", "Paid by Customer online")
+    )
+    
+    await InvoiceService.record_payment(invoice.id, pay_dto, current_user)
+    return await InvoiceService.get_invoice_customer(invoice.id, current_user)

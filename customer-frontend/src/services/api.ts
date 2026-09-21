@@ -145,7 +145,7 @@ export const api = {
     return res.json();
   },
   createPayment: async (data: any) => {
-    const res = await authFetch(`${API_URL}/financials/payments`, {
+    const res = await authFetch(`${API_URL}/customer/invoices/${data.invoice_id}/pay`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),

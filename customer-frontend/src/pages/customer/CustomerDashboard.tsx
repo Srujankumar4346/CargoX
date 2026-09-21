@@ -257,23 +257,23 @@ export default function CustomerDashboard() {
           </div>
       )}
 
-      <header className="bg-blue-600 text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <header className="bg-blue-600 text-white shadow-md sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-2">
-            <Truck />
-            <h1 className="text-2xl font-bold">CargoX Customer</h1>
+            <Truck size={24} className="shrink-0" />
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">CargoX Customer</h1>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 sm:gap-6">
             <NotificationDropdown userType="CUSTOMER" userId={1} />
             <UserButton />
-            <Link to="/" className="flex items-center gap-2 hover:text-gray-200">
-              <LogOut size={20} /> Logout
+            <Link to="/" className="flex items-center gap-1.5 text-sm hover:text-blue-100 transition">
+              <LogOut size={18} /> <span className="hidden sm:inline">Logout</span>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <main className="max-w-7xl mx-auto px-4 py-6 sm:py-8 grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-foreground">My Bookings</h2>

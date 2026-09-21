@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -31,6 +31,7 @@ export default function AdminDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   
@@ -311,53 +312,118 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex">
-      {/* Sidebar */}
-      <div className="w-64 bg-slate-900 border-r border-slate-800 text-white min-h-screen flex flex-col shadow-2xl z-10">
-        <div className="p-6 pb-2">
-          <h2 className="text-2xl font-bold tracking-wider mb-2 flex items-center justify-between">
-            CargoX Admin
-          </h2>
-          <div className="flex justify-between items-center mb-6 text-sm text-slate-400">
+    <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col md:flex-row relative">
+      {/* Mobile Top Header */}
+      <div className="md:hidden bg-slate-900 border-b border-slate-800 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsMobileSidebarOpen(true)}
+            aria-label="Open Navigation Menu"
+            className="p-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
+          >
+            <Menu size={22} />
+          </button>
+          <span className="font-bold text-lg tracking-wide">CargoX Admin</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <NotificationDropdown userType="ADMIN" userId={0} />
+          <UserButton />
+        </div>
+      </div>
+
+      {/* Mobile Sidebar Backdrop */}
+      {isMobileSidebarOpen && (
+        <div 
+          onClick={() => setIsMobileSidebarOpen(false)} 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar (Desktop + Mobile Drawer) */}
+      <div className={`
+        fixed md:static inset-y-0 left-0 z-50
+        w-72 md:w-64 bg-slate-900 border-r border-slate-800 text-white min-h-screen flex flex-col shadow-2xl
+        transition-transform duration-300 ease-in-out
+        ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div className="p-5 pb-2">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-2xl font-bold tracking-wider">
+              CargoX Admin
+            </h2>
+            <button 
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              aria-label="Close menu"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex justify-between items-center mb-5 text-sm text-slate-400">
              <span>Premium Ops</span>
-             <ThemeToggle />
+             <div className="hidden md:block">
+               <ThemeToggle />
+             </div>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 px-3 mb-6">
-          <button onClick={() => setActiveTab('dashboard')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+        <nav className="flex-1 space-y-1 px-3 mb-6 overflow-y-auto">
+          <button 
+            onClick={() => { setActiveTab('dashboard'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
              <MapIcon size={18} /> <span>Dashboard</span>
           </button>
-          <button onClick={() => setActiveTab('bookings')} className={`w-full text-left py-2.5 px-4 rounded flex items-center justify-between ${activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+          <button 
+            onClick={() => { setActiveTab('bookings'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center justify-between transition ${activeTab === 'bookings' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
              <div className="flex items-center gap-3"><Sparkles size={18} /> <span>Dispatch</span></div>
              {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").length > 0 && (
                 <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">{bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").length}</span>
              )}
           </button>
-          <button onClick={() => setActiveTab('vehicles')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+          <button 
+            onClick={() => { setActiveTab('vehicles'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
              <MapIcon size={18}/> <span>Fleet Status</span>
           </button>
-          <button onClick={() => setActiveTab('trips')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'trips' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+          <button 
+            onClick={() => { setActiveTab('trips'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'trips' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
              <MapIcon size={18}/> <span>Active Trips</span>
           </button>
-          <button onClick={() => setActiveTab('financials')} className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 ${activeTab === 'financials' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}>
+          <button 
+            onClick={() => { setActiveTab('financials'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'financials' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
              <MapIcon size={18}/> <span>Financials</span>
           </button>
-           <button onClick={() => setActiveTab('users')} className={`w-full text-left px-4 py-3 rounded-md transition font-medium flex items-center gap-3 ${activeTab === 'users' ? 'bg-blue-600 text-white' : 'text-foreground hover:bg-surface-elevated'}`}>
-             <Users size={20} /> Team Management
-           </button>
-           <button onClick={() => setActiveTab('ai')} className={`w-full text-left px-4 py-3 rounded-md transition font-medium flex items-center gap-3 ${activeTab === 'ai' ? 'bg-purple-600 text-white' : 'text-foreground hover:bg-surface-elevated'}`}>
-             <Bot size={20} /> AI Assistant
-           </button>
+          <button 
+            onClick={() => { setActiveTab('users'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left px-4 py-2.5 rounded transition font-medium flex items-center gap-3 ${activeTab === 'users' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+            <Users size={18} /> <span>Team Management</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('ai'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left px-4 py-2.5 rounded transition font-medium flex items-center gap-3 ${activeTab === 'ai' ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+            <Bot size={18} /> <span>AI Assistant</span>
+          </button>
         </nav>
         
-        <div className="mb-4 px-3">
+        <div className="hidden md:block mb-4 px-3">
            <NotificationDropdown userType="ADMIN" userId={0} />
         </div>
         
         <div className="p-4 border-t border-slate-800 flex items-center justify-between mt-auto">
           <div className="flex items-center gap-3 min-w-0">
             <UserButton />
-            <div className="truncate max-w-[110px]">
+            <div className="truncate max-w-[120px]">
               <p className="text-xs font-semibold text-slate-200 truncate">{user?.primaryEmailAddress?.emailAddress || user?.fullName || "Admin User"}</p>
               <span className="text-[10px] text-emerald-400 font-mono uppercase tracking-wider font-bold">ADMIN</span>
             </div>
@@ -369,7 +435,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-8 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0">
         
         {activeTab === 'dashboard' && (
           <div className="fade-in">
@@ -633,7 +699,8 @@ export default function AdminDashboard() {
 
              <h2 className="text-2xl font-bold text-foreground mb-4">Driver Profiles</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
-                <table className="min-w-full divide-y divide-gray-200">
+                <div className="overflow-x-auto">
+                   <table className="min-w-full divide-y divide-gray-200">
                    <thead className="bg-surface-elevated">
                       <tr>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Driver Name</th>
@@ -722,6 +789,7 @@ export default function AdminDashboard() {
                       )}
                    </tbody>
                 </table>
+                </div>
              </div>
 
              <div className="mt-4 bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-12">
@@ -853,7 +921,8 @@ export default function AdminDashboard() {
 
              <h2 className="text-2xl font-bold text-foreground mb-4">Vehicles</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
+                <div className="overflow-x-auto">
+                   <table className="min-w-full divide-y divide-gray-200">
                    <thead className="bg-surface-elevated">
                       <tr>
                          <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Vehicle</th>
@@ -941,6 +1010,7 @@ export default function AdminDashboard() {
                       )}
                    </tbody>
                 </table>
+                </div>
              </div>
              
              <div className="mt-8 bg-surface rounded-lg shadow-sm border border-border-theme p-6">
@@ -1088,6 +1158,7 @@ export default function AdminDashboard() {
 
               <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>
               <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
+                 <div className="overflow-x-auto">
                  <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-surface-elevated">
                        <tr>
@@ -1155,11 +1226,13 @@ export default function AdminDashboard() {
                        })}
                     </tbody>
                  </table>
+                 </div>
               </div>
 
              
               <h2 className="text-2xl font-bold text-foreground mb-4">Trip Expenses</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                    <thead className="bg-surface-elevated">
                       <tr>
@@ -1180,6 +1253,7 @@ export default function AdminDashboard() {
                       ))}
                    </tbody>
                 </table>
+                </div>
              </div>
           </div>
         )}
@@ -1191,7 +1265,8 @@ export default function AdminDashboard() {
              </div>
              
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
-                <table className="w-full text-left border-collapse">
+                <div className="overflow-x-auto">
+                <table className="min-w-full text-left border-collapse">
                    <thead>
                       <tr className="bg-surface-elevated border-b border-border-theme">
                          <th className="p-4 font-semibold text-muted text-sm">User ID / Email</th>
@@ -1264,6 +1339,7 @@ export default function AdminDashboard() {
                       )}
                    </tbody>
                 </table>
+                </div>
              </div>
            </div>
          )}

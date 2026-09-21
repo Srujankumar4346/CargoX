@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Truck, FileText, Map as MapIcon, Download, Eye, Printer } from "lucide-react";
+import { LogOut, Truck, FileText, Map as MapIcon, Download, Eye } from "lucide-react";
 import { useAuth, UserButton, SignInButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
@@ -429,14 +429,6 @@ export default function CustomerDashboard() {
                             className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1.5 rounded text-xs font-semibold transition"
                           >
                             <Eye size={13}/> View
-                          </button>
-                          {/* Print Invoice */}
-                          <button 
-                            onClick={() => handlePrintInvoice(inv, true)} 
-                            title="Print Invoice"
-                            className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1.5 rounded text-xs font-semibold transition"
-                          >
-                            <Printer size={13}/> Print
                           </button>
                           {/* Download PDF */}
                           <button 

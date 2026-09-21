@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Printer } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -688,16 +688,30 @@ export default function AdminDashboard() {
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.license_number}<br/>{d.aadhaar_number}</td>
                            <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${d.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{d.status}</span></td>
                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                               <button onClick={() => setEditingDriver(d)} className="text-blue-500 hover:text-blue-400 mr-3">Edit</button>
-                               <button onClick={async () => {
-                                   if(confirm('Are you sure you want to delete this driver?')) {
-                                       try {
-                                           await api.deleteDriver(d.id);
-                                           loadData();
-                                       } catch (err: any) { alert('Failed to delete driver: ' + err.message); }
-                                   }
-                               }} className="text-red-500 hover:text-red-400">Delete</button>
-                           </td>
+                                <div className="flex items-center justify-end gap-2">
+                                    <button 
+                                        onClick={() => setEditingDriver(d)} 
+                                        title="Edit Driver"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition"
+                                    >
+                                        <Edit2 size={12} /> Edit
+                                    </button>
+                                    <button 
+                                        onClick={async () => {
+                                            if(confirm('Are you sure you want to delete this driver?')) {
+                                                try {
+                                                    await api.deleteDriver(d.id);
+                                                    loadData();
+                                                } catch (err: any) { alert('Failed to delete driver: ' + err.message); }
+                                            }
+                                        }} 
+                                        title="Delete Driver"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition"
+                                    >
+                                        <Trash2 size={12} /> Delete
+                                    </button>
+                                </div>
+                            </td>
                         </tr>
                         )
                       ))}
@@ -893,16 +907,30 @@ export default function AdminDashboard() {
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{v.capacity_tons || v.capacity || 10} Ton</td>
                            <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${v.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{v.status}</span></td>
                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                               <button onClick={() => setEditingVehicle(v)} className="text-blue-500 hover:text-blue-400 mr-3">Edit</button>
-                               <button onClick={async () => {
-                                   if(confirm('Are you sure you want to delete this vehicle?')) {
-                                       try {
-                                           await api.deleteVehicle(v.id);
-                                           loadData();
-                                       } catch (err: any) { alert('Failed to delete vehicle: ' + err.message); }
-                                   }
-                               }} className="text-red-500 hover:text-red-400">Delete</button>
-                           </td>
+                                <div className="flex items-center justify-end gap-2">
+                                    <button 
+                                        onClick={() => setEditingVehicle(v)} 
+                                        title="Edit Vehicle"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition"
+                                    >
+                                        <Edit2 size={12} /> Edit
+                                    </button>
+                                    <button 
+                                        onClick={async () => {
+                                            if(confirm('Are you sure you want to delete this vehicle?')) {
+                                                try {
+                                                    await api.deleteVehicle(v.id);
+                                                    loadData();
+                                                } catch (err: any) { alert('Failed to delete vehicle: ' + err.message); }
+                                            }
+                                        }} 
+                                        title="Delete Vehicle"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition"
+                                    >
+                                        <Trash2 size={12} /> Delete
+                                    </button>
+                                </div>
+                            </td>
                         </tr>
                         )
                       ))}
@@ -1109,14 +1137,6 @@ export default function AdminDashboard() {
                                   >
                                     <Eye size={12}/> View
                                   </button>
-                                  {/* Print Button */}
-                                  <button
-                                    onClick={() => generateInvoicePDF(inv, booking, true)}
-                                    title="Print Invoice"
-                                    className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1 rounded text-xs font-semibold transition"
-                                  >
-                                    <Printer size={12}/> Print
-                                  </button>
                                   {/* Download PDF */}
                                   <button
                                     onClick={() => generateInvoicePDF(inv, booking, true)}
@@ -1198,42 +1218,46 @@ export default function AdminDashboard() {
                                   </span>
                                </td>
                                <td className="p-4 text-right">
-                                  {u.role !== 'ADMIN' && (
-                                     <button 
-                                        onClick={async () => {
-                                           if (confirm("Are you sure you want to promote this user to Admin?")) {
-                                              try {
-                                                 await api.updateUserRole(u.id, "ADMIN");
-                                                 alert("User promoted to Admin successfully.");
-                                                 loadData();
-                                              } catch (e: any) {
-                                                 alert("Failed to promote: " + e.message);
+                                  <div className="flex items-center justify-end">
+                                     {u.role !== 'ADMIN' && (
+                                        <button 
+                                           onClick={async () => {
+                                              if (confirm("Are you sure you want to promote this user to Admin?")) {
+                                                 try {
+                                                    await api.updateUserRole(u.id, "ADMIN");
+                                                    alert("User promoted to Admin successfully.");
+                                                    loadData();
+                                                 } catch (e: any) {
+                                                    alert("Failed to promote: " + e.message);
+                                                 }
                                               }
-                                           }
-                                        }}
-                                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                                     >
-                                        Make Admin
-                                     </button>
-                                  )}
-                                  {u.role === 'ADMIN' && (
-                                     <button 
-                                        onClick={async () => {
-                                           if (confirm("Are you sure you want to revoke Admin rights?")) {
-                                              try {
-                                                 await api.updateUserRole(u.id, "CUSTOMER");
-                                                 alert("User demoted successfully.");
-                                                 loadData();
-                                              } catch (e: any) {
-                                                 alert("Failed to demote: " + e.message);
+                                           }}
+                                           title="Make Admin"
+                                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition shadow-sm"
+                                        >
+                                           <UserPlus size={13} /> Make Admin
+                                        </button>
+                                     )}
+                                     {u.role === 'ADMIN' && (
+                                        <button 
+                                           onClick={async () => {
+                                              if (confirm("Are you sure you want to revoke Admin rights?")) {
+                                                 try {
+                                                    await api.updateUserRole(u.id, "CUSTOMER");
+                                                    alert("User demoted successfully.");
+                                                    loadData();
+                                                 } catch (e: any) {
+                                                    alert("Failed to demote: " + e.message);
+                                                 }
                                               }
-                                           }
-                                        }}
-                                        className="text-sm text-red-600 hover:text-red-800 font-medium ml-3"
-                                     >
-                                        Revoke Admin
-                                     </button>
-                                  )}
+                                           }}
+                                           title="Revoke Admin"
+                                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition shadow-sm"
+                                        >
+                                           <UserMinus size={13} /> Revoke Admin
+                                        </button>
+                                     )}
+                                  </div>
                                </td>
                             </tr>
                          ))

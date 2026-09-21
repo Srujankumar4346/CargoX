@@ -57,10 +57,15 @@ async def pay_customer_invoice(
     if amount is None:
         amount = invoice.amount_due
     
+    import uuid
+    pay_ref = payment_in.get("reference_number")
+    if not pay_ref or pay_ref.strip() == "":
+        pay_ref = f"PAY-CUST-{uuid.uuid4().hex[:8].upper()}"
+
     pay_dto = PaymentCreate(
         amount=Decimal(str(amount)),
         method=PaymentMethod.BANK_TRANSFER,
-        reference_number=payment_in.get("reference_number", "CUST-ONLINE"),
+        reference_number=pay_ref,
         notes=payment_in.get("notes", "Paid by Customer online")
     )
     

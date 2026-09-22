@@ -21,6 +21,7 @@ class VehicleRead(BaseModel):
     type: VehicleType
     capacity_tons: Decimal
     status: VehicleStatus
+    is_deletable: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 

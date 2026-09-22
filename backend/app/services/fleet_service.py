@@ -6,7 +6,7 @@ from decimal import Decimal
 from app.models.fleet import Vehicle, Driver, VehicleAssignment
 from app.models.user import User
 from app.models.enums import VehicleStatus, DriverStatus, UserRole
-from app.schemas.fleet import VehicleCreate, VehicleUpdate, DriverCreate, DriverUpdate
+from app.schemas.fleet import VehicleCreate, VehicleUpdate, VehicleRead, DriverCreate, DriverUpdate
 
 class FleetService:
     @staticmethod
@@ -28,10 +28,24 @@ class FleetService:
         return vehicle
 
     @staticmethod
-    async def list_vehicles(vehicle_status: Optional[VehicleStatus] = None) -> List[Vehicle]:
+    async def list_vehicles(vehicle_status: Optional[VehicleStatus] = None) -> List[VehicleRead]:
         if vehicle_status:
-            return await Vehicle.find(Vehicle.status == vehicle_status).to_list()
-        return await Vehicle.find_all().to_list()
+            vehicles = await Vehicle.find(Vehicle.status == vehicle_status).to_list()
+        else:
+            vehicles = await Vehicle.find_all().to_list()
+
+        results = []
+        for v in vehicles:
+            assignment = await VehicleAssignment.find_one(VehicleAssignment.vehicle_id == v.id)
+            results.append(VehicleRead(
+                id=v.id,
+                registration_number=v.registration_number,
+                type=v.type,
+                capacity_tons=Decimal(str(v.capacity_tons)),
+                status=v.status,
+                is_deletable=(assignment is None)
+            ))
+        return results
 
     @staticmethod
     async def get_vehicle(vehicle_id: uuid.UUID) -> Vehicle:

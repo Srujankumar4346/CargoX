@@ -32,7 +32,7 @@ def auth_headers_new_customer(async_client):
 @pytest.mark.anyio
 async def test_primary_admin_auto_provisioning(async_client, auth_headers_primary_admin):
     # Calling any endpoint that uses get_current_user should provision the admin
-    response = await async_client.get("/api/v1/admin/users", headers=auth_headers_primary_admin)
+    response = await async_client.get("/api/v1/admin/users/", headers=auth_headers_primary_admin)
     assert response.status_code == status.HTTP_200_OK
     
     # Verify in DB
@@ -44,7 +44,7 @@ async def test_primary_admin_auto_provisioning(async_client, auth_headers_primar
 @pytest.mark.anyio
 async def test_new_customer_auto_provisioning(async_client, auth_headers_new_customer):
     # Customer trying to access admin endpoint
-    response = await async_client.get("/api/v1/admin/users", headers=auth_headers_new_customer)
+    response = await async_client.get("/api/v1/admin/users/", headers=auth_headers_new_customer)
     assert response.status_code == status.HTTP_403_FORBIDDEN
     
     # Verify in DB that they were provisioned correctly as CUSTOMER_USER with no company
@@ -78,7 +78,7 @@ async def test_admin_can_update_role(async_client, auth_headers_primary_admin):
 @pytest.mark.anyio
 async def test_admin_cannot_demote_primary_admin(async_client, auth_headers_primary_admin):
     # Provision primary admin
-    await async_client.get("/api/v1/admin/users", headers=auth_headers_primary_admin)
+    await async_client.get("/api/v1/admin/users/", headers=auth_headers_primary_admin)
     primary_admin = await User.find_one(User.clerk_user_id == "user_primary_admin")
     
     response = await async_client.put(

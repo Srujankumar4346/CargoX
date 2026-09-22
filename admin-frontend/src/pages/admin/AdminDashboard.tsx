@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X, AlertTriangle } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -7,6 +7,50 @@ import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
 import ThemeToggle from "../../components/ThemeToggle";
+import DispatchBoard from "../../components/DispatchBoard";
+
+// ── In-App Confirm Modal ──────────────────────────────────────────────────────
+function ConfirmModal({ open, title, message, confirmLabel, confirmClass, onConfirm, onCancel }: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmClass?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="shrink-0 w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+            <AlertTriangle size={20} className="text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">{title}</h3>
+            <p className="text-sm text-slate-400 mt-1 leading-relaxed">{message}</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition shadow-sm ${confirmClass || 'bg-red-600 hover:bg-red-500'}`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ── Validation / formatting helpers ─────────────────────────────────────────
 /** Title-case every word: "john doe" → "John Doe" */
@@ -25,6 +69,15 @@ const VEHICLE_REG_REGEX = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/;
 
 /** Indian driving licence hint: SSYYNNNNNNNNN (state 2 letters + RTO 2 digits + year 4 + 7 digits) */
 // Common formats: TN0120210012345 or DL-0120110012345 — validated at submit
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Mask Aadhaar (show only last 4 digits) ───────────────────────────────────
+const maskAadhaar = (val: string) => {
+  const digits = (val || "").replace(/\D/g, "");
+  if (digits.length < 4) return "XXXX XXXX " + digits.padStart(4, 'X');
+  const last4 = digits.slice(-4);
+  return `XXXX XXXX ${last4}`;
+};
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
@@ -65,6 +118,35 @@ export default function AdminDashboard() {
   const [newDriverName, setNewDriverName] = useState("");
   const [newDriverLicense, setNewDriverLicense] = useState("");
   const [newVehicleReg, setNewVehicleReg] = useState("");
+
+  // ── In-app Confirm Modal state ───────────────────────────────────────────
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    confirmClass?: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmLabel: "Confirm",
+    onConfirm: () => {},
+  });
+
+  const showConfirm = (opts: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    confirmClass?: string;
+    onConfirm: () => void;
+  }) => {
+    setConfirmModal({ open: true, ...opts });
+  };
+
+  const closeConfirm = () => setConfirmModal(prev => ({ ...prev, open: false }));
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Wire Clerk token retrieval into API service
   useEffect(() => {
@@ -250,14 +332,22 @@ export default function AdminDashboard() {
   };
 
   const handleForceComplete = async (tripId: string) => {
-    if (!confirm("Mark this trip as COMPLETED and generate invoice?")) return;
-    try {
-      await api.forceCompleteTrip(tripId);
-      alert("Trip completed! Invoice has been generated. Check Financials tab.");
-      loadData();
-    } catch (e: any) {
-      alert("Failed: " + e.message);
-    }
+    showConfirm({
+      title: "Complete Trip & Generate Invoice",
+      message: "Mark this trip as COMPLETED? An invoice will be auto-generated and the vehicle/driver will be freed.",
+      confirmLabel: "✓ Complete & Invoice",
+      confirmClass: "bg-green-600 hover:bg-green-500",
+      onConfirm: async () => {
+        closeConfirm();
+        try {
+          await api.forceCompleteTrip(tripId);
+          alert("Trip completed! Invoice has been generated. Check Financials tab.");
+          loadData();
+        } catch (e: any) {
+          alert("Failed: " + e.message);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -312,6 +402,16 @@ export default function AdminDashboard() {
   }
 
   return (
+    <>
+    <ConfirmModal
+      open={confirmModal.open}
+      title={confirmModal.title}
+      message={confirmModal.message}
+      confirmLabel={confirmModal.confirmLabel}
+      confirmClass={confirmModal.confirmClass}
+      onConfirm={confirmModal.onConfirm}
+      onCancel={closeConfirm}
+    />
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col md:flex-row relative">
       {/* Mobile Top Header */}
       <div className="md:hidden bg-slate-900 border-b border-slate-800 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
@@ -520,90 +620,29 @@ export default function AdminDashboard() {
         )}
         {activeTab === 'bookings' && (
           <div className="fade-in">
-             <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-6">Dispatch Board (Phase 8.5)</h1>
-             
-             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").map(booking => (
-               <div key={booking.id} className="card p-6 mb-6">
-                  <div className="flex justify-between items-start mb-4 border-b pb-4">
-                     <div>
-                       <h3 className="text-xl font-bold text-foreground">{booking.request_number || `REQ-${booking.id.substring(0,6)}`}</h3>
-                       <p className="text-muted mt-1">{booking.pickup_company_name} → {booking.destination_company_name}</p>
-                       <p className="text-sm font-medium text-blue-600 mt-2">Cargo: {booking.weight_tons} Ton {booking.goods_type}</p>
-                     </div>
-                     <div className="flex flex-col items-end gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          booking.status === 'ACCEPTED' ? 'bg-green-100 text-green-800 border border-green-300' :
-                          booking.status === 'SUBMITTED' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {booking.status}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {booking.status === "SUBMITTED" && (
-                            <button onClick={() => handleApproveBooking(booking.id)} className="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded text-sm hover:bg-emerald-200 transition flex items-center gap-1">
-                               ✓ Approve Request
-                            </button>
-                          )}
-                          <button onClick={() => handleGetTripRecommendation(booking)} className="bg-purple-100 text-purple-700 font-bold px-3 py-1 rounded text-sm flex items-center gap-1 hover:bg-purple-200">
-                             <Sparkles size={14}/> Get AI Recommendation
-                          </button>
-                        </div>
-                     </div>
-                  </div>
-                  
-                  {aiRecommendations[booking.id] && (
-                     <div className="mb-6 bg-purple-50 p-4 rounded-lg border border-purple-200">
-                        <h4 className="font-bold text-purple-900 mb-2 flex items-center gap-2"><Sparkles size={16}/> AI Intelligence Report</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                           <div>
-                              <p className="font-bold text-foreground">Recommended Vehicle</p>
-                              <p className="text-muted mb-1">Vehicle {aiRecommendations[booking.id].vehicle?.vehicle?.vehicle_number} (Score: {aiRecommendations[booking.id].vehicle?.score}/100)</p>
-                              <ul className="text-xs text-muted space-y-1">
-                                  {aiRecommendations[booking.id].vehicle?.reasons?.map((r: string, i: number) => <li key={i}>{r}</li>)}
-                              </ul>
-                           </div>
-                           <div>
-                              <p className="font-bold text-foreground">Price Prediction</p>
-                              <p className="text-muted mb-1">Suggested Price: ₹{aiRecommendations[booking.id].price?.total}</p>
-                              <ul className="text-xs text-muted space-y-1">
-                                  <li>Base: ₹{aiRecommendations[booking.id].price?.base}</li>
-                                  <li>Distance: ₹{aiRecommendations[booking.id].price?.distance}</li>
-                                  <li>Margin: ₹{aiRecommendations[booking.id].price?.margin}</li>
-                              </ul>
-                           </div>
-                        </div>
-                     </div>
-                  )}
-                  
-                  <form className="grid grid-cols-2 gap-4 border-t pt-4">
-                     <div>
-                       <label className="block text-sm font-medium text-foreground">Assign Vehicle</label>
-                       <select value={selectedVehicle} onChange={e => setSelectedVehicle(e.target.value)} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
-                          <option value="">Select Available Vehicle...</option>
-                          {vehicles.filter(v => v.status === "AVAILABLE").map(v => (
-                            <option key={v.id} value={v.id}>[ {v.registration_number || v.vehicle_number} ] {v.capacity_tons || v.capacity} Ton</option>
-                          ))}
-                       </select>
-                     </div>
-                     <div>
-                       <label className="block text-sm font-medium text-foreground">Assign Driver</label>
-                       <select value={selectedDriver} onChange={e => setSelectedDriver(e.target.value)} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
-                          <option value="">Select Available Driver...</option>
-                          {drivers.filter(d => d.status === "AVAILABLE").map(d => (
-                            <option key={d.id} value={d.id}>[ {d.name || d.full_name} ]</option>
-                          ))}
-                       </select>
-                     </div>
-                     <div className="col-span-2 text-right mt-2">
-                       <button type="button" onClick={() => handleCreateTrip(booking)} className="bg-blue-600 text-white px-6 py-2 rounded-md font-bold hover:bg-blue-700">Create Trip</button>
-                     </div>
-                  </form>
-               </div>
-             ))}
-             
-             {bookings.filter(b => b.status === "REQUESTED" || b.status === "SUBMITTED" || b.status === "ACCEPTED").length === 0 && (
-               <p className="text-muted">No pending bookings.</p>
-             )}
+            <DispatchBoard
+              bookings={bookings}
+              vehicles={vehicles}
+              drivers={drivers}
+              activePricing={activePricing}
+              aiRecommendations={aiRecommendations}
+              onApprove={handleApproveBooking}
+              onCreateTrip={async (booking: any, vehicleId: string, driverId: string) => {
+                const bookingId = typeof booking === "object" ? booking.id : booking;
+                const bookingStatus = typeof booking === "object" ? booking.status : null;
+                if (bookingStatus === "SUBMITTED") {
+                  await api.approveBooking(bookingId);
+                }
+                await api.createTrip({
+                  booking_id: bookingId,
+                  vehicle_id: vehicleId,
+                  driver_id: driverId,
+                });
+                alert("Trip dispatched successfully! Vehicle and driver assigned.");
+                loadData();
+              }}
+              onGetAiRec={handleGetTripRecommendation}
+            />
           </div>
         )}
         
@@ -752,7 +791,7 @@ export default function AdminDashboard() {
                         <tr key={d.id || i}>
                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{d.name}<div className="text-xs text-muted font-normal">Age: {d.age || 'N/A'}</div></td>
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.phone}<br/>{d.email}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.license_number}<br/>{d.aadhaar_number}</td>
+                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.license_number}<br/>{maskAadhaar(d.aadhaar_number)}</td>
                            <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${d.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{d.status}</span></td>
                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <div className="flex items-center justify-end gap-2">
@@ -763,15 +802,19 @@ export default function AdminDashboard() {
                                     >
                                         <Edit2 size={12} /> Edit
                                     </button>
-                                    <button 
-                                        onClick={async () => {
-                                            if(confirm('Are you sure you want to delete this driver?')) {
-                                                try {
-                                                    await api.deleteDriver(d.id);
-                                                    loadData();
-                                                } catch (err: any) { alert('Failed to delete driver: ' + err.message); }
-                                            }
-                                        }} 
+                                     <button 
+                                         onClick={() => showConfirm({
+                                           title: "Delete Driver",
+                                           message: `Are you sure you want to delete driver "${d.name}"? This action cannot be undone.`,
+                                           confirmLabel: "Delete Driver",
+                                           onConfirm: async () => {
+                                             closeConfirm();
+                                             try {
+                                               await api.deleteDriver(d.id);
+                                               loadData();
+                                             } catch (err: any) { alert('Failed to delete driver: ' + err.message); }
+                                           }
+                                         })}
                                         title="Delete Driver"
                                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition"
                                     >
@@ -984,20 +1027,26 @@ export default function AdminDashboard() {
                                     >
                                         <Edit2 size={12} /> Edit
                                     </button>
-                                    <button 
-                                        onClick={async () => {
-                                            if(confirm('Are you sure you want to delete this vehicle?')) {
-                                                try {
-                                                    await api.deleteVehicle(v.id);
-                                                    loadData();
-                                                } catch (err: any) { alert('Failed to delete vehicle: ' + err.message); }
-                                            }
-                                        }} 
+                                     {v.is_deletable && (
+                                     <button 
+                                         onClick={() => showConfirm({
+                                           title: "Delete Vehicle",
+                                           message: `Delete vehicle "${v.registration_number || v.vehicle_number}"? This vehicle has no trip history and will be permanently removed.`,
+                                           confirmLabel: "Delete Vehicle",
+                                           onConfirm: async () => {
+                                             closeConfirm();
+                                             try {
+                                               await api.deleteVehicle(v.id);
+                                               loadData();
+                                             } catch (err: any) { alert('Failed to delete vehicle: ' + err.message); }
+                                           }
+                                         })}
                                         title="Delete Vehicle"
                                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition"
                                     >
                                         <Trash2 size={12} /> Delete
                                     </button>
+                                     )}
                                 </div>
                             </td>
                         </tr>
@@ -1292,40 +1341,50 @@ export default function AdminDashboard() {
                                     {u.role}
                                   </span>
                                </td>
-                               <td className="p-4 text-right">
-                                  <div className="flex items-center justify-end">
-                                     {u.role !== 'ADMIN' && (
-                                        <button 
-                                           onClick={async () => {
-                                              if (confirm("Are you sure you want to promote this user to Admin?")) {
-                                                 try {
-                                                    await api.updateUserRole(u.id, "ADMIN");
-                                                    alert("User promoted to Admin successfully.");
-                                                    loadData();
-                                                 } catch (e: any) {
-                                                    alert("Failed to promote: " + e.message);
-                                                 }
+                                <td className="p-4 text-right">
+                                   <div className="flex items-center justify-end gap-2">
+                                      {u.role !== 'ADMIN' && (
+                                         <button
+                                            onClick={() => showConfirm({
+                                              title: "Promote to Admin",
+                                              message: `Grant admin privileges to "${u.email}"? They will gain full access to the CargoX Admin Portal.`,
+                                              confirmLabel: "Make Admin",
+                                              confirmClass: "bg-blue-600 hover:bg-blue-500",
+                                              onConfirm: async () => {
+                                                closeConfirm();
+                                                try {
+                                                  await api.updateUserRole(u.id, "ADMIN");
+                                                  alert("User promoted to Admin successfully.");
+                                                  loadData();
+                                                } catch (e: any) {
+                                                  alert("Failed to promote: " + e.message);
+                                                }
                                               }
-                                           }}
-                                           title="Make Admin"
-                                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition shadow-sm"
-                                        >
-                                           <UserPlus size={13} /> Make Admin
-                                        </button>
-                                     )}
+                                            })}
+                                            title="Make Admin"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition shadow-sm"
+                                         >
+                                            <UserPlus size={13} /> Make Admin
+                                         </button>
+                                      )}
                                      {u.role === 'ADMIN' && (
                                         <button 
-                                           onClick={async () => {
-                                              if (confirm("Are you sure you want to revoke Admin rights?")) {
-                                                 try {
-                                                    await api.updateUserRole(u.id, "CUSTOMER");
-                                                    alert("User demoted successfully.");
-                                                    loadData();
-                                                 } catch (e: any) {
-                                                    alert("Failed to demote: " + e.message);
-                                                 }
+                                            onClick={() => showConfirm({
+                                              title: "Revoke Admin Privileges",
+                                              message: `Remove admin access for "${u.email}"? They will be downgraded to a standard customer account and lose all admin capabilities immediately.`,
+                                              confirmLabel: "Revoke Admin",
+                                              confirmClass: "bg-red-600 hover:bg-red-500",
+                                              onConfirm: async () => {
+                                                closeConfirm();
+                                                try {
+                                                  await api.updateUserRole(u.id, "CUSTOMER_USER");
+                                                  alert("Admin access revoked. User is now a standard customer.");
+                                                  loadData();
+                                                } catch (e: any) {
+                                                  alert("Failed to revoke admin: " + e.message);
+                                                }
                                               }
-                                           }}
+                                            })}
                                            title="Revoke Admin"
                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition shadow-sm"
                                         >
@@ -1346,6 +1405,7 @@ export default function AdminDashboard() {
       </div>
 
     </div>
+    </>
   );
 }
 

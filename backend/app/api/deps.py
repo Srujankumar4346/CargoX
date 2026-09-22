@@ -29,23 +29,33 @@ async def get_current_user(token_data: dict = Depends(get_current_user_token)) -
     user = await User.find_one(User.clerk_user_id == clerk_user_id)
     if not user:
         email = token_data.get("email") or f"{clerk_user_id}@placeholder.cargox.com"
-        role = UserRole.CUSTOMER_USER
-        if settings.CARGOX_PRIMARY_ADMIN_CLERK_ID and clerk_user_id == settings.CARGOX_PRIMARY_ADMIN_CLERK_ID:
-            role = UserRole.ADMIN
-            
-        user = User(
-            clerk_user_id=clerk_user_id,
-            email=email,
-            role=role,
-            customer_company_id=None
-        )
-        try:
-            await user.insert()
-        except Exception:
-            # Handle unique constraint or duplicate insert gracefully
-            user = await User.find_one(User.clerk_user_id == clerk_user_id)
-            if not user:
-                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to provision user")
+        
+        # Check if user already exists by email (e.g. provisioned by Admin as DRIVER or invited)
+        existing_by_email = await User.find_one(User.email == email)
+        if existing_by_email:
+            user = existing_by_email
+            user.clerk_user_id = clerk_user_id
+            await user.save()
+        else:
+            role = UserRole.CUSTOMER_USER
+            if settings.CARGOX_PRIMARY_ADMIN_CLERK_ID and clerk_user_id == settings.CARGOX_PRIMARY_ADMIN_CLERK_ID:
+                role = UserRole.ADMIN
+                
+            user = User(
+                clerk_user_id=clerk_user_id,
+                email=email,
+                role=role,
+                customer_company_id=None
+            )
+            try:
+                await user.insert()
+            except Exception:
+                # Handle unique constraint or duplicate insert gracefully
+                user = await User.find_one(User.clerk_user_id == clerk_user_id)
+                if not user:
+                    user = await User.find_one(User.email == email)
+                if not user:
+                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to provision user")
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")

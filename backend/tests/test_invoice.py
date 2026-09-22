@@ -193,12 +193,21 @@ async def test_generate_invoice_amounts_match_quotation(async_client, admin_user
     data = resp.json()
 
     # 100 km * 20 base + 100 km * 5 margin = 2000 + 500 = 2500
+    assert Decimal(str(data["distance_km"])) == Decimal("100.00")
     assert Decimal(str(data["internal_base_cost"])) == Decimal("2000.00")
     assert Decimal(str(data["cargox_margin"])) == Decimal("500.00")
     assert Decimal(str(data["customer_total_charge"])) == Decimal("2500.00")
     assert Decimal(str(data["subtotal"])) == Decimal("2500.00")
     assert Decimal(str(data["total_amount"])) == Decimal("2500.00")
     assert Decimal(str(data["amount_due"])) == Decimal("2500.00")
+
+    # Changing active pricing after acceptance cannot change the invoice snapshot.
+    await async_client.post("/api/v1/admin/pricing-configs", json={
+        "name": "Later Rate", "base_rate_per_km": "99.00", "margin_per_km": "1.00"
+    })
+    assert Decimal(str((await async_client.post(
+        f"/api/v1/admin/trips/{ctx['trip_id']}/invoice", json={}
+    )).json()["total_amount"])) == Decimal("2500.00")
 
 
 @pytest.mark.anyio
@@ -547,6 +556,12 @@ async def test_direct_admin_approval_creates_accepted_quotation(async_client, ad
     })
     request_id = req.json()["id"]
 
+    # Direct approval may snapshot only an explicitly approved distance.
+    delivery_request = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(request_id))
+    assert delivery_request is not None
+    delivery_request.distance_km = 15.0
+    await delivery_request.save()
+
     # Direct Admin Approval WITHOUT a prior quotation
     app_resp = await async_client.post(f"/api/v1/admin/requests/{request_id}/approve")
     assert app_resp.status_code == 200
@@ -555,6 +570,7 @@ async def test_direct_admin_approval_creates_accepted_quotation(async_client, ad
     created_quote = await Quotation.find_one(Quotation.request_id == uuid.UUID(request_id))
     assert created_quote is not None
     assert created_quote.status == QuotationStatus.ACCEPTED
+    assert Decimal(str(created_quote.distance_km)) == Decimal("15.0")
     assert Decimal(str(created_quote.base_rate_per_km)) == Decimal("25.00")
     assert Decimal(str(created_quote.cargox_margin)) > Decimal("0.00")
 
@@ -594,7 +610,32 @@ async def test_direct_admin_approval_creates_accepted_quotation(async_client, ad
     assert inv_resp.status_code == 201
     inv_data = inv_resp.json()
     assert inv_data["quotation_id"] == str(created_quote.id)
+    assert Decimal(str(inv_data["distance_km"])) == Decimal("15.0")
     assert Decimal(str(inv_data["total_amount"])) == Decimal(str(created_quote.customer_total_charge))
+
+
+@pytest.mark.anyio
+async def test_direct_admin_approval_rejects_missing_distance(async_client, admin_user, customer_user):
+    """Approval must not invent a 500 km distance when the request has none."""
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+
+    await async_client.post("/api/v1/admin/pricing-configs", json={
+        "name": "Missing Distance Rate", "base_rate_per_km": "25.00", "margin_per_km": "2.00"
+    })
+    recipient = await async_client.post("/api/v1/customer/recipients", json={
+        "name": "No Distance Recipient", "address": "No Distance Address"
+    })
+    request = await async_client.post("/api/v1/customer/requests", json={
+        "goods_type": "GENERAL", "weight_tons": 1.0,
+        "pickup_company_name": "No Distance Co", "pickup_address": "No Distance Pickup",
+        "recipient_company_id": recipient.json()["id"]
+    })
+
+    response = await async_client.post(f"/api/v1/admin/requests/{request.json()['id']}/approve")
+    assert response.status_code == 400
+    assert "actual approved distance" in response.json()["detail"]
+    assert await Quotation.find_one(Quotation.request_id == uuid.UUID(request.json()["id"])) is None
 
 
 # ---------------------------------------------------------------------------

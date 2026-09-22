@@ -1,463 +1,106 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { LogOut, Truck, FileText, Map as MapIcon, Download, Eye } from "lucide-react";
-import { useAuth, UserButton, SignInButton } from "@clerk/react";
+import { AlertCircle, ArrowRight, CheckCircle2, CircleDollarSign, Download, Eye, FileText, LogOut, Map as MapIcon, MapPin, Package, Plus, Settings, Truck, X } from "lucide-react";
+import { useAuth, useUser, UserButton, SignInButton } from "@clerk/react";
 import { api, setTokenGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import StructuredAddressForm, { type AddressData } from "../../components/StructuredAddressForm";
+import BookingFlow from "../../components/BookingFlow";
+import AssignedOperationsSection from "../../components/AssignedOperationsSection";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
+
+const activeStatuses = ["ACCEPTED", "VEHICLE_ASSIGNED", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS", "IN_TRANSIT", "ARRIVED", "POD_SUBMITTED"];
+const cancelledStatuses = ["CUSTOMER_CANCELLED", "REJECTED"];
+const normalize = (value: string | undefined) => (value || "").toUpperCase().replace(/ /g, "_");
+const money = (value: unknown) => `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function StatusBadge({ status }: { status: string }) {
+  const normalized = normalize(status);
+  const tone = normalized === "COMPLETED" || normalized === "DELIVERED" || normalized === "PAID" ? "bg-emerald-400/10 text-emerald-300 border-emerald-400/20" : activeStatuses.includes(normalized) ? "bg-blue-400/10 text-blue-300 border-blue-400/20" : cancelledStatuses.includes(normalized) || normalized === "UNPAID" ? "bg-red-400/10 text-red-300 border-red-400/20" : "bg-amber-400/10 text-amber-300 border-amber-400/20";
+  return <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.12em] ${tone}`}>{status?.replace(/_/g, " ") || "UNKNOWN"}</span>;
+}
+
+function Skeleton({ className }: { className: string }) { return <div className={`animate-pulse rounded-lg bg-slate-800/80 ${className}`} />; }
 
 export default function CustomerDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { user } = useUser();
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [showBookingFlow, setShowBookingFlow] = useState(false);
   const [bookings, setBookings] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [formData, setFormData] = useState({ 
-    pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", 
-    drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", 
-    cargo: "", weight: "", distance: "" 
-  });
+  const [bookingsError, setBookingsError] = useState("");
+  const [invoicesError, setInvoicesError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [bookingFilter, setBookingFilter] = useState("ALL");
+  const [formData, setFormData] = useState({ pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", pickup_contact: "", pickup_phone: "", drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", drop_contact: "", drop_phone: "", cargo: "", description: "", special_instructions: "", weight: "", distance: "" });
+  const [bookingStep, setBookingStep] = useState(1);
+  const [submittedBooking, setSubmittedBooking] = useState<any>(null);
   const [trackingTrip, setTrackingTrip] = useState<any>(null);
   const [trackingLocations, setTrackingLocations] = useState<any[]>([]);
-  const [pricePerKm, setPricePerKm] = useState<number>(22);
-  
+  const [pricePerKm, setPricePerKm] = useState<number | null>(null);
   const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [editBookingData, setEditBookingData] = useState<any>(null);
 
-
-  // Wire Clerk token retrieval into API service
-  useEffect(() => {
-    if (getToken) {
-      setTokenGetter(getToken);
-    }
-  }, [getToken]);
+  useEffect(() => { if (getToken) setTokenGetter(getToken); }, [getToken]);
 
   const loadData = async () => {
-    try {
-      const b = await api.getBookings();
-      setBookings(Array.isArray(b) ? b : []);
-      
-      try {
-        const allInvoices = await api.getInvoices();
-        setInvoices(Array.isArray(allInvoices) ? allInvoices : []);
-      } catch (invErr) {
-        console.warn("Could not fetch invoices:", invErr);
-      }
-      
-      try {
-        const pricing = await api.getActivePricing();
-        if (pricing && pricing.base_rate_per_km) {
-          setPricePerKm(parseFloat(pricing.base_rate_per_km));
-        }
-      } catch (e) {
-        console.error("Failed to load active pricing config", e);
-      }
-    } catch (e) {
-      console.error("Failed to load data", e);
-    }
+    setBookingsError(""); setInvoicesError("");
+    const [bookingResult, invoiceResult, pricingResult] = await Promise.allSettled([api.getBookings(), api.getInvoices(), api.getActivePricing()]);
+    if (bookingResult.status === "fulfilled") setBookings(Array.isArray(bookingResult.value) ? bookingResult.value : []); else setBookingsError("Unable to load your bookings.");
+    if (invoiceResult.status === "fulfilled") setInvoices(Array.isArray(invoiceResult.value) ? invoiceResult.value : []); else setInvoicesError("Unable to load your invoices.");
+    if (pricingResult.status === "fulfilled" && pricingResult.value?.base_rate_per_km) setPricePerKm(Number(pricingResult.value.base_rate_per_km));
+    setLoading(false);
   };
 
-  useEffect(() => {
-    if (isLoaded) {
-      loadData();
-    }
-  }, [isLoaded, isSignedIn]);
-  
-  // Track location history if a tracking trip is active
-  useEffect(() => {
-     let interval: any;
-      if (trackingTrip && trackingTrip.status === "IN TRANSIT") {
-         const fetchLocs = async () => {
-             try {
-                 const trackData = await api.getTracking(trackingTrip.request_id || trackingTrip.id);
-                 if (trackData && trackData.location_history) {
-                    setTrackingLocations(trackData.location_history);
-                 }
-             } catch (e) {}
-         };
-         fetchLocs();
-         interval = setInterval(fetchLocs, 10000);
-     }
-     return () => {
-         if(interval) clearInterval(interval);
-     };
-  }, [trackingTrip]);
+  useEffect(() => { if (isLoaded && isSignedIn) loadData(); }, [isLoaded, isSignedIn]);
+  useEffect(() => { let interval: any; if (trackingTrip) { const fetchLocations = async () => { try { const data = await api.getTracking(trackingTrip.request_id || trackingTrip.id); setTrackingLocations(data?.location_history || []); } catch { /* tracking errors stay inside the existing modal flow */ } }; fetchLocations(); if (normalize(trackingTrip.status) === "IN_TRANSIT") interval = setInterval(fetchLocations, 10000); } return () => interval && clearInterval(interval); }, [trackingTrip]);
 
-  const handleBookingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        goods_type: formData.cargo,
-        weight_tons: parseFloat(formData.weight) || 0,
-        pickup_company_name: formData.pickup_company || "Unknown Company",
-        pickup_address: formData.pickup_address || "Unknown Address",
-        pickup_lat: formData.pickup_lat !== "" ? parseFloat(formData.pickup_lat) : null,
-        pickup_lng: formData.pickup_lng !== "" ? parseFloat(formData.pickup_lng) : null,
-        destination_company_name: formData.drop_company || "Unknown Company",
-        destination_address: formData.drop_address || "Unknown Address",
-        destination_lat: formData.drop_lat !== "" ? parseFloat(formData.drop_lat) : null,
-        destination_lng: formData.drop_lng !== "" ? parseFloat(formData.drop_lng) : null,
-      };
-      
-      if (editBookingData) {
-        await api.updateBooking(editBookingData.id, payload);
-        setEditBookingData(null);
-      } else {
-        await api.createBooking(payload);
-      }
-      
-      setShowBookingForm(false);
-      loadData();
-    } catch (e) {
-      alert("Failed to create/update booking: " + e);
-    }
+  const submitBooking = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const payload = { goods_type: formData.cargo, goods_description: formData.description || null, special_instructions: formData.special_instructions || null, weight_tons: Number(formData.weight) || 0, pickup_company_name: formData.pickup_company || "Unknown Company", pickup_address: formData.pickup_address || "Unknown Address", pickup_contact_person: formData.pickup_contact || null, pickup_phone: formData.pickup_phone || null, pickup_lat: formData.pickup_lat ? Number(formData.pickup_lat) : null, pickup_lng: formData.pickup_lng ? Number(formData.pickup_lng) : null, destination_company_name: formData.drop_company || "Unknown Company", destination_address: formData.drop_address || "Unknown Address", destination_contact_person: formData.drop_contact || null, destination_phone: formData.drop_phone || null, destination_lat: formData.drop_lat ? Number(formData.drop_lat) : null, destination_lng: formData.drop_lng ? Number(formData.drop_lng) : null };
+    try { const result = editBookingData ? await api.updateBooking(editBookingData.id, payload) : await api.createBooking(payload); setSubmittedBooking(editBookingData ? null : result); setShowBookingForm(false); setShowBookingFlow(true); setEditBookingData(null); setBookingStep(1); loadData(); } catch (error) { alert(`Failed to ${editBookingData ? "update" : "create"} booking: ${error}`); }
   };
+  const openNewBooking = () => { setSubmittedBooking(null); setEditBookingData(null); setBookingStep(1); setFormData({ pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", pickup_contact: "", pickup_phone: "", drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", drop_contact: "", drop_phone: "", cargo: "", description: "", special_instructions: "", weight: "", distance: "" }); setShowBookingForm(false); setShowBookingFlow(true); };
+  const editBooking = (booking: any) => { setEditBookingData(booking); setBookingStep(1); setFormData({ pickup_company: booking.pickup_company_name || "", pickup_address: booking.pickup_address || "", pickup_lat: booking.pickup_lat?.toString() || "", pickup_lng: booking.pickup_lng?.toString() || "", pickup_contact: booking.pickup_contact_person || "", pickup_phone: booking.pickup_phone || "", drop_company: booking.destination_company_name || "", drop_address: booking.destination_address || "", drop_lat: booking.destination_lat?.toString() || "", drop_lng: booking.destination_lng?.toString() || "", drop_contact: booking.destination_contact_person || "", drop_phone: booking.destination_phone || "", cargo: booking.goods_type || "", description: booking.goods_description || "", special_instructions: booking.special_instructions || "", weight: booking.weight_tons?.toString() || "", distance: booking.distance_km?.toString() || "" }); setShowBookingForm(false); setShowBookingFlow(true); };
+  const cancelBooking = async () => { if (!cancelReason.trim()) return alert("Please provide a reason for cancellation."); try { await api.cancelBooking(cancelBookingId!, cancelReason); setCancelBookingId(null); setCancelReason(""); loadData(); } catch (error) { alert(`Failed to cancel: ${error}`); } };
+  const requestCancel = async (booking: any) => { if (booking.status === "SUBMITTED" || booking.status === "UNDER_REVIEW") { if (confirm("Are you sure you want to cancel this booking?")) { try { await api.cancelBooking(booking.id); loadData(); } catch (error) { alert(`Failed to cancel: ${error}`); } } } else { setCancelBookingId(booking.id); } };
+  const trackBooking = async (booking: any) => { try { const data = await api.getTracking(booking.id); if (data) { setTrackingTrip(data); setTrackingLocations(data.location_history || []); } } catch { alert("Tracking is not active yet or could not be loaded."); } };
+  const payInvoice = async (invoice: any) => { try { await api.createPayment({ invoice_id: invoice.id, amount: invoice.amount_due, payment_method: "CREDIT_CARD", payment_type: "FULL", recorded_by: "Customer" }); alert("Payment successful!"); loadData(); } catch (error) { alert(`Payment failed: ${error}`); } };
+  const printInvoice = (invoice: any, autoPrint: boolean) => generateInvoicePDF(invoice, bookings.find((booking) => booking.id === invoice.request_id || booking.request_number === invoice.tracking_number), autoPrint);
 
-  const handleEditClick = (booking: any) => {
-      setEditBookingData(booking);
-      setFormData({
-         pickup_company: booking.pickup_company_name || "",
-         pickup_address: booking.pickup_address || "",
-         pickup_lat: booking.pickup_lat?.toString() || "",
-         pickup_lng: booking.pickup_lng?.toString() || "",
-         drop_company: booking.destination_company_name || "",
-         drop_address: booking.destination_address || "",
-         drop_lat: booking.destination_lat?.toString() || "",
-         drop_lng: booking.destination_lng?.toString() || "",
-         cargo: booking.goods_type || "",
-         weight: booking.weight_tons?.toString() || "",
-         distance: booking.distance_km?.toString() || "0",
-      });
-      setShowBookingForm(true);
-  };
+  const filteredBookings = useMemo(() => bookings.filter((booking) => bookingFilter === "ALL" || (bookingFilter === "ACTIVE" && activeStatuses.includes(normalize(booking.status))) || (bookingFilter === "COMPLETED" && ["COMPLETED", "DELIVERED"].includes(normalize(booking.status))) || (bookingFilter === "CANCELLED" && cancelledStatuses.includes(normalize(booking.status)))), [bookings, bookingFilter]);
+  const activeBookings = bookings.filter((booking) => activeStatuses.includes(normalize(booking.status)));
+  const completedBookings = bookings.filter((booking) => ["COMPLETED", "DELIVERED"].includes(normalize(booking.status)));
+  const totalInvoiced = invoices.reduce((sum, invoice) => sum + Number(invoice.total_amount || 0), 0);
+  const totalPaid = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0);
+  const outstanding = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_due || 0), 0);
+  const companyName = (user?.publicMetadata as any)?.company_name || bookings[0]?.pickup_company_name || user?.fullName || user?.primaryEmailAddress?.emailAddress || "Customer";
 
-  const handleCancelClick = async (booking: any) => {
-      if (booking.status === "SUBMITTED" || booking.status === "UNDER_REVIEW") {
-          if (confirm("Are you sure you want to cancel this booking?")) {
-             try {
-                await api.cancelBooking(booking.id);
-                loadData();
-             } catch(e) {
-                alert("Failed to cancel: " + e);
-             }
-          }
-      } else {
-          setCancelBookingId(booking.id);
-          setCancelReason("");
-      }
-  };
+  if (!isLoaded) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">Connecting to CargoX...</div>;
+  if (!isSignedIn) return <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-white"><div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center"><Truck className="mx-auto mb-4 text-blue-400" size={44} /><h2 className="text-2xl font-bold">Authentication Required</h2><p className="my-6 text-sm text-slate-400">Sign in to submit bookings and view invoices.</p><SignInButton mode="modal"><button className="rounded-lg bg-blue-600 px-6 py-2.5 font-bold">Sign in</button></SignInButton></div></div>;
 
-  const handleCancelConfirm = async () => {
-      if (!cancelReason.trim()) {
-          alert("Please provide a reason for cancellation.");
-          return;
-      }
-      try {
-          await api.cancelBooking(cancelBookingId!, cancelReason);
-          setCancelBookingId(null);
-          loadData();
-      } catch(e) {
-          alert("Failed to cancel: " + e);
-      }
-  };
+  return <div className="min-h-screen bg-slate-950 text-slate-100">
+    {cancelBookingId && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"><div className="flex items-center justify-between"><h3 className="text-lg font-bold">Cancel booking</h3><button onClick={() => setCancelBookingId(null)}><X size={18} /></button></div><p className="mt-2 text-sm text-slate-400">This booking has already been processed. Please provide a reason.</p><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="mt-4 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm outline-none" rows={3} placeholder="Cancellation reason" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setCancelBookingId(null)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm">Close</button><button onClick={cancelBooking} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold">Confirm cancel</button></div></div></div>}
+    {trackingTrip && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-bold"><MapIcon size={18} className="text-blue-400" />Live tracking</h3><button onClick={() => setTrackingTrip(null)}><X size={18} /></button></div><TrackingMap trip={{ ...trackingTrip, request: trackingTrip }} locations={trackingLocations} /></div></div>}
 
-  const handlePayInvoice = async (invoiceId: number, amountDue: number) => {
-    try {
-      await api.createPayment({
-        invoice_id: invoiceId,
-        amount: amountDue,
-        payment_method: "CREDIT_CARD",
-        payment_type: "FULL",
-        recorded_by: "Customer"
-      });
-      alert("Payment successful!");
-      loadData();
-    } catch (e) {
-      alert("Payment failed: " + e);
-    }
-  };
+    <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur"><div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6"><Link to="/customer" className="flex items-center gap-3"><span className="rounded-lg bg-blue-500/15 p-2 text-blue-400"><Truck size={20} /></span><span><span className="block text-sm font-bold text-white">CargoX Customer</span><span className="hidden text-[10px] uppercase tracking-[0.15em] text-slate-500 sm:block">Reliable Transport. Greener Tomorrow.</span></span></Link><nav className="hidden items-center gap-6 text-sm text-slate-400 md:flex"><a href="#dashboard" className="text-blue-300">Dashboard</a><button onClick={openNewBooking}>Book Transport</button><a href="#bookings">My Bookings</a><a href="#invoices">My Invoices</a><Link to="/customer/settings">Settings</Link></nav><div className="flex items-center gap-3"><NotificationDropdown userType="CUSTOMER" userId={1} /><div className="hidden text-right sm:block"><p className="max-w-32 truncate text-xs font-semibold text-slate-200">{companyName}</p><p className="text-[10px] uppercase tracking-wider text-slate-600">Customer portal</p></div><UserButton /><Link to="/customer/settings" className="text-slate-500 hover:text-white" title="Settings"><Settings size={17} /></Link><Link to="/" className="text-slate-500 hover:text-white" title="Logout"><LogOut size={17} /></Link></div></div></header>
 
-  const handlePrintInvoice = (inv: any, autoPrint: boolean = true) => {
-    // Find the matching booking to enrich the invoice with delivery details
-    const booking = bookings.find((b: any) =>
-      b.id === inv.request_id || b.request_number === inv.tracking_number
-    );
-    generateInvoicePDF(inv, booking, autoPrint);
-  };
-  
-  const handleTrackBooking = async (bookingId: string) => {
-      try {
-          const trackData = await api.getTracking(bookingId);
-          if (trackData) {
-             setTrackingTrip(trackData);
-             setTrackingLocations(trackData.location_history || []);
-          } else {
-             alert("Tracking not active yet. Waiting for dispatch.");
-          }
-      } catch (e) {
-          alert("Error loading tracking.");
-      }
-  };
+    <main id="dashboard" className="customer-dashboard mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      {showBookingFlow && <BookingFlow data={formData} setData={setFormData} step={bookingStep} setStep={setBookingStep} onSubmit={submitBooking} onClose={() => { setShowBookingFlow(false); setSubmittedBooking(null); setEditBookingData(null); }} isEdit={Boolean(editBookingData)} submittedBooking={submittedBooking} onBookAnother={openNewBooking} />}
+      {bookings.some((booking) => booking.assigned_driver_name || booking.assigned_vehicle_registration) && <section className="rounded-xl border border-blue-500/20 bg-slate-900 p-5 shadow-lg"><div className="flex items-center gap-2"><Truck size={17} className="text-blue-400" /><div><h2 className="text-lg font-bold text-white">Assigned operations</h2><p className="text-xs text-slate-500">Driver and vehicle details appear after CargoX dispatches your request.</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-2">{bookings.filter((booking) => booking.assigned_driver_name || booking.assigned_vehicle_registration).map((booking) => <div key={booking.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold text-blue-300">{booking.request_number}</p><p className="mt-1 text-sm text-slate-400">{booking.pickup_address} → {booking.destination_address}</p></div><StatusBadge status={booking.status} /></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><p className="text-[10px] uppercase tracking-wider text-slate-600">Assigned driver</p><p className="mt-1 text-sm font-semibold text-white">{booking.assigned_driver_name || "Driver contact unavailable"}</p>{booking.assigned_driver_phone && <a href={`tel:${booking.assigned_driver_phone}`} className="mt-1 block text-xs text-blue-300">{booking.assigned_driver_phone}</a>}</div><div><p className="text-[10px] uppercase tracking-wider text-slate-600">Vehicle</p><p className="mt-1 text-sm font-semibold text-white">{booking.assigned_vehicle_registration || "Vehicle unavailable"}</p><p className="mt-1 text-xs text-slate-500">{booking.assigned_vehicle_type || ""}{booking.assigned_vehicle_capacity_tons ? ` · ${booking.assigned_vehicle_capacity_tons} tons` : ""}</p></div></div><button onClick={() => trackBooking(booking)} className="mt-4 flex items-center gap-2 rounded-lg bg-blue-500/10 px-3 py-2 text-xs font-bold text-blue-300"><MapIcon size={14} />Track delivery</button></div>)}</div></section>}
+      <section className="relative overflow-hidden rounded-2xl border border-blue-500/20 bg-linear-to-br from-blue-950/80 via-slate-900 to-slate-900 p-6 shadow-xl sm:p-8"><div className="absolute -right-10 -top-16 opacity-10"><Truck size={240} /></div><div className="relative"><p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-300">Customer portal</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">Welcome back, {companyName}</h1><p className="mt-2 max-w-xl text-sm text-slate-400">Manage your deliveries, track shipments, and view invoices in one place.</p><button onClick={openNewBooking} className="mt-6 flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500"><Plus size={16} />Book transport</button></div></section>
 
-  if (isLoaded && !isSignedIn) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
-        <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 text-center max-w-md w-full shadow-2xl">
-          <Truck className="mx-auto h-12 w-12 text-blue-500 mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
-          <p className="text-gray-400 text-sm mb-6">You must be signed in to submit bookings and view invoices.</p>
-          <div className="flex justify-center gap-4">
-            <SignInButton mode="modal">
-              <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-lg">
-                Sign In / Sign Up
-              </button>
-            </SignInButton>
-            <Link to="/" className="bg-slate-700 hover:bg-slate-600 text-gray-200 font-medium px-4 py-2.5 rounded-xl transition-all">
-              Home Page
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{[{ label: "Total bookings", value: bookings.length, detail: "All transport requests", icon: Package, tone: "text-blue-400" }, { label: "Active deliveries", value: activeBookings.length, detail: "Currently in progress", icon: Truck, tone: "text-blue-400" }, { label: "Completed deliveries", value: completedBookings.length, detail: "Delivered requests", icon: CheckCircle2, tone: "text-emerald-400" }, { label: "Outstanding amount", value: money(outstanding), detail: `${invoices.filter((invoice) => Number(invoice.amount_due || 0) > 0).length} invoices due`, icon: CircleDollarSign, tone: "text-amber-400" }].map((metric) => <div key={metric.label} className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg"><span className={`inline-flex rounded-lg bg-slate-800 p-2 ${metric.tone}`}><metric.icon size={17} /></span>{loading ? <Skeleton className="mt-4 h-8 w-24" /> : <p className="mt-4 text-2xl font-bold text-white">{metric.value}</p>}<p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{metric.label}</p><p className="mt-2 text-xs text-slate-600">{metric.detail}</p></div>)}</section>
 
-  return (
-    <div className="min-h-screen bg-surface-elevated relative">
-      {cancelBookingId && (
-          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-surface rounded-lg shadow-xl w-full max-w-md p-6">
-                  <h3 className="text-xl font-bold mb-4">Cancel Booking</h3>
-                  <p className="text-muted text-sm mb-4">This booking has already been processed. Please provide a reason for cancellation.</p>
-                  <textarea 
-                     value={cancelReason}
-                     onChange={(e) => setCancelReason(e.target.value)}
-                     className="w-full border rounded-md p-2 mb-4"
-                     placeholder="Cancellation Reason..."
-                     rows={3}
-                  />
-                  <div className="flex justify-end gap-2">
-                     <button onClick={() => setCancelBookingId(null)} className="px-4 py-2 text-muted hover:text-black">Close</button>
-                     <button onClick={handleCancelConfirm} className="px-4 py-2 bg-red-600 text-white rounded-md font-bold">Confirm Cancel</button>
-                  </div>
-              </div>
-          </div>
-      )}
+      {showBookingForm && <section className="rounded-xl border border-blue-500/20 bg-slate-900 p-5 shadow-xl"><div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-400">New request</p><h2 className="mt-1 text-xl font-bold text-white">{editBookingData ? "Edit booking" : "Book transport"}</h2></div><button onClick={() => { setShowBookingForm(false); setEditBookingData(null); }} className="text-slate-500 hover:text-white"><X size={18} /></button></div><form onSubmit={submitBooking} className="grid gap-4 md:grid-cols-2"><div className="md:col-span-2 grid gap-4 md:grid-cols-2"><StructuredAddressForm title="Pickup address" onChange={(data: AddressData) => setFormData({ ...formData, pickup_company: data.company, pickup_address: data.address, pickup_lat: "", pickup_lng: "" })} /><StructuredAddressForm title="Drop address" onChange={(data: AddressData) => setFormData({ ...formData, drop_company: data.company, drop_address: data.address, drop_lat: "", drop_lng: "" })} /></div><input required value={formData.cargo} onChange={(event) => setFormData({ ...formData, cargo: event.target.value })} placeholder="Cargo type" className="customer-input" /><input required type="number" step="0.1" value={formData.weight} onChange={(event) => setFormData({ ...formData, weight: event.target.value })} placeholder="Cargo weight (tons)" className="customer-input" /><input required type="number" step="1" value={formData.distance} onChange={(event) => setFormData({ ...formData, distance: event.target.value })} placeholder="Distance (km)" className="customer-input" />{formData.distance && pricePerKm && <div className="flex items-center justify-between rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm md:col-span-2"><div><p className="font-bold text-blue-200">Estimated charge</p><p className="text-xs text-blue-300/70">Estimate only, based on current rate ₹{pricePerKm}/km. Final quotation and invoice are authoritative.</p></div><strong className="text-xl text-white">{money(Number(formData.distance) * pricePerKm)}</strong></div>}<button className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-500 md:col-span-2">Confirm booking request <ArrowRight size={16} /></button></form></section>}
 
-      {trackingTrip && (
-          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-surface rounded-lg shadow-xl w-full max-w-4xl p-6">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xl font-bold flex items-center gap-2"><MapIcon/> Live Tracking - {trackingTrip.request_number}</h3>
-                     <button onClick={() => setTrackingTrip(null)} className="text-muted font-bold hover:text-black text-xl">×</button>
-                  </div>
-                  <TrackingMap trip={{...trackingTrip, request: trackingTrip}} locations={trackingLocations} />
-              </div>
-          </div>
-      )}
+      <section id="bookings" className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg sm:p-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><Package size={17} className="text-blue-400" /><h2 className="text-lg font-bold text-white">My bookings</h2></div><p className="mt-1 text-xs text-slate-500">View and track all your transport requests</p></div><div className="flex items-center gap-2"><div className="flex rounded-lg border border-slate-800 bg-slate-950/50 p-1">{[["ALL", "All"], ["ACTIVE", "Active"], ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"]].map(([value, label]) => <button key={value} onClick={() => setBookingFilter(value)} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${bookingFilter === value ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white"}`}>{label}</button>)}</div><button onClick={openNewBooking} className="hidden items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white sm:flex"><Plus size={14} />Book</button></div></div>{bookingsError && <div className="mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><span className="flex items-center gap-2"><AlertCircle size={15} />{bookingsError}</span><button onClick={loadData} className="font-bold underline">Retry</button></div>}<div className="mt-4 overflow-x-auto"><table className="w-full min-w-212.5 text-left"><thead><tr className="border-b border-slate-800 text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-3">Request no.</th><th className="px-3 py-3">Route</th><th className="px-3 py-3">Cargo</th><th className="px-3 py-3">Weight</th><th className="px-3 py-3">Distance</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-800/80">{loading ? [1, 2, 3].map((row) => <tr key={row}><td colSpan={7} className="p-3"><Skeleton className="h-12 w-full" /></td></tr>) : filteredBookings.map((booking) => <tr key={booking.id} className="hover:bg-slate-800/30"><td className="px-3 py-4 font-semibold text-blue-300">{booking.request_number || `REQ-${String(booking.id).slice(-8)}`}</td><td className="max-w-65 px-3 py-4"><p className="flex items-start gap-1 text-xs text-slate-300"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-400" />{booking.pickup_address || "Pickup"}</p><p className="my-1 ml-4 text-[10px] text-slate-700">to</p><p className="flex items-start gap-1 text-xs text-slate-400"><MapPin size={13} className="mt-0.5 shrink-0 text-red-400" />{booking.destination_address || "Destination"}</p></td><td className="px-3 py-4 text-sm text-slate-400">{booking.goods_type || "—"}</td><td className="px-3 py-4 text-sm font-bold text-white">{booking.weight_tons ?? "—"} t</td><td className="px-3 py-4 text-sm text-slate-400">{booking.distance_km ?? "—"} km</td><td className="px-3 py-4"><StatusBadge status={booking.status} /></td><td className="px-3 py-4"><div className="flex justify-end gap-2">{["SUBMITTED", "UNDER_REVIEW"].includes(normalize(booking.status)) && <button onClick={() => editBooking(booking)} className="rounded-md border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300">Edit</button>}{!cancelledStatuses.includes(normalize(booking.status)) && !["COMPLETED", "DELIVERED", "IN_TRANSIT", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS", "ARRIVED", "POD_SUBMITTED"].includes(normalize(booking.status)) && <button onClick={() => requestCancel(booking)} className="rounded-md border border-red-500/20 px-2.5 py-1.5 text-xs text-red-300">Cancel</button>}{!['REQUESTED', 'SUBMITTED', 'CUSTOMER_CANCELLED'].includes(normalize(booking.status)) && <button onClick={() => trackBooking(booking)} className="flex items-center gap-1 rounded-md bg-blue-500/10 px-2.5 py-1.5 text-xs font-semibold text-blue-300"><MapIcon size={13} />Track</button>}</div></td></tr>)}{!loading && !filteredBookings.length && <tr><td colSpan={7} className="py-14 text-center"><Package className="mx-auto mb-2 text-slate-700" size={24} /><p className="text-sm font-semibold text-slate-400">{bookings.length ? "No bookings match this filter" : "No transport requests yet."}</p><button onClick={openNewBooking} className="mt-3 text-xs font-bold text-blue-400">Book transport</button></td></tr>}</tbody></table></div></section>
 
-      <header className="bg-blue-600 text-white shadow-md sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex flex-wrap justify-between items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Truck size={24} className="shrink-0" />
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">CargoX Customer</h1>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-6">
-            <NotificationDropdown userType="CUSTOMER" userId={1} />
-            <UserButton />
-            <Link to="/" className="flex items-center gap-1.5 text-sm hover:text-blue-100 transition">
-              <LogOut size={18} /> <span className="hidden sm:inline">Logout</span>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6 sm:py-8 grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-        <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-foreground">My Bookings</h2>
-            <button 
-              onClick={() => {
-                if (showBookingForm) {
-                   setShowBookingForm(false);
-                   setEditBookingData(null);
-                } else {
-                   setFormData({
-                     pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", 
-                     drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", 
-                     cargo: "", weight: "", distance: "" 
-                   });
-                   setShowBookingForm(true);
-                }
-              }}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md font-medium shadow hover:bg-blue-700"
-            >
-              {showBookingForm ? "Cancel" : "+ Book Transport"}
-            </button>
-          </div>
-
-          {showBookingForm && (
-            <div className="bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-8">
-              <h3 className="text-xl font-bold mb-4">{editBookingData ? "Edit Booking" : "Request a Vehicle"}</h3>
-              <form onSubmit={handleBookingSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <StructuredAddressForm 
-                    title="Pickup Address" 
-                    onChange={(data: AddressData) => setFormData({
-                      ...formData, 
-                      pickup_company: data.company,
-                      pickup_address: data.address,
-                      pickup_lat: "",
-                      pickup_lng: ""
-                    })} 
-                  />
-                  <StructuredAddressForm 
-                    title="Drop Address" 
-                    onChange={(data: AddressData) => setFormData({
-                      ...formData, 
-                      drop_company: data.company,
-                      drop_address: data.address,
-                      drop_lat: "",
-                      drop_lng: ""
-                    })} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground">Cargo Type</label>
-                  <input type="text" required value={formData.cargo} onChange={e => setFormData({...formData, cargo: e.target.value})} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. Furniture" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground">Cargo Weight (Tons)</label>
-                  <input type="number" required step="0.1" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. 3.5" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-foreground">Distance (Kilometers)</label>
-                  <input type="number" required step="1" value={formData.distance} onChange={e => setFormData({...formData, distance: e.target.value})} className="mt-1 block w-full rounded-md border-border-theme shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g. 150" />
-                </div>
-                {formData.distance && (
-                  <div className="md:col-span-2 bg-blue-50 border border-blue-200 p-4 rounded-md flex justify-between items-center text-blue-900 shadow-sm mt-2">
-                    <div>
-                      <span className="font-bold block">Estimated Delivery Charge</span>
-                      <span className="text-xs text-blue-700">Calculated at ₹{pricePerKm} per kilometer</span>
-                    </div>
-                    <span className="text-2xl font-black">₹{(parseFloat(formData.distance) * pricePerKm).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                  </div>
-                )}
-                <div className="md:col-span-2">
-                  <button type="submit" className="w-full bg-blue-600 text-white px-4 py-2 rounded-md font-bold hover:bg-blue-700">Confirm Booking Request</button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden divide-y divide-gray-200">
-            {bookings.length === 0 ? (
-              <p className="p-4 text-muted text-center">No bookings found.</p>
-            ) : (
-              bookings.map((booking: any) => (
-                <div key={booking.id} className="p-4 flex justify-between items-center">
-                   <div>
-                      <p className="font-bold text-foreground">{booking.pickup_company_name} - {booking.pickup_address} → {booking.destination_company_name} - {booking.destination_address}</p>
-                      <p className="text-sm text-muted">{booking.weight_tons} Ton {booking.goods_type} • {booking.request_number || `REQ-${booking.id}`}</p>
-                   </div>
-                     <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                       <span className="bg-surface-elevated text-foreground px-3 py-1 rounded-full text-xs font-bold">{booking.status}</span>
-                       
-                       {(booking.status === "SUBMITTED" || booking.status === "UNDER_REVIEW") && (
-                           <button onClick={() => handleEditClick(booking)} className="bg-gray-100 text-gray-700 font-bold px-3 py-1 rounded hover:bg-gray-200 text-xs">
-                              Edit
-                           </button>
-                       )}
-                       
-                       {booking.status !== "CUSTOMER_CANCELLED" && booking.status !== "COMPLETED" && booking.status !== "DELIVERED" && booking.status !== "DRIVER_ASSIGNED" && booking.status !== "IN_TRANSIT" && booking.status !== "PICKUP_IN_PROGRESS" && booking.status !== "ARRIVED" && booking.status !== "POD_SUBMITTED" && (
-                           <button onClick={() => handleCancelClick(booking)} className="bg-red-100 text-red-700 font-bold px-3 py-1 rounded hover:bg-red-200 text-xs">
-                              Cancel
-                           </button>
-                       )}
-
-                       {booking.status !== "REQUESTED" && booking.status !== "SUBMITTED" && booking.status !== "CUSTOMER_CANCELLED" && (
-                           <button onClick={() => handleTrackBooking(booking.id)} className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded hover:bg-blue-200 text-xs flex items-center gap-1">
-                              <MapIcon size={12}/> Track
-                           </button>
-                       )}
-                     </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2 mb-6">
-            <FileText className="text-foreground" />
-            <h2 className="text-2xl font-bold text-foreground">My Invoices</h2>
-          </div>
-          <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden divide-y divide-gray-200">
-            {invoices.length === 0 ? (
-              <p className="p-4 text-muted text-center">No invoices found.</p>
-            ) : (
-              invoices.map((inv: any) => {
-                // Match booking for display
-                const booking = bookings.find((b: any) => b.id === inv.request_id);
-                const bookingId = booking?.request_number || inv.invoice_number;
-                return (
-                  <div key={inv.id} className="p-4 flex flex-wrap justify-between items-start gap-3">
-                     <div className="flex-1 min-w-0">
-                        <p className="font-bold text-foreground">{inv.invoice_number}</p>
-                        <p className="text-sm text-muted">Booking: <span className="font-mono font-semibold">{bookingId}</span></p>
-                        {booking && (
-                          <p className="text-xs text-muted mt-1">
-                            {booking.pickup_address} → {booking.destination_address} &nbsp;•&nbsp; {booking.weight_tons}T {booking.goods_type}
-                          </p>
-                        )}
-                        <p className="text-sm font-bold text-foreground mt-1">Total: ₹{parseFloat(inv.total_amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}</p>
-                     </div>
-                     <div className="flex flex-col items-end gap-2.5">
-                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                          inv.status === 'PAID' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
-                          inv.status === 'PARTIALLY_PAID' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 
-                          'bg-red-500/10 text-red-400 border border-red-500/20'
-                        }`}>
-                          {inv.status} • Due: ₹{parseFloat(inv.amount_due).toLocaleString('en-IN', {minimumFractionDigits: 2})}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {/* View Invoice */}
-                          <button 
-                            onClick={() => handlePrintInvoice(inv, false)} 
-                            title="View Invoice"
-                            className="inline-flex items-center gap-1 bg-surface-elevated hover:bg-surface-elevated/80 text-foreground border border-border-theme px-2.5 py-1.5 rounded text-xs font-semibold transition"
-                          >
-                            <Eye size={13}/> View
-                          </button>
-                          {/* Download PDF */}
-                          <button 
-                            onClick={() => handlePrintInvoice(inv, true)} 
-                            title="Download PDF"
-                            className="inline-flex items-center gap-1 bg-blue-600 text-white hover:bg-blue-700 px-3 py-1.5 rounded text-xs font-semibold shadow-sm transition"
-                          >
-                            <Download size={13}/> Download PDF
-                          </button>
-                          {inv.status !== 'PAID' && (
-                            <button 
-                              onClick={() => handlePayInvoice(inv.id, inv.amount_due)} 
-                              className="text-xs bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 px-3 py-1.5 rounded font-semibold transition"
-                            >
-                              Pay Now
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-
-      </main>
-    </div>
-  );
+      <section id="invoices" className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg sm:p-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><FileText size={17} className="text-blue-400" /><h2 className="text-lg font-bold text-white">My invoices</h2></div><p className="mt-1 text-xs text-slate-500">View, download and manage your invoices</p></div><div className="flex gap-2 text-right"><div><p className="text-[10px] uppercase tracking-wider text-slate-600">Invoiced</p><p className="text-sm font-bold text-white">{money(totalInvoiced)}</p></div><div className="border-l border-slate-800 pl-3"><p className="text-[10px] uppercase tracking-wider text-slate-600">Paid</p><p className="text-sm font-bold text-emerald-300">{money(totalPaid)}</p></div><div className="border-l border-slate-800 pl-3"><p className="text-[10px] uppercase tracking-wider text-slate-600">Outstanding</p><p className="text-sm font-bold text-amber-300">{money(outstanding)}</p></div></div></div>{invoicesError && <div className="mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><span className="flex items-center gap-2"><AlertCircle size={15} />{invoicesError}</span><button onClick={loadData} className="font-bold underline">Retry</button></div>}<div className="mt-4 overflow-x-auto"><table className="w-full min-w-190 text-left"><thead><tr className="border-b border-slate-800 text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-3">Invoice no.</th><th className="px-3 py-3">Request ref.</th><th className="px-3 py-3">Invoice date</th><th className="px-3 py-3">Total amount</th><th className="px-3 py-3">Amount due</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-800/80">{loading ? [1, 2].map((row) => <tr key={row}><td colSpan={7} className="p-3"><Skeleton className="h-12 w-full" /></td></tr>) : invoices.map((invoice) => <tr key={invoice.id} className="hover:bg-slate-800/30"><td className="px-3 py-4 font-semibold text-slate-200">{invoice.invoice_number}</td><td className="px-3 py-4 text-xs text-blue-300">{bookings.find((booking) => booking.id === invoice.request_id)?.request_number || invoice.tracking_number || "—"}</td><td className="px-3 py-4 text-xs text-slate-500">{invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : "—"}</td><td className="px-3 py-4 text-sm font-bold text-white">{money(invoice.total_amount)}</td><td className="px-3 py-4 text-sm font-bold text-amber-300">{money(invoice.amount_due)}</td><td className="px-3 py-4"><StatusBadge status={invoice.status} /></td><td className="px-3 py-4"><div className="flex justify-end gap-2"><button onClick={() => printInvoice(invoice, false)} className="flex items-center gap-1 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300"><Eye size={13} />View</button><button onClick={() => printInvoice(invoice, true)} className="flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white"><Download size={13} />PDF</button>{invoice.status !== "PAID" && <button onClick={() => payInvoice(invoice)} className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300">Pay</button>}</div></td></tr>)}{!loading && !invoices.length && <tr><td colSpan={7} className="py-14 text-center"><FileText className="mx-auto mb-2 text-slate-700" size={24} /><p className="text-sm font-semibold text-slate-400">No invoices available.</p></td></tr>}</tbody></table></div>{!outstanding && invoices.length > 0 && <p className="mt-4 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />All invoices are paid.</p>}</section>
+      <section className="quick-actions rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-lg sm:p-6"><div className="mb-4"><h2 className="text-lg font-bold text-white">Quick Actions</h2><p className="mt-1 text-xs text-slate-500">Get started with your transport needs</p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><button onClick={openNewBooking} className="group rounded-xl border border-blue-500/30 bg-blue-600/10 p-4 text-left transition hover:-translate-y-0.5 hover:bg-blue-600/20"><Plus className="text-blue-300" size={20} /><p className="mt-4 text-sm font-bold text-white">New Booking</p><p className="mt-1 text-xs text-blue-200/60">Book a transport request</p></button><a href="#bookings" className="group rounded-xl border border-slate-800 bg-slate-950/40 p-4 transition hover:-translate-y-0.5 hover:border-slate-700"><Package className="text-cyan-300" size={20} /><p className="mt-4 text-sm font-bold text-white">My Bookings</p><p className="mt-1 text-xs text-slate-500">View and track requests</p></a><a href="#invoices" className="group rounded-xl border border-slate-800 bg-slate-950/40 p-4 transition hover:-translate-y-0.5 hover:border-slate-700"><FileText className="text-amber-300" size={20} /><p className="mt-4 text-sm font-bold text-white">My Invoices</p><p className="mt-1 text-xs text-slate-500">View invoices and payments</p></a><button onClick={() => activeBookings[0] && trackBooking(activeBookings[0])} disabled={!activeBookings.length} className="group rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-left transition hover:-translate-y-0.5 hover:border-slate-700 disabled:cursor-not-allowed disabled:opacity-50"><MapIcon className="text-emerald-300" size={20} /><p className="mt-4 text-sm font-bold text-white">Track Shipment</p><p className="mt-1 text-xs text-slate-500">Real-time delivery tracking</p></button></div></section><AssignedOperationsSection bookings={bookings} onTrack={trackBooking} onViewBookings={() => document.getElementById("bookings")?.scrollIntoView({ behavior: "smooth" })} />
+    </main>
+  </div>;
 }
-

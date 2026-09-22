@@ -76,6 +76,11 @@ class DeliveryRequestRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     cancellation_reason: Optional[str] = None
+    assigned_driver_name: Optional[str] = None
+    assigned_driver_phone: Optional[str] = None
+    assigned_vehicle_registration: Optional[str] = None
+    assigned_vehicle_type: Optional[str] = None
+    assigned_vehicle_capacity_tons: Optional[float] = None
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -55,6 +55,11 @@ class CustomerTrackingRead(BaseModel):
     arrived_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    driver_name: Optional[str] = None
+    driver_phone: Optional[str] = None
+    vehicle_registration: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    vehicle_capacity_tons: Optional[float] = None
     breadcrumbs: List[LocationBreadcrumbRead] = []
 
     model_config = ConfigDict(from_attributes=True)

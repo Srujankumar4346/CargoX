@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
 import DriverDashboard from "./pages/driver/DriverDashboard";
+import CustomerSettings from "./pages/customer/CustomerSettings";
 
 function App() {
   // Enforce dark mode by default unless user has saved 'light'
@@ -23,6 +24,7 @@ function App() {
         <Route path="/login" element={<LandingPage />} />
         <Route path="/register" element={<LandingPage />} />
         <Route path="/customer" element={<CustomerDashboard />} />
+        <Route path="/customer/settings" element={<CustomerSettings />} />
         <Route path="/driver" element={<DriverDashboard />} />
       </Routes>
     </Router>

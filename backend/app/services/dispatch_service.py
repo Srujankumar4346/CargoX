@@ -47,35 +47,13 @@ class DispatchService:
         # Quotation invariant check: Authoritative accepted quotation MUST exist before dispatch
         from app.models.pricing import Quotation
         from app.models.enums import QuotationStatus
-        from app.services.pricing_engine import PricingEngineService
-        from datetime import timedelta
 
         quotation = await Quotation.find_one(Quotation.request_id == request.id)
         if not quotation:
-            # Fallback for direct dispatch: snapshot active PricingConfig at dispatch time
-            active_config = await PricingEngineService.get_active_pricing_config()
-            dist = Decimal(str(request.distance_km)) if request.distance_km and request.distance_km > 0 else Decimal("500.00")
-            base_rate = Decimal(str(active_config.base_rate_per_km))
-            margin_rate = Decimal(str(active_config.margin_per_km))
-            
-            internal_base_cost = (dist * base_rate).quantize(Decimal("0.01"))
-            cargox_margin = (dist * margin_rate).quantize(Decimal("0.01"))
-            customer_total_charge = internal_base_cost + cargox_margin
-            
-            quotation = Quotation(
-                request_id=request.id,
-                pricing_config_id=active_config.id,
-                distance_km=dist,
-                base_rate_per_km=base_rate,
-                internal_base_cost=internal_base_cost,
-                cargox_margin=cargox_margin,
-                customer_total_charge=customer_total_charge,
-                status=QuotationStatus.ACCEPTED,
-                created_at=now,
-                accepted_at=now,
-                expires_at=now + timedelta(days=30),
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No accepted quotation found for this delivery request. Cannot dispatch.",
             )
-            await quotation.insert()
         elif quotation.status != QuotationStatus.ACCEPTED:
             quotation.status = QuotationStatus.ACCEPTED
             quotation.accepted_at = now
@@ -152,8 +130,11 @@ class DispatchService:
                 event_type="TRIP_DISPATCHED",
                 recipient_user_id=cust_user.id,
                 channel=NotificationChannel.IN_APP,
-                title="Trip Dispatched",
-                message=f"Your request {request.request_number} has been dispatched."
+                title="Driver Assigned",
+                message=(
+                    f"A driver has been assigned to request {request.request_number}. "
+                    f"Driver: {driver.name}. Vehicle: {vehicle.registration_number}."
+                )
             )
         
         # Process notifications after commit

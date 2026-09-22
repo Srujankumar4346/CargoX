@@ -171,6 +171,11 @@ export const api = {
     if (!res.ok) return [];
     return res.json();
   },
+  getTripDetail: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   markInTransit: async (tripId: string) => {
     const res = await authFetch(`${API_URL}/admin/trips/${tripId}/mark-in-transit`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());

@@ -233,6 +233,25 @@ class TrackingDeliveryService:
         from app.models.pricing import Quotation
         quotation = await Quotation.find_one(Quotation.request_id == request.id)
 
+        driver_name = None
+        driver_phone = None
+        vehicle_registration = None
+        vehicle_type = None
+        vehicle_capacity_tons = None
+        if trip:
+            assignment = await VehicleAssignment.find_one(
+                VehicleAssignment.trip_id == trip.id,
+                sort=[("assigned_at", -1)],
+            )
+            if assignment:
+                driver = await Driver.find_one(Driver.id == assignment.driver_id)
+                vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
+                driver_name = driver.name if driver else None
+                driver_phone = driver.phone if driver else None
+                vehicle_registration = vehicle.registration_number if vehicle else None
+                vehicle_type = vehicle.type.value if vehicle and hasattr(vehicle.type, "value") else (str(vehicle.type) if vehicle else None)
+                vehicle_capacity_tons = vehicle.capacity_tons if vehicle else None
+
         return CustomerTrackingRead(
             request_id=request.id,
             tracking_number=request.request_number,
@@ -253,5 +272,10 @@ class TrackingDeliveryService:
             arrived_at=trip.arrived_at if trip else None,
             delivered_at=trip.delivered_at if trip else None,
             completed_at=trip.completed_at if trip else None,
+            driver_name=driver_name,
+            driver_phone=driver_phone,
+            vehicle_registration=vehicle_registration,
+            vehicle_type=vehicle_type,
+            vehicle_capacity_tons=vehicle_capacity_tons,
             breadcrumbs=breadcrumbs_list
         )

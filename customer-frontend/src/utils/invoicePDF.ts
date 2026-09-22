@@ -43,7 +43,7 @@ export function generateInvoicePDF(inv: any, booking?: any, autoPrint: boolean =
   const weight     = booking?.weight_tons !== undefined ? `${booking.weight_tons} Tons` : "—";
   const goodsType  = booking?.goods_type || "General Cargo";
   const goodsDesc  = booking?.goods_description || "—";
-  const distanceKm = inv.distance_km ?? booking?.distance_km ?? null;
+  const distanceKm = inv.distance_km ?? null;
   const vehicleReg = booking?.vehicle_number || booking?.vehicle_registration || "—";
   const driverName = booking?.driver_name || "—";
 

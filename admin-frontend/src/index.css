@@ -133,4 +133,12 @@
   .input-field {
     @apply w-full rounded-lg border border-border-theme bg-surface px-4 py-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors;
   }
+
+  .fleet-input {
+    @apply w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
+  }
+
+  .settings-input {
+    @apply w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
+  }
 }

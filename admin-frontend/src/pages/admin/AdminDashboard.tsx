@@ -1,13 +1,63 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X, AlertTriangle } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
-import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
 import ThemeToggle from "../../components/ThemeToggle";
 import DispatchBoard from "../../components/DispatchBoard";
+import FleetManagementPanel from "../../components/FleetManagementPanel";
+import ActiveTripsPanel from "../../components/ActiveTripsPanel";
+import AdminSettingsPanel from "../../components/AdminSettingsPanel";
+import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
+
+const normalizeStatus = (status: string | undefined) => (status || "").toUpperCase().replace(/ /g, "_");
+
+const formatCurrency = (value: unknown) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—";
+};
+
+const formatDate = (value: string | undefined) => value
+  ? new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+  : "Recent";
+
+function DashboardSkeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-slate-800/80 ${className}`} aria-label="Loading" />;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const normalized = normalizeStatus(status);
+  const tone = ["AVAILABLE", "COMPLETED", "DELIVERED"].includes(normalized)
+    ? "text-emerald-300 bg-emerald-400/10 border-emerald-400/20"
+    : ["SUBMITTED", "REQUESTED", "ACCEPTED", "UNDER_REVIEW"].includes(normalized)
+      ? "text-amber-300 bg-amber-400/10 border-amber-400/20"
+      : ["REJECTED", "CUSTOMER_CANCELLED", "INACTIVE"].includes(normalized)
+        ? "text-red-300 bg-red-400/10 border-red-400/20"
+        : "text-blue-300 bg-blue-400/10 border-blue-400/20";
+  return <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.12em] ${tone}`}>{status?.replace(/_/g, " ") || "UNKNOWN"}</span>;
+}
+
+function SectionHeader({ icon, title, meta, onViewAll }: { icon: React.ReactNode; title: string; meta?: string; onViewAll?: () => void }) {
+  return <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-4">
+    <div className="flex items-center gap-2.5"><span className="text-blue-400">{icon}</span><h2 className="text-sm font-bold tracking-[0.08em] text-white uppercase">{title}</h2>{meta && <span className="text-xs text-slate-500">{meta}</span>}</div>
+    {onViewAll && <button onClick={onViewAll} className="flex items-center gap-1 text-xs font-semibold text-blue-400 hover:text-blue-300">View all <ChevronRight size={14} /></button>}
+  </div>;
+}
+
+function FleetOperationsMap({ trips }: { trips: any[] }) {
+  const locatedTrips = trips.filter((trip) => Number.isFinite(Number(trip.current_lat)) && Number.isFinite(Number(trip.current_lng)));
+  if (!locatedTrips.length) return <div className="flex h-full min-h-70 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-950/30 px-6 text-center"><div className="rounded-full bg-blue-500/10 p-3 text-blue-400"><MapPin size={22} /></div><p className="text-sm font-semibold text-slate-200">Live fleet locations unavailable</p><p className="max-w-xs text-xs leading-5 text-slate-500">Location data will appear when active vehicle GPS data is available.</p></div>;
+  const first = locatedTrips[0];
+  return <div className="relative h-80 overflow-hidden rounded-xl border border-slate-800">
+    <MapContainer center={[Number(first.current_lat), Number(first.current_lng)]} zoom={7} scrollWheelZoom={false} className="h-full w-full">
+      <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {locatedTrips.map((trip) => <CircleMarker key={String(trip.id)} center={[Number(trip.current_lat), Number(trip.current_lng)]} radius={8} pathOptions={{ color: "#38bdf8", fillColor: "#0ea5e9", fillOpacity: 0.85 }}><Popup><strong>Trip #{String(trip.id).slice(-6)}</strong><br />{trip.request?.request_number || "Active trip"}<br />{trip.status}</Popup></CircleMarker>)}
+    </MapContainer>
+    <div className="pointer-events-none absolute left-3 top-3 z-400 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-slate-200 shadow-lg"><span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />{locatedTrips.length} live location{locatedTrips.length === 1 ? "" : "s"}</div>
+  </div>;
+}
 
 // ── In-App Confirm Modal ──────────────────────────────────────────────────────
 function ConfirmModal({ open, title, message, confirmLabel, confirmClass, onConfirm, onCancel }: {
@@ -97,8 +147,6 @@ export default function AdminDashboard() {
   const [trips, setTrips] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   
-  const [selectedVehicle, setSelectedVehicle] = useState("");
-  const [selectedDriver, setSelectedDriver] = useState("");
   const [editingDriver, setEditingDriver] = useState<any>(null);
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
   
@@ -221,36 +269,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCreateTrip = async (booking: any) => {
-    if (!selectedVehicle || !selectedDriver) return alert("Select vehicle and driver");
-    try {
-      const bookingId = typeof booking === "object" ? booking.id : booking;
-      const bookingStatus = typeof booking === "object" ? booking.status : null;
-
-      // If booking is SUBMITTED, auto-approve first before dispatching
-      if (bookingStatus === "SUBMITTED") {
-        await api.approveBooking(bookingId);
-      }
-
-      await api.createTrip({
-        booking_id: bookingId,
-        vehicle_id: selectedVehicle,
-        driver_id: selectedDriver
-      });
-      alert("Trip created successfully! Invoice auto-generated.");
-      loadData();
-      setSelectedVehicle("");
-      setSelectedDriver("");
-      setAiRecommendations(prev => {
-        const next = {...prev};
-        delete next[bookingId];
-        return next;
-      });
-    } catch (e: any) {
-      alert("Failed to create trip: " + e);
-    }
-  };
-  
   const handleAskAi = async (e: any) => {
       e.preventDefault();
       if (!aiQuery) return;
@@ -271,7 +289,9 @@ export default function AdminDashboard() {
           const v_rec = await api.recommendVehicle(booking.weight_tons);
           
           // 2. Pricing estimation (Mock distance if coordinates aren't real, but we have a dedicated endpoint)
-          const p_rec = await api.predictPrice(500, booking.weight_tons); // default 500km for demo
+          const p_rec = booking.distance_km && booking.distance_km > 0
+            ? await api.predictPrice(booking.distance_km, booking.weight_tons)
+            : null;
           
           // 3. Route intelligence
           let r_rec = [];
@@ -284,9 +304,6 @@ export default function AdminDashboard() {
               [booking.id]: { vehicle: v_rec, price: p_rec, routes: r_rec }
           }));
           
-          if (v_rec && v_rec.vehicle) {
-              setSelectedVehicle(v_rec.vehicle.id.toString());
-          }
       } catch(err: any) {
           alert("Error getting AI recommendations: " + err.message);
       }
@@ -308,17 +325,6 @@ export default function AdminDashboard() {
     } catch (e: any) {
       alert("Failed to record payment: " + e);
     }
-  };
-
-  const [trackingTrip, setTrackingTrip] = useState<any>(null);
-  const [trackingLocations, setTrackingLocations] = useState<any[]>([]);
-
-  const handleTrackTrip = async (trip: any) => {
-      setTrackingTrip(trip);
-      try {
-          const locs = await api.getLocationHistory(trip.id);
-          setTrackingLocations(locs);
-      } catch (e) {}
   };
 
   const handleMarkInTransit = async (tripId: string) => {
@@ -350,21 +356,11 @@ export default function AdminDashboard() {
     });
   };
 
-  useEffect(() => {
-     let interval: any;
-     if (trackingTrip && trackingTrip.status === "IN TRANSIT") {
-         const fetchLocs = async () => {
-             try {
-                 const locs = await api.getLocationHistory(trackingTrip.id);
-                 setTrackingLocations(locs);
-             } catch (e) {}
-         };
-         interval = setInterval(fetchLocs, 10000);
-     }
-     return () => {
-         if(interval) clearInterval(interval);
-     };
-  }, [trackingTrip]);
+  const dashboardLoading = isRefreshing && !dashboard && !vehicles.length && !drivers.length && !bookings.length;
+  const pendingBookings = bookings.filter((booking) => ["SUBMITTED", "REQUESTED", "ACCEPTED"].includes(normalizeStatus(booking.status)));
+  const activeTrips = trips.filter((trip) => !["COMPLETED", "DELIVERED"].includes(normalizeStatus(trip.status)));
+  const availableVehicles = vehicles.filter((vehicle) => normalizeStatus(vehicle.status) === "AVAILABLE");
+  const availableDrivers = drivers.filter((driver) => normalizeStatus(driver.status) === "AVAILABLE");
 
   if (!isLoaded) {
     return (
@@ -514,6 +510,12 @@ export default function AdminDashboard() {
           >
             <Bot size={18} /> <span>AI Assistant</span>
           </button>
+          <button
+            onClick={() => { setActiveTab('settings'); setIsMobileSidebarOpen(false); }}
+            className={`w-full text-left px-4 py-2.5 rounded transition font-medium flex items-center gap-3 ${activeTab === 'settings' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+            <Settings size={18} /> <span>Settings</span>
+          </button>
         </nav>
         
         <div className="hidden md:block mb-4 px-3">
@@ -538,84 +540,26 @@ export default function AdminDashboard() {
       <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0">
         
         {activeTab === 'dashboard' && (
-          <div className="fade-in">
-             <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
-               <div>
-                 <h1 className="text-3xl font-bold text-[var(--text-primary)]">Operations Dashboard</h1>
-                 <p className="text-sm text-[var(--text-secondary)] mt-1">Live overview of requests, fleet dispatch, and trip tracking</p>
-               </div>
-               <div className="flex items-center gap-3">
-                 <button 
-                   onClick={() => loadData()} 
-                   disabled={isRefreshing}
-                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 transition disabled:opacity-50"
-                 >
-                   <RefreshCw size={16} className={isRefreshing ? "animate-spin text-blue-400" : ""} />
-                   <span>{isRefreshing ? "Updating..." : "Refresh Data"}</span>
-                 </button>
-                 <button 
-                   onClick={() => setActiveTab('bookings')} 
-                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-500/20"
-                 >
-                   <Sparkles size={16} />
-                   <span>Dispatch Board ({bookings.filter(b => b.status === 'SUBMITTED' || b.status === 'REQUESTED' || b.status === 'ACCEPTED').length})</span>
-                 </button>
-               </div>
-             </div>
+          <div className="fade-in mx-auto max-w-[1600px] space-y-6">
+            <div className="-mx-4 -mt-4 flex min-h-16 items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/70 px-4 py-3 backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6 md:-mx-8 md:-mt-8 md:px-8">
+              <div className="hidden items-center gap-3 sm:flex"><div className="rounded-lg bg-blue-500/15 p-2 text-blue-400"><Radio size={18} /></div><div><p className="text-sm font-bold text-white">CargoX Admin</p><p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Transport Operations</p></div></div>
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 sm:mx-8 sm:max-w-xl"><Search size={16} className="shrink-0 text-slate-500" /><input className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-600" placeholder="Search requests, customers, or locations..." aria-label="Search operations" /><span className="hidden rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-500 md:inline">Ctrl K</span></div>
+              <div className="flex items-center gap-3"><NotificationDropdown userType="ADMIN" userId={0} /><div className="hidden text-right sm:block"><p className="max-w-28 truncate text-xs font-semibold text-slate-200">{user?.fullName || user?.primaryEmailAddress?.emailAddress || "Admin"}</p><p className="text-[10px] uppercase tracking-wider text-emerald-400">Administrator</p></div><UserButton /></div>
+            </div>
 
-             {loadError && (
-               <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-between gap-3">
-                 <div className="flex items-center gap-3">
-                   <AlertCircle size={20} className="shrink-0" />
-                   <span className="text-sm font-medium">{loadError}</span>
-                 </div>
-                 <button onClick={() => loadData()} className="text-xs bg-red-500/20 hover:bg-red-500/30 px-3 py-1 rounded text-white font-semibold">Retry</button>
-               </div>
-             )}
-             
-             {/* KPI Cards */}
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <div className="card p-6">
-                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Active Trips</h3>
-                   <p className="text-4xl font-bold text-[var(--text-primary)] mt-2">{trips.filter(t => t.status === 'IN TRANSIT').length}</p>
-                </div>
-                <div className="card p-6">
-                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Available Fleet</h3>
-                   <p className="text-4xl font-bold text-green-500 mt-2">{vehicles.filter(v => v.status === 'AVAILABLE').length}</p>
-                </div>
-                <div className="card p-6">
-                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Pending Bookings</h3>
-                   <p className="text-4xl font-bold text-yellow-500 mt-2">{bookings.filter(b => b.status === 'SUBMITTED' || b.status === 'REQUESTED' || b.status === 'ACCEPTED').length}</p>
-                </div>
-                <div className="card p-6">
-                   <h3 className="text-sm font-medium text-[var(--text-secondary)] uppercase tracking-wider">Total Revenue</h3>
-                   <p className="text-4xl font-bold text-blue-500 mt-2">₹{((dashboard?.revenue || dashboard?.total_invoiced || 0)).toLocaleString()}</p>
-                </div>
-             </div>
+            <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Live operations</div><h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Operations Dashboard</h1><p className="mt-1 text-sm text-slate-500">Live overview of requests, fleet dispatch, and trip tracking</p></div><button onClick={() => loadData()} disabled={isRefreshing} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-blue-500/50 hover:bg-slate-800 disabled:opacity-50"><RefreshCw size={15} className={isRefreshing ? "animate-spin text-blue-400" : ""} />{isRefreshing ? "Updating..." : "Refresh data"}</button></div>
 
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 card p-6 min-h-[400px] flex items-center justify-center">
-                   <p className="text-[var(--text-secondary)]">Fleet Map will be integrated here (Phase 8.4)</p>
-                </div>
-                <div className="card p-6">
-                   <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">Recent Activity</h3>
-                   <div className="space-y-4">
-                      {trips.slice(0, 3).map(t => (
-                        <div key={t.id} className="flex items-start gap-3 border-b border-[var(--border-color)] pb-3">
-                           <div className="bg-blue-500/10 p-2 rounded text-blue-500">
-                             <MapIcon size={16} />
-                           </div>
-                           <div>
-                             <p className="text-sm font-medium text-[var(--text-primary)]">Trip #{t.id} {t.status}</p>
-                             <p className="text-xs text-[var(--text-secondary)]">
-                               {t.booking?.pickup_address || t.request?.pickup_address} → {t.booking?.drop_address || t.request?.destination_address}
-                             </p>
-                           </div>
-                        </div>
-                      ))}
-                   </div>
-                </div>
-             </div>
+            {loadError && <div className="flex items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-red-300"><div className="flex items-center gap-2 text-sm"><AlertCircle size={17} />Unable to load all operational data.</div><button onClick={() => loadData()} className="text-xs font-bold underline">Retry</button></div>}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {[{ label: "Total requests", value: bookings.length, note: "All customer requests", icon: ClipboardList, tone: "text-blue-400", action: () => setActiveTab("bookings") }, { label: "Active trips", value: activeTrips.length, note: "Currently operational", icon: Truck, tone: "text-amber-400", action: () => setActiveTab("trips") }, { label: "Available fleet", value: `${availableVehicles.length} / ${vehicles.length || "—"}`, note: "Vehicles ready to dispatch", icon: MapIcon, tone: "text-emerald-400", action: () => setActiveTab("vehicles") }, { label: "Available drivers", value: `${availableDrivers.length} / ${drivers.length || "—"}`, note: "Drivers ready to assign", icon: UserRound, tone: "text-emerald-400", action: () => setActiveTab("vehicles") }, { label: "Total revenue", value: formatCurrency(dashboard?.revenue ?? dashboard?.total_invoiced), note: "Authoritative finance total", icon: IndianRupee, tone: "text-blue-400", action: () => setActiveTab("financials") }].map((kpi) => <button key={kpi.label} onClick={kpi.action} className="group rounded-xl border border-slate-800 bg-slate-900 p-4 text-left shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-slate-700"><div className="flex items-start justify-between"><span className={`rounded-lg bg-slate-800/80 p-2 ${kpi.tone}`}><kpi.icon size={17} /></span><ArrowUpRight size={15} className="text-slate-700 transition group-hover:text-blue-400" /></div>{dashboardLoading ? <DashboardSkeleton className="mt-4 h-8 w-24" /> : <p className="mt-4 text-2xl font-bold tracking-tight text-white">{kpi.value}</p>}<p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{kpi.label}</p><p className="mt-2 text-xs text-slate-600">{kpi.note}</p></button>)}
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.85fr)]"><section className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/10 sm:p-5"><SectionHeader icon={<MapIcon size={17} />} title="Live fleet location" meta={`${activeTrips.length} active trips`} />{dashboardLoading ? <DashboardSkeleton className="mt-4 h-80 w-full" /> : <div className="mt-4"><FleetOperationsMap trips={activeTrips} /></div>}</section><section className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/10 sm:p-5"><SectionHeader icon={<Activity size={17} />} title="Recent activity" /><div className="mt-4 space-y-1">{dashboardLoading ? [1, 2, 3, 4].map((item) => <DashboardSkeleton key={item} className="h-14 w-full" />) : [...trips.slice(0, 3).map((trip) => ({ id: `trip-${trip.id}`, icon: Truck, title: `Trip ${trip.request?.request_number || `#${String(trip.id).slice(-6)}`}`, detail: `${trip.request?.pickup_address || "Pickup"} → ${trip.request?.destination_address || "Destination"}`, status: trip.status, date: trip.assigned_at })), ...bookings.slice(0, 2).map((booking) => ({ id: `request-${booking.id}`, icon: Package, title: `Request ${booking.request_number || `#${String(booking.id).slice(-6)}`}`, detail: booking.pickup_address || "New delivery request", status: booking.status, date: booking.created_at }))].slice(0, 5).map((event) => <div key={event.id} className="flex gap-3 border-b border-slate-800/80 py-3 last:border-0"><div className="mt-0.5 rounded-lg bg-blue-500/10 p-2 text-blue-400"><event.icon size={15} /></div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className="truncate text-sm font-semibold text-slate-200">{event.title}</p><span className="shrink-0 text-[10px] text-slate-600">{formatDate(event.date)}</span></div><p className="mt-1 truncate text-xs text-slate-500">{event.detail}</p><StatusBadge status={event.status} /></div></div>)}{!trips.length && !bookings.length && <p className="py-12 text-center text-sm text-slate-500">No recent operational activity</p>}</div></section></div>
+
+            <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/10 sm:p-5"><SectionHeader icon={<ClipboardList size={17} />} title="Pending dispatch requests" meta={`${pendingBookings.length} need attention`} onViewAll={() => setActiveTab("bookings")} />{dashboardLoading ? <div className="mt-4 space-y-2">{[1, 2, 3].map((item) => <DashboardSkeleton key={item} className="h-12 w-full" />)}</div> : pendingBookings.length ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-190 text-left"><thead><tr className="text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-2">Request no.</th><th className="px-3 py-2">Customer</th><th className="px-3 py-2">Cargo</th><th className="px-3 py-2">Weight</th><th className="px-3 py-2">Route</th><th className="px-3 py-2">Status</th><th /></tr></thead><tbody className="divide-y divide-slate-800/80">{pendingBookings.slice(0, 8).map((booking) => <tr key={booking.id} className="text-sm transition hover:bg-slate-800/30"><td className="px-3 py-3 font-semibold text-blue-300">{booking.request_number || `#${String(booking.id).slice(-8)}`}</td><td className="px-3 py-3 text-slate-300">{booking.pickup_company_name || booking.customer_name || "Customer request"}</td><td className="px-3 py-3 text-slate-400">{booking.goods_type || "Cargo"}</td><td className="px-3 py-3 font-bold text-white">{booking.weight_tons ?? "—"} t</td><td className="max-w-62.5 truncate px-3 py-3 text-xs text-slate-500">{booking.pickup_address || "Pickup"} → {booking.destination_address || "Destination"}</td><td className="px-3 py-3"><StatusBadge status={booking.status} /></td><td className="px-3 py-3 text-right"><button onClick={() => setActiveTab("bookings")} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-800 hover:text-blue-400" aria-label="View request"><Eye size={16} /></button></td></tr>)}</tbody></table></div> : <div className="py-12 text-center"><CircleCheck className="mx-auto mb-2 text-emerald-400" size={22} /><p className="text-sm font-semibold text-slate-300">No pending dispatch requests</p><p className="mt-1 text-xs text-slate-600">New requests will appear here when submitted.</p></div>}</section>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2"><section className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/10 sm:p-5"><SectionHeader icon={<MapIcon size={17} />} title="Fleet status" meta={`${vehicles.length} vehicles`} onViewAll={() => setActiveTab("vehicles")} /><div className="mt-3 divide-y divide-slate-800/80">{vehicles.slice(0, 5).map((vehicle) => <div key={vehicle.id} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3"><div className="rounded-lg bg-slate-800 p-2 text-slate-400"><Truck size={16} /></div><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-200">{vehicle.registration_number || vehicle.vehicle_number || "Vehicle"}</p><p className="text-xs text-slate-500">{vehicle.vehicle_type || "Fleet vehicle"} · {vehicle.capacity_tons ?? "—"} t</p></div></div><StatusBadge status={vehicle.status} /></div>)}{!vehicles.length && <p className="py-10 text-center text-sm text-slate-500">No fleet records available</p>}</div></section><section className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/10 sm:p-5"><SectionHeader icon={<UserRound size={17} />} title="Driver status" meta={`${drivers.length} drivers`} onViewAll={() => setActiveTab("vehicles")} /><div className="mt-3 divide-y divide-slate-800/80">{drivers.slice(0, 5).map((driver) => <div key={driver.id} className="flex items-center justify-between gap-3 py-3"><div className="flex min-w-0 items-center gap-3"><div className="rounded-lg bg-slate-800 p-2 text-slate-400"><UserRound size={16} /></div><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-200">{driver.name || "Driver"}</p><p className="text-xs text-slate-500">{driver.phone || "Contact hidden"}</p></div></div><StatusBadge status={driver.status} /></div>)}{!drivers.length && <p className="py-10 text-center text-sm text-slate-500">No driver records available</p>}</div></section></div>
           </div>
         )}
         {activeTab === 'bookings' && (
@@ -672,67 +616,13 @@ export default function AdminDashboard() {
         )}
         
         {activeTab === 'trips' && (
-          <div>
-             <h1 className="text-3xl font-bold text-foreground mb-6">Active Trips</h1>
-             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden divide-y divide-gray-200">
-               {trips.length === 0 ? (
-                 <p className="p-4 text-muted text-center">No active trips found.</p>
-               ) : (
-                 trips.map(trip => (
-                   <div key={trip.id} className="p-4 flex flex-wrap justify-between items-center gap-3">
-                      <div>
-                         <p className="font-bold text-foreground">Trip #{trip.id} (Booking #{trip.request?.request_number || trip.request_id})</p>
-                         <p className="text-sm text-muted">{trip.request?.pickup_address || 'Unknown'} → {trip.request?.destination_address || 'Unknown'}</p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          trip.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                          trip.status === 'IN_TRANSIT' ? 'bg-amber-100 text-amber-800' :
-                          'bg-surface-elevated text-foreground'
-                        }`}>{trip.status}</span>
-
-                        {/* Action buttons based on status */}
-                        {(trip.status === 'DRIVER_ASSIGNED' || trip.status === 'VEHICLE_ASSIGNED') && (
-                          <button
-                            onClick={() => handleMarkInTransit(trip.id)}
-                            className="bg-amber-500 text-white font-bold px-3 py-1 rounded hover:bg-amber-600 text-sm"
-                          >
-                            🚛 Mark In Transit
-                          </button>
-                        )}
-
-                        {trip.status !== 'COMPLETED' && (
-                          <button
-                            onClick={() => handleForceComplete(trip.id)}
-                            className="bg-green-600 text-white font-bold px-3 py-1 rounded hover:bg-green-700 text-sm flex items-center gap-1"
-                          >
-                            ✓ Complete & Invoice
-                          </button>
-                        )}
-
-                        {trip.status !== 'TRIP CREATED' && (
-                            <button onClick={() => handleTrackTrip(trip)} className="bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded hover:bg-blue-200 text-sm flex items-center gap-1">
-                               <MapIcon size={14}/> View Tracking
-                            </button>
-                        )}
-                      </div>
-                   </div>
-                 ))
-               )}
-             </div>
-             
-             {trackingTrip && (
-                 <div className="mt-8">
-                     <h2 className="text-xl font-bold mb-4">Tracking Trip #{trackingTrip.id}</h2>
-                     <div className="h-96 rounded-lg overflow-hidden border shadow-sm">
-                         <TrackingMap trip={trackingTrip} locations={trackingLocations} />
-                     </div>
-                 </div>
-             )}
-          </div>
+          <ActiveTripsPanel trips={trips} vehicles={vehicles} drivers={drivers} isRefreshing={isRefreshing} loadData={loadData} onMarkInTransit={handleMarkInTransit} onForceComplete={handleForceComplete} />
         )}
 
         {activeTab === 'vehicles' && (
+          <FleetManagementPanel vehicles={vehicles} drivers={drivers} trips={trips} isRefreshing={isRefreshing} loadData={loadData} showConfirm={showConfirm} />
+        )}
+        {activeTab === 'vehicles' && false && (
           <div>
              <h1 className="text-3xl font-bold text-foreground mb-6">Fleet Status</h1>
 
@@ -1131,6 +1021,10 @@ export default function AdminDashboard() {
              </div>
           </div>
         )}
+        {activeTab === 'settings' && (
+          <AdminSettingsPanel />
+        )}
+
         {activeTab === 'financials' && (
           <div>
              <h1 className="text-3xl font-bold text-foreground mb-6">Business Dashboard</h1>

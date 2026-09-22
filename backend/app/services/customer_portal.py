@@ -93,7 +93,7 @@ class CustomerPortalService:
                 **dest_kwargs,
                 
                 # Metrics / State
-                distance_km=0.0, # Default value for phase 3, pricing handles later
+                distance_km=None,
                 status=DeliveryRequestStatus.SUBMITTED,
                 created_at=now,
                 updated_at=now

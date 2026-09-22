@@ -85,6 +85,21 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
              </span>
          )}
       </div>
+
+         {(trip.driver_name || trip.vehicle_registration) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] p-5">
+               <div>
+                  <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Assigned Driver</span>
+                  <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.driver_name || "Driver contact unavailable"}</p>
+                  {trip.driver_phone && <a href={`tel:${trip.driver_phone}`} className="text-sm text-blue-500">{trip.driver_phone}</a>}
+               </div>
+               <div>
+                  <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Assigned Vehicle</span>
+                  <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.vehicle_registration || "Vehicle unavailable"}</p>
+                  <p className="text-sm text-[var(--text-secondary)]">{trip.vehicle_type || ""}{trip.vehicle_capacity_tons ? ` · ${trip.vehicle_capacity_tons} tons` : ""}</p>
+               </div>
+            </div>
+         )}
       
       <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] shadow-sm p-8">
          <h3 className="text-lg font-bold text-[var(--text-primary)] mb-8 border-b pb-4">Tracking History</h3>

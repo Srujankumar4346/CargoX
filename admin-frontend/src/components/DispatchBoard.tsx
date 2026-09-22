@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import {
-  MapPin, Package, Truck, User, ChevronDown, ChevronUp,
+  MapPin, Package, Truck, User, ChevronUp,
   CheckCircle, Clock, Navigation, ExternalLink, Sparkles, Bot,
   ArrowRight, AlertCircle, Info, Send, Eye, Zap
 } from "lucide-react";

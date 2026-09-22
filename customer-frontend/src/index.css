@@ -133,4 +133,26 @@
   .input-field {
     @apply w-full rounded-lg border border-border-theme bg-surface px-4 py-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors;
   }
+
+  .customer-input {
+    @apply w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
+  }
+
+  .customer-settings-input {
+    @apply w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
+  }
+
+  .customer-dashboard {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .customer-dashboard > section:has(h1) { order: 1; }
+  .customer-dashboard > section.grid.grid-cols-1 { order: 2; }
+  .customer-dashboard > section.rounded-2xl { order: 3; }
+  .customer-dashboard > .quick-actions { order: 4; }
+  .customer-dashboard > .assigned-operations { order: 5; }
+  .customer-dashboard > section#bookings { order: 6; }
+  .customer-dashboard > section#invoices { order: 7; }
+  .customer-dashboard > section.rounded-xl.border-blue-500\/20 { display: none; }
 }

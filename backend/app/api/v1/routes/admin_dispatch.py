@@ -59,8 +59,14 @@ async def approve_request(
         # Direct Admin Booking Workflow: snapshot active PricingConfig at approval time
         active_config = await PricingEngineService.get_active_pricing_config()
         
-        # Calculate distance and charges
-        dist = Decimal(str(req.distance_km)) if req.distance_km and req.distance_km > 0 else Decimal("500.00")
+        if req.distance_km is None or req.distance_km <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot approve request without an actual approved distance",
+            )
+
+        # Calculate the snapshot from the approved request distance.
+        dist = Decimal(str(req.distance_km))
         base_rate = Decimal(str(active_config.base_rate_per_km))
         margin_rate = Decimal(str(active_config.margin_per_km))
         

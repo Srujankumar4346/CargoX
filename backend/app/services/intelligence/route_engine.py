@@ -17,15 +17,8 @@ def recommend_routes(pickup_lat: float, pickup_lng: float, drop_lat: float, drop
     routes = fetch_osrm_routes(pickup_lat, pickup_lng, drop_lat, drop_lng)
     
     if not routes:
-        # Fallback if OSRM fails or has no route
-        return [{
-            "name": "Fallback Direct Route",
-            "distance_km": 500.0,
-            "time_str": "10h 0m",
-            "fuel_cost": 5000.0,
-            "score": 100,
-            "reasons": ["Fallback heuristic route due to API failure"]
-        }]
+        # No route is authoritative when OSRM cannot calculate one.
+        return []
         
     scored_routes = []
     

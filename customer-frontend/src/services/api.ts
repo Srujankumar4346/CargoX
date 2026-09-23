@@ -250,6 +250,11 @@ export const api = {
     if (!res.ok) throw new Error("Failed to fetch active pricing");
     return res.json();
   },
+  getPricingEstimate: async (distance_km: number | string) => {
+    const res = await authFetch(`${API_URL}/customer/quotations/pricing/estimate?distance_km=${encodeURIComponent(distance_km)}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   
   // Notifications (Phase 6)
   getNotifications: async (userType: string, userId: number) => {

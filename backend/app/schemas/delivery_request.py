@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Optional
 from datetime import datetime
+from decimal import Decimal
 import uuid
 
 class DeliveryRequestCreate(BaseModel):
@@ -9,6 +10,7 @@ class DeliveryRequestCreate(BaseModel):
     goods_description: Optional[str] = None
     weight_tons: float = Field(..., gt=0.0)
     special_instructions: Optional[str] = None
+    distance_km: Decimal = Field(..., gt=Decimal("0"), description="Distance in kilometers")
     
     # Pickup
     pickup_company_name: str = Field(..., min_length=1)
@@ -71,6 +73,7 @@ class DeliveryRequestRead(BaseModel):
     destination_phone: Optional[str]
     destination_lat: Optional[float]
     destination_lng: Optional[float]
+    distance_km: Optional[Decimal] = None
     
     status: str
     created_at: datetime
@@ -93,6 +96,7 @@ class DeliveryRequestUpdate(BaseModel):
     goods_description: Optional[str] = None
     weight_tons: Optional[float] = Field(None, gt=0.0)
     special_instructions: Optional[str] = None
+    distance_km: Optional[Decimal] = Field(None, gt=Decimal("0"))
     
     # Pickup
     pickup_company_name: Optional[str] = Field(None, min_length=1)

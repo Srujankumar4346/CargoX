@@ -20,3 +20,11 @@ class PricingConfigRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class CustomerPriceEstimateRead(BaseModel):
+    distance_km: Decimal
+    customer_rate_per_km: Decimal
+    estimated_total: Decimal
+    currency: str = "INR"
+
+    model_config = ConfigDict(from_attributes=True)

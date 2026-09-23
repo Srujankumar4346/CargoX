@@ -93,7 +93,7 @@ class CustomerPortalService:
                 **dest_kwargs,
                 
                 # Metrics / State
-                distance_km=None,
+                distance_km=payload.distance_km,
                 status=DeliveryRequestStatus.SUBMITTED,
                 created_at=now,
                 updated_at=now

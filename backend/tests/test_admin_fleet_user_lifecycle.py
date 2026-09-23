@@ -297,7 +297,8 @@ async def test_delivery_request_preserves_coordinates(async_client, customer_use
         "destination_company_name": "St. Martins Engineering College",
         "destination_address": "Dhulapally, Secunderabad",
         "destination_lat": 17.5400,
-        "destination_lng": 78.4700
+        "destination_lng": 78.4700,
+        "distance_km": 10.0
     }
 
     resp = await async_client.post("/api/v1/customer/requests", json=payload)

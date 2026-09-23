@@ -51,7 +51,11 @@ export default function CustomerDashboard() {
     const [bookingResult, invoiceResult, pricingResult] = await Promise.allSettled([api.getBookings(), api.getInvoices(), api.getActivePricing()]);
     if (bookingResult.status === "fulfilled") setBookings(Array.isArray(bookingResult.value) ? bookingResult.value : []); else setBookingsError("Unable to load your bookings.");
     if (invoiceResult.status === "fulfilled") setInvoices(Array.isArray(invoiceResult.value) ? invoiceResult.value : []); else setInvoicesError("Unable to load your invoices.");
-    if (pricingResult.status === "fulfilled" && pricingResult.value?.base_rate_per_km) setPricePerKm(Number(pricingResult.value.base_rate_per_km));
+    if (pricingResult.status === "fulfilled" && pricingResult.value) {
+      const base = Number(pricingResult.value.base_rate_per_km || 0);
+      const margin = Number(pricingResult.value.margin_per_km || 0);
+      if (base + margin > 0) setPricePerKm(base + margin);
+    }
     setLoading(false);
   };
 
@@ -60,8 +64,46 @@ export default function CustomerDashboard() {
 
   const submitBooking = async (event: React.FormEvent) => {
     event.preventDefault();
-    const payload = { goods_type: formData.cargo, goods_description: formData.description || null, special_instructions: formData.special_instructions || null, weight_tons: Number(formData.weight) || 0, pickup_company_name: formData.pickup_company || "Unknown Company", pickup_address: formData.pickup_address || "Unknown Address", pickup_contact_person: formData.pickup_contact || null, pickup_phone: formData.pickup_phone || null, pickup_lat: formData.pickup_lat ? Number(formData.pickup_lat) : null, pickup_lng: formData.pickup_lng ? Number(formData.pickup_lng) : null, destination_company_name: formData.drop_company || "Unknown Company", destination_address: formData.drop_address || "Unknown Address", destination_contact_person: formData.drop_contact || null, destination_phone: formData.drop_phone || null, destination_lat: formData.drop_lat ? Number(formData.drop_lat) : null, destination_lng: formData.drop_lng ? Number(formData.drop_lng) : null };
-    try { const result = editBookingData ? await api.updateBooking(editBookingData.id, payload) : await api.createBooking(payload); setSubmittedBooking(editBookingData ? null : result); setShowBookingForm(false); setShowBookingFlow(true); setEditBookingData(null); setBookingStep(1); loadData(); } catch (error) { alert(`Failed to ${editBookingData ? "update" : "create"} booking: ${error}`); }
+    const distanceVal = parseFloat(formData.distance);
+    if (isNaN(distanceVal) || distanceVal <= 0) {
+      alert("A valid distance greater than 0 km is required.");
+      return;
+    }
+    const weightVal = parseFloat(formData.weight);
+    if (isNaN(weightVal) || weightVal <= 0) {
+      alert("A valid weight greater than 0 tons is required.");
+      return;
+    }
+    const payload = {
+      goods_type: formData.cargo,
+      goods_description: formData.description || null,
+      special_instructions: formData.special_instructions || null,
+      weight_tons: weightVal,
+      distance_km: distanceVal,
+      pickup_company_name: formData.pickup_company || "Unknown Company",
+      pickup_address: formData.pickup_address || "Unknown Address",
+      pickup_contact_person: formData.pickup_contact || null,
+      pickup_phone: formData.pickup_phone || null,
+      pickup_lat: formData.pickup_lat ? Number(formData.pickup_lat) : null,
+      pickup_lng: formData.pickup_lng ? Number(formData.pickup_lng) : null,
+      destination_company_name: formData.drop_company || "Unknown Company",
+      destination_address: formData.drop_address || "Unknown Address",
+      destination_contact_person: formData.drop_contact || null,
+      destination_phone: formData.drop_phone || null,
+      destination_lat: formData.drop_lat ? Number(formData.drop_lat) : null,
+      destination_lng: formData.drop_lng ? Number(formData.drop_lng) : null
+    };
+    try {
+      const result = editBookingData ? await api.updateBooking(editBookingData.id, payload) : await api.createBooking(payload);
+      setSubmittedBooking(editBookingData ? null : result);
+      setShowBookingForm(false);
+      setShowBookingFlow(true);
+      setEditBookingData(null);
+      setBookingStep(1);
+      loadData();
+    } catch (error) {
+      alert(`Failed to ${editBookingData ? "update" : "create"} booking: ${error}`);
+    }
   };
   const openNewBooking = () => { setSubmittedBooking(null); setEditBookingData(null); setBookingStep(1); setFormData({ pickup_company: "", pickup_address: "", pickup_lat: "", pickup_lng: "", pickup_contact: "", pickup_phone: "", drop_company: "", drop_address: "", drop_lat: "", drop_lng: "", drop_contact: "", drop_phone: "", cargo: "", description: "", special_instructions: "", weight: "", distance: "" }); setShowBookingForm(false); setShowBookingFlow(true); };
   const editBooking = (booking: any) => { setEditBookingData(booking); setBookingStep(1); setFormData({ pickup_company: booking.pickup_company_name || "", pickup_address: booking.pickup_address || "", pickup_lat: booking.pickup_lat?.toString() || "", pickup_lng: booking.pickup_lng?.toString() || "", pickup_contact: booking.pickup_contact_person || "", pickup_phone: booking.pickup_phone || "", drop_company: booking.destination_company_name || "", drop_address: booking.destination_address || "", drop_lat: booking.destination_lat?.toString() || "", drop_lng: booking.destination_lng?.toString() || "", drop_contact: booking.destination_contact_person || "", drop_phone: booking.destination_phone || "", cargo: booking.goods_type || "", description: booking.goods_description || "", special_instructions: booking.special_instructions || "", weight: booking.weight_tons?.toString() || "", distance: booking.distance_km?.toString() || "" }); setShowBookingForm(false); setShowBookingFlow(true); };

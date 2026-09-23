@@ -79,13 +79,21 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  cancelBooking: async (id: string) => {
-    const res = await authFetch(`${API_URL}/admin/requests/${id}/cancel`, { method: "POST" });
+  cancelBooking: async (id: string, reason: string) => {
+    const res = await authFetch(`${API_URL}/admin/requests/${id}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  approveBooking: async (id: string) => {
-    const res = await authFetch(`${API_URL}/admin/requests/${id}/approve`, { method: "POST" });
+  approveBooking: async (id: string, distanceKm?: number) => {
+    const res = await authFetch(`${API_URL}/admin/requests/${id}/approve`, {
+      method: "POST",
+      headers: distanceKm ? { "Content-Type": "application/json" } : undefined,
+      body: distanceKm ? JSON.stringify({ distance_km: distanceKm }) : undefined,
+    });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

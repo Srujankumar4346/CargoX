@@ -5,6 +5,7 @@ from datetime import datetime
 from beanie import Document
 from pydantic import Field
 from app.models.enums import DeliveryRequestStatus
+from app.models.pricing import DecimalType
 
 class DeliveryRequest(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -35,7 +36,7 @@ class DeliveryRequest(Document):
     destination_lng: Optional[float] = None
     
     # Metrics
-    distance_km: Optional[float] = None
+    distance_km: Optional[DecimalType] = None
     status: DeliveryRequestStatus = DeliveryRequestStatus.DRAFT
     cancellation_reason: Optional[str] = None
     created_at: datetime

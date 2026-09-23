@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import {
   MapPin, Package, Truck, User, ChevronUp,
   CheckCircle, Clock, Navigation, ExternalLink, Sparkles, Bot,
-  ArrowRight, AlertCircle, Info, Send, Eye, Zap
+  ArrowRight, AlertCircle, Info, Send, Eye, Zap, XCircle
 } from "lucide-react";
 
 // ── Types matching actual backend schemas ──────────────────────────────────────
@@ -67,6 +67,7 @@ interface Props {
   activePricing: any;
   aiRecommendations: Record<string, AiRec>;
   onApprove: (bookingId: string) => Promise<void>;
+  onCancel?: (bookingId: string) => Promise<void>;
   onCreateTrip: (booking: Booking, vehicleId: string, driverId: string) => Promise<void>;
   onGetAiRec: (booking: Booking) => Promise<void>;
 }
@@ -308,6 +309,7 @@ function ExpandedWorkspace({
   aiRec,
   onClose,
   onApprove,
+  onCancel,
   onCreateTrip,
   onGetAiRec,
 }: {
@@ -318,12 +320,14 @@ function ExpandedWorkspace({
   aiRec?: AiRec;
   onClose: () => void;
   onApprove: (id: string) => Promise<void>;
+  onCancel?: (id: string) => Promise<void>;
   onCreateTrip: (booking: Booking, vehicleId: string, driverId: string) => Promise<void>;
   onGetAiRec: (booking: Booking) => Promise<void>;
 }) {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [selectedDriver, setSelectedDriver] = useState("");
   const [isApproving, setIsApproving] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
   const [isGettingAi, setIsGettingAi] = useState(false);
 
@@ -342,6 +346,7 @@ function ExpandedWorkspace({
 
   const canApprove = booking.status === "SUBMITTED";
   const canDispatch = ["ACCEPTED", "SUBMITTED", "QUOTED"].includes(booking.status);
+  const canCancel = !["DELIVERED", "COMPLETED", "CUSTOMER_CANCELLED", "REJECTED"].includes(booking.status);
   const isAlreadyDispatched = [
     "VEHICLE_ASSIGNED", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS",
     "IN_TRANSIT", "ARRIVED", "POD_SUBMITTED", "DELIVERED", "COMPLETED",
@@ -350,6 +355,12 @@ function ExpandedWorkspace({
   async function handleApprove() {
     setIsApproving(true);
     try { await onApprove(booking.id); } finally { setIsApproving(false); }
+  }
+
+  async function handleCancel() {
+    if (!onCancel) return;
+    setIsCancelling(true);
+    try { await onCancel(booking.id); } finally { setIsCancelling(false); }
   }
 
   async function handleDispatch() {
@@ -384,19 +395,25 @@ function ExpandedWorkspace({
 
           {/* Route & Locations */}
           <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 bg-blue-500/10 rounded-lg flex items-center justify-center">
                   <Navigation size={14} className="text-blue-400" />
                 </div>
                 <h4 className="text-sm font-semibold text-slate-200">Route & Locations</h4>
               </div>
-              {booking.distance_km && (
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
-                  <span className="text-blue-300 text-xs font-bold">{booking.distance_km} km</span>
-                  {!hasCoords && <span className="text-blue-500 text-[9px]">(est.)</span>}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {booking.distance_km ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                    <span className="text-blue-300 text-xs font-bold">{booking.distance_km} km</span>
+                    <span className="text-blue-500 text-[10px]">{hasCoords ? "(GPS)" : "(Requested)"}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 px-3 py-1 bg-amber-500/10 rounded-full border border-amber-500/20 text-amber-300 text-xs font-bold">
+                    <span>No distance stored</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -620,6 +637,19 @@ function ExpandedWorkspace({
                 <Sparkles size={14} />
                 {isGettingAi ? "Analyzing..." : "Get AI Recommendation"}
               </button>
+
+              {canCancel && onCancel && (
+                <button
+                  id={`cancel-btn-${booking.id}`}
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                  aria-label={`Cancel order ${booking.request_number}`}
+                >
+                  <XCircle size={15} />
+                  {isCancelling ? "Cancelling..." : "Cancel Order"}
+                </button>
+              )}
             </div>
           </div>
 
@@ -808,6 +838,7 @@ export default function DispatchBoard({
   activePricing,
   aiRecommendations,
   onApprove,
+  onCancel,
   onCreateTrip,
   onGetAiRec,
 }: Props) {
@@ -1026,6 +1057,7 @@ export default function DispatchBoard({
                     aiRec={aiRecommendations[booking.id]}
                     onClose={() => setExpandedId(null)}
                     onApprove={onApprove}
+                    onCancel={onCancel}
                     onCreateTrip={onCreateTrip}
                     onGetAiRec={onGetAiRec}
                   />

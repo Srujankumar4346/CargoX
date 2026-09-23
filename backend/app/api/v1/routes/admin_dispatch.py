@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from typing import Optional
+from decimal import Decimal
 import uuid
 from datetime import datetime, timezone
 
@@ -8,7 +11,7 @@ from app.models.delivery import Trip, DeliveryRequest
 from app.models.fleet import VehicleAssignment
 from app.models.enums import DeliveryRequestStatus
 from app.schemas.dispatch import DispatchRequest, DispatchRead
-from app.schemas.delivery_request import DeliveryRequestRead
+from app.schemas.delivery_request import DeliveryRequestRead, CancelRequestSchema
 from app.schemas.tracking_delivery import PODRead
 from app.services.dispatch_service import DispatchService
 from app.services.tracking_delivery_service import TrackingDeliveryService
@@ -24,9 +27,13 @@ async def list_requests(
     """
     return await DeliveryRequest.find_all().sort("-created_at").to_list()
 
+class DeliveryRequestApprove(BaseModel):
+    distance_km: Optional[Decimal] = Field(None, gt=Decimal("0"), description="Optional admin-approved distance in km")
+
 @router.post("/requests/{request_id}/approve", response_model=DeliveryRequestRead)
 async def approve_request(
     request_id: uuid.UUID,
+    payload: Optional[DeliveryRequestApprove] = None,
     current_admin: User = Depends(get_current_admin),
     ):
     """
@@ -39,6 +46,10 @@ async def approve_request(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
     if req.status != DeliveryRequestStatus.SUBMITTED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot approve request in {req.status} status")
+
+    # If admin provided distance_km or request has no distance, apply approved distance
+    if payload and payload.distance_km is not None and payload.distance_km > 0:
+        req.distance_km = payload.distance_km
     
     # 1. Check whether an accepted quotation already exists for this request
     from app.models.pricing import Quotation
@@ -90,6 +101,77 @@ async def approve_request(
         await quotation.insert()
 
     req.status = DeliveryRequestStatus.ACCEPTED
+    await req.save()
+    return req
+
+
+@router.post("/requests/{request_id}/cancel", response_model=DeliveryRequestRead)
+async def cancel_request_admin(
+    request_id: uuid.UUID,
+    payload: Optional[CancelRequestSchema] = None,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Admin: Cancels a delivery request based on a mandatory reason.
+    Releases assigned vehicle and driver if any, and rejects associated quotations.
+    """
+    reason = payload.reason if payload else None
+    if not reason or not reason.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A cancellation reason is required for admin cancellation."
+        )
+
+    req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
+
+    if req.status in [DeliveryRequestStatus.DELIVERED, DeliveryRequestStatus.COMPLETED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel a request that is already {req.status.value}"
+        )
+    if req.status in [DeliveryRequestStatus.CUSTOMER_CANCELLED, DeliveryRequestStatus.REJECTED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request is already in {req.status.value} status"
+        )
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # If a trip was already created, release assignments and mark trip completed/cancelled
+    trip = await Trip.find_one(Trip.request_id == req.id)
+    if trip:
+        from app.models.fleet import VehicleAssignment, Vehicle, Driver
+        from app.models.enums import VehicleStatus, DriverStatus
+        assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.trip_id == trip.id,
+            VehicleAssignment.released_at == None
+        )
+        if assignment:
+            assignment.released_at = now
+            await assignment.save()
+            vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
+            if vehicle and vehicle.status == VehicleStatus.ASSIGNED:
+                vehicle.status = VehicleStatus.AVAILABLE
+                await vehicle.save()
+            driver = await Driver.find_one(Driver.id == assignment.driver_id)
+            if driver and driver.status == DriverStatus.ON_TRIP:
+                driver.status = DriverStatus.AVAILABLE
+                await driver.save()
+
+    # Reject any active quotations
+    from app.models.pricing import Quotation
+    from app.models.enums import QuotationStatus
+    quotations = await Quotation.find(Quotation.request_id == req.id).to_list()
+    for q in quotations:
+        if q.status != QuotationStatus.REJECTED:
+            q.status = QuotationStatus.REJECTED
+            await q.save()
+
+    req.status = DeliveryRequestStatus.REJECTED
+    req.cancellation_reason = f"[Admin Cancelled]: {reason.strip()}"
+    req.updated_at = now
     await req.save()
     return req
 

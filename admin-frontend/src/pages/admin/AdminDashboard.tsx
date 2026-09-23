@@ -261,11 +261,70 @@ export default function AdminDashboard() {
 
   const handleApproveBooking = async (bookingId: string) => {
     try {
-      await api.approveBooking(bookingId);
-      alert("Booking approved successfully! Ready for vehicle and driver dispatch.");
+      const targetBooking = bookings.find((b: any) => String(b.id) === String(bookingId));
+      let approvedDist: number | undefined = undefined;
+
+      if (!targetBooking?.distance_km || Number(targetBooking.distance_km) <= 0) {
+        const input = prompt(
+          `This request (${targetBooking?.request_number || bookingId}) has no stored transport distance.\nPlease enter the approved transport distance in km to generate quotation and approve:`
+        );
+        if (!input) return; // User cancelled
+        const parsedDist = parseFloat(input.trim());
+        if (isNaN(parsedDist) || parsedDist <= 0) {
+          alert("Please enter a valid positive number for distance in km.");
+          return;
+        }
+        approvedDist = parsedDist;
+      }
+
+      await api.approveBooking(bookingId, approvedDist);
+      alert("Booking approved successfully! Quotation generated and request is ready for dispatch.");
       loadData();
     } catch (e: any) {
-      alert("Failed to approve booking: " + e);
+      let msg = e?.message || String(e);
+      try {
+        const parsed = JSON.parse(msg.replace(/^Error:\s*/, ""));
+        if (parsed.detail) {
+          msg = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+        }
+      } catch {
+        // use raw msg
+      }
+      if (msg.includes("Cannot approve request without an actual approved distance")) {
+        alert("Cannot approve this request because a valid transport distance has not been stored. Please specify the approved distance.");
+      } else {
+        alert(`Failed to approve booking: ${msg}`);
+      }
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    const targetBooking = bookings.find((b: any) => String(b.id) === String(bookingId));
+    const reason = prompt(
+      `Are you sure you want to cancel request ${targetBooking?.request_number || bookingId}?\n` +
+      `Please provide an administrative reason for cancellation (required):`
+    );
+    if (!reason) return; // User cancelled prompt or empty
+    if (!reason.trim()) {
+      alert("A cancellation reason is required to cancel this order.");
+      return;
+    }
+
+    try {
+      await api.cancelBooking(bookingId, reason.trim());
+      alert(`Request ${targetBooking?.request_number || bookingId} cancelled successfully.`);
+      loadData();
+    } catch (e: any) {
+      let msg = e?.message || String(e);
+      try {
+        const parsed = JSON.parse(msg.replace(/^Error:\s*/, ""));
+        if (parsed.detail) {
+          msg = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+        }
+      } catch {
+        // use raw msg
+      }
+      alert(`Failed to cancel booking: ${msg}`);
     }
   };
 
@@ -572,19 +631,48 @@ export default function AdminDashboard() {
               aiRecommendations={aiRecommendations}
               onApprove={handleApproveBooking}
               onCreateTrip={async (booking: any, vehicleId: string, driverId: string) => {
-                const bookingId = typeof booking === "object" ? booking.id : booking;
-                const bookingStatus = typeof booking === "object" ? booking.status : null;
-                if (bookingStatus === "SUBMITTED") {
-                  await api.approveBooking(bookingId);
+                try {
+                  const bookingId = typeof booking === "object" ? booking.id : booking;
+                  const bookingStatus = typeof booking === "object" ? booking.status : null;
+                  
+                  if (bookingStatus === "SUBMITTED") {
+                    let approvedDist: number | undefined = undefined;
+                    if (!booking?.distance_km || Number(booking.distance_km) <= 0) {
+                      const input = prompt(
+                        `This request (${booking?.request_number || bookingId}) has no stored transport distance.\nPlease enter the approved transport distance in km before dispatch:`
+                      );
+                      if (!input) return; // User cancelled
+                      const parsedDist = parseFloat(input.trim());
+                      if (isNaN(parsedDist) || parsedDist <= 0) {
+                        alert("Please enter a valid positive number for distance in km.");
+                        return;
+                      }
+                      approvedDist = parsedDist;
+                    }
+                    await api.approveBooking(bookingId, approvedDist);
+                  }
+
+                  await api.createTrip({
+                    booking_id: bookingId,
+                    vehicle_id: vehicleId,
+                    driver_id: driverId,
+                  });
+                  alert("Trip dispatched successfully! Vehicle and driver assigned.");
+                  loadData();
+                } catch (e: any) {
+                  let msg = e?.message || String(e);
+                  try {
+                    const parsed = JSON.parse(msg.replace(/^Error:\s*/, ""));
+                    if (parsed.detail) {
+                      msg = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+                    }
+                  } catch {
+                    // keep raw
+                  }
+                  alert(`Failed to dispatch trip: ${msg}`);
                 }
-                await api.createTrip({
-                  booking_id: bookingId,
-                  vehicle_id: vehicleId,
-                  driver_id: driverId,
-                });
-                alert("Trip dispatched successfully! Vehicle and driver assigned.");
-                loadData();
               }}
+              onCancel={handleCancelBooking}
               onGetAiRec={handleGetTripRecommendation}
             />
           </div>

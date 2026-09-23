@@ -99,7 +99,8 @@ async def setup_completed_trip(async_client, admin_user, customer_user, driver_u
         "goods_type": "PALLETIZED", "goods_description": "Test Goods",
         "weight_tons": 5.0, "pickup_company_name": "Source Corp",
         "pickup_address": "123 Origin St", "pickup_contact_person": "John",
-        "pickup_phone": "+919876543210", "recipient_company_id": recipient_id
+        "pickup_phone": "+919876543210", "recipient_company_id": recipient_id,
+        "distance_km": 100.0
     })
     assert req.status_code == 201
     request_id = req.json()["id"]
@@ -552,15 +553,15 @@ async def test_direct_admin_approval_creates_accepted_quotation(async_client, ad
     req = await async_client.post("/api/v1/customer/requests", json={
         "goods_type": "GENERAL", "goods_description": "Instant Goods",
         "weight_tons": 3.0, "pickup_company_name": "Instant Co",
-        "pickup_address": "Instant Addr", "recipient_company_id": recipient_id
+        "pickup_address": "Instant Addr", "recipient_company_id": recipient_id,
+        "distance_km": 15.0
     })
     request_id = req.json()["id"]
 
-    # Direct approval may snapshot only an explicitly approved distance.
+    # Verify DeliveryRequest persisted distance_km: 15.0
     delivery_request = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(request_id))
     assert delivery_request is not None
-    delivery_request.distance_km = 15.0
-    await delivery_request.save()
+    assert Decimal(str(delivery_request.distance_km)) == Decimal("15.0")
 
     # Direct Admin Approval WITHOUT a prior quotation
     app_resp = await async_client.post(f"/api/v1/admin/requests/{request_id}/approve")
@@ -626,16 +627,77 @@ async def test_direct_admin_approval_rejects_missing_distance(async_client, admi
     recipient = await async_client.post("/api/v1/customer/recipients", json={
         "name": "No Distance Recipient", "address": "No Distance Address"
     })
-    request = await async_client.post("/api/v1/customer/requests", json={
+    request_payload = {
         "goods_type": "GENERAL", "weight_tons": 1.0,
         "pickup_company_name": "No Distance Co", "pickup_address": "No Distance Pickup",
         "recipient_company_id": recipient.json()["id"]
-    })
+    }
+    # Missing distance is rejected at creation with 422
+    invalid_resp = await async_client.post("/api/v1/customer/requests", json=request_payload)
+    assert invalid_resp.status_code == 422
 
-    response = await async_client.post(f"/api/v1/admin/requests/{request.json()['id']}/approve")
+    # Zero distance is rejected with 422
+    zero_resp = await async_client.post("/api/v1/customer/requests", json={**request_payload, "distance_km": 0.0})
+    assert zero_resp.status_code == 422
+
+    # Negative distance is rejected with 422
+    neg_resp = await async_client.post("/api/v1/customer/requests", json={**request_payload, "distance_km": -10.0})
+    assert neg_resp.status_code == 422
+
+    # If document in DB has missing distance_km (e.g. legacy/corrupted), admin approval rejects it with 400
+    valid_req = await async_client.post("/api/v1/customer/requests", json={**request_payload, "distance_km": 10.0})
+    assert valid_req.status_code == 201
+    req_doc = await DeliveryRequest.get(uuid.UUID(valid_req.json()["id"]))
+    req_doc.distance_km = None
+    await req_doc.save()
+
+    response = await async_client.post(f"/api/v1/admin/requests/{req_doc.id}/approve")
     assert response.status_code == 400
     assert "actual approved distance" in response.json()["detail"]
-    assert await Quotation.find_one(Quotation.request_id == uuid.UUID(request.json()["id"])) is None
+    assert await Quotation.find_one(Quotation.request_id == req_doc.id) is None
+
+    # But admin CAN approve if they provide approved distance_km
+    approved_resp = await async_client.post(f"/api/v1/admin/requests/{req_doc.id}/approve", json={"distance_km": 12.5})
+    assert approved_resp.status_code == 200
+    quote = await Quotation.find_one(Quotation.request_id == req_doc.id)
+    assert quote is not None
+    assert Decimal(str(quote.distance_km)) == Decimal("12.5")
+
+
+@pytest.mark.anyio
+async def test_customer_pricing_estimate_endpoint(async_client, admin_user, customer_user):
+    """Customer can fetch a price estimate from backend active config."""
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+
+    # Create active pricing: Base 25 + Margin 2 = 27 / km
+    await async_client.post("/api/v1/admin/pricing-configs", json={
+        "name": "Estimate Rate", "base_rate_per_km": "25.00", "margin_per_km": "2.00"
+    })
+
+    # Estimate for 10 km: 10 * 27 = 270.00
+    resp = await async_client.get("/api/v1/customer/quotations/pricing/estimate?distance_km=10")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert Decimal(str(data["distance_km"])) == Decimal("10")
+    assert Decimal(str(data["customer_rate_per_km"])) == Decimal("27.00")
+    assert Decimal(str(data["estimated_total"])) == Decimal("270.00")
+    # Verify internal fields are NOT exposed
+    assert "internal_base_cost" not in data
+    assert "cargox_margin" not in data
+    assert "base_rate_per_km" not in data
+
+    # Estimate for 15 km: 15 * 27 = 405.00
+    resp15 = await async_client.get("/api/v1/customer/quotations/pricing/estimate?distance_km=15")
+    assert resp15.status_code == 200
+    assert Decimal(str(resp15.json()["estimated_total"])) == Decimal("405.00")
+
+    # Invalid distance <= 0 rejected with 422
+    resp_zero = await async_client.get("/api/v1/customer/quotations/pricing/estimate?distance_km=0")
+    assert resp_zero.status_code == 422
+
+    resp_neg = await async_client.get("/api/v1/customer/quotations/pricing/estimate?distance_km=-5")
+    assert resp_neg.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -654,7 +716,8 @@ async def test_pod_https_only_accepted(async_client, admin_user, customer_user, 
     req = await async_client.post("/api/v1/customer/requests", json={
         "goods_type": "GENERAL", "weight_tons": 1.0,
         "pickup_company_name": "P", "pickup_address": "P Addr",
-        "recipient_company_id": rid
+        "recipient_company_id": rid,
+        "distance_km": 50.0
     })
     request_id = req.json()["id"]
 
@@ -715,4 +778,41 @@ async def test_pod_plain_string_rejected():
 
     with _pytest.raises(ValidationError):
         PODSubmission(pod_signature_url="not-a-url-at-all")
+
+
+@pytest.mark.anyio
+async def test_admin_cancel_request_with_reason(async_client, admin_user, customer_user):
+    """Admin can cancel a request by providing a valid reason, releasing vehicle/driver."""
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+
+    recipient = await async_client.post("/api/v1/customer/recipients", json={
+        "name": "Cancel Recipient", "address": "Cancel Address"
+    })
+    req = await async_client.post("/api/v1/customer/requests", json={
+        "goods_type": "GENERAL", "weight_tons": 2.0,
+        "pickup_company_name": "Cancel Co", "pickup_address": "Cancel Pickup",
+        "recipient_company_id": recipient.json()["id"],
+        "distance_km": 20.0
+    })
+    assert req.status_code == 201
+    request_id = req.json()["id"]
+
+    # 1. Admin cancellation without reason is rejected
+    no_reason = await async_client.post(f"/api/v1/admin/requests/{request_id}/cancel", json={})
+    assert no_reason.status_code in (400, 422)
+
+    blank_reason = await async_client.post(f"/api/v1/admin/requests/{request_id}/cancel", json={"reason": "   "})
+    assert blank_reason.status_code in (400, 422)
+
+    # 2. Admin cancellation with reason succeeds
+    cancel_resp = await async_client.post(
+        f"/api/v1/admin/requests/{request_id}/cancel",
+        json={"reason": "Customer requested change of schedule and vehicle unavailable"}
+    )
+    assert cancel_resp.status_code == 200
+    data = cancel_resp.json()
+    assert data["status"] == "REJECTED"
+    assert "Customer requested change" in data["cancellation_reason"]
+
 

@@ -3,6 +3,7 @@ import uuid
 import re
 from decimal import Decimal
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlsplit
 
 from app.main import app
 from app.api.deps import get_current_admin, get_current_customer_user, get_current_driver
@@ -228,8 +229,8 @@ async def test_generate_invoice_idempotency_returns_existing(async_client, admin
 
 
 @pytest.mark.anyio
-async def test_generate_invoice_non_completed_400(async_client, admin_user, customer_user, driver_user):
-    """A trip that is only DELIVERED (not COMPLETED) cannot be invoiced."""
+async def test_generate_invoice_when_delivered(async_client, admin_user, customer_user, driver_user):
+    """A delivered trip can be invoiced before payment completes the trip."""
     app.dependency_overrides[get_current_admin] = lambda: admin_user
     app.dependency_overrides[get_current_customer_user] = lambda: customer_user
     app.dependency_overrides[get_current_driver] = lambda: driver_user
@@ -243,8 +244,8 @@ async def test_generate_invoice_non_completed_400(async_client, admin_user, cust
     await delivery_req.save()
 
     resp = await async_client.post(f"/api/v1/admin/trips/{ctx['trip_id']}/invoice", json={})
-    assert resp.status_code == 400
-    assert "COMPLETED" in resp.json()["detail"]
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "UNPAID"
 
 
 @pytest.mark.anyio
@@ -326,6 +327,128 @@ async def test_record_payment_full(async_client, admin_user, customer_user, driv
     data = inv.json()
     assert data["status"] == "PAID"
     assert Decimal(str(data["amount_due"])) == Decimal("0.00")
+
+
+@pytest.mark.anyio
+async def test_customer_cannot_self_confirm_payment(async_client, admin_user, customer_user, driver_user):
+    ctx = await setup_completed_trip(async_client, admin_user, customer_user, driver_user)
+    invoice_resp = await async_client.post(f"/api/v1/admin/trips/{ctx['trip_id']}/invoice", json={})
+    invoice_id = invoice_resp.json()["id"]
+
+    response = await async_client.post(f"/api/v1/customer/invoices/{invoice_id}/pay", json={
+        "amount": invoice_resp.json()["amount_due"], "reference_number": "CUSTOMER-CLAIMED"
+    })
+    assert response.status_code == 409
+    assert "verifies receipt" in response.json()["detail"]
+
+    current_invoice = await async_client.get(f"/api/v1/admin/invoices/{invoice_id}")
+    assert current_invoice.json()["status"] == "UNPAID"
+
+
+async def create_qr_test_invoice(async_client, admin_user, customer_user, driver_user):
+    ctx = await setup_completed_trip(async_client, admin_user, customer_user, driver_user)
+    response = await async_client.post(f"/api/v1/admin/trips/{ctx['trip_id']}/invoice", json={})
+    assert response.status_code == 201
+    return response.json()
+
+
+async def set_admin_upi_id(async_client, upi_id):
+    response = await async_client.put("/api/v1/admin/settings/payment", json={
+        "cargox_upi_id": upi_id
+    })
+    assert response.status_code == 200
+    return response.json()
+
+
+@pytest.mark.anyio
+async def test_customer_payment_qr_uses_configured_upi_and_invoice_amount(async_client, admin_user, customer_user, driver_user):
+    invoice = await create_qr_test_invoice(async_client, admin_user, customer_user, driver_user)
+    configured_upi_id = "billing-team@oksbi"
+    saved_settings = await set_admin_upi_id(async_client, configured_upi_id)
+    assert saved_settings["cargox_upi_id"] == configured_upi_id
+    settings_response = await async_client.get("/api/v1/admin/settings/payment")
+    assert settings_response.json()["cargox_upi_id"] == configured_upi_id
+
+    response = await async_client.get(
+        f"/api/v1/customer/invoices/{invoice['id']}/payment-qr",
+        params={"upi_id": "attacker@upi", "amount": "0.01"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["upi_id"] == configured_upi_id
+    assert Decimal(str(payload["amount_due"])) == Decimal(str(invoice["amount_due"]))
+
+    upi_params = parse_qs(urlsplit(payload["upi_uri"]).query)
+    assert upi_params["pa"] == [configured_upi_id]
+    assert Decimal(upi_params["am"][0]) == Decimal(str(invoice["amount_due"]))
+    qr_params = parse_qs(urlsplit(payload["qr_image_url"]).query)
+    assert qr_params["data"] == [payload["upi_uri"]]
+
+
+@pytest.mark.anyio
+async def test_customer_payment_qr_uses_remaining_balance_after_partial_payment(async_client, admin_user, customer_user, driver_user):
+    invoice = await create_qr_test_invoice(async_client, admin_user, customer_user, driver_user)
+    await set_admin_upi_id(async_client, "billing-team@oksbi")
+    partial_amount = Decimal("650.00")
+    payment = await async_client.post(f"/api/v1/admin/invoices/{invoice['id']}/payments", json={
+        "amount": str(partial_amount), "method": "UPI", "reference_number": "QR-PARTIAL-650"
+    })
+    assert payment.status_code == 201
+
+    response = await async_client.get(f"/api/v1/customer/invoices/{invoice['id']}/payment-qr")
+    assert response.status_code == 200
+    expected_due = Decimal(str(invoice["amount_due"])) - partial_amount
+    assert Decimal(str(response.json()["amount_due"])) == expected_due
+    assert Decimal(parse_qs(urlsplit(response.json()["upi_uri"]).query)["am"][0]) == expected_due
+
+
+@pytest.mark.anyio
+async def test_customer_payment_qr_rejects_fully_paid_invoice(async_client, admin_user, customer_user, driver_user):
+    invoice = await create_qr_test_invoice(async_client, admin_user, customer_user, driver_user)
+    await set_admin_upi_id(async_client, "billing-team@oksbi")
+    payment = await async_client.post(f"/api/v1/admin/invoices/{invoice['id']}/payments", json={
+        "amount": str(invoice["amount_due"]), "method": "UPI", "reference_number": "QR-FULL-PAID"
+    })
+    assert payment.status_code == 201
+
+    response = await async_client.get(f"/api/v1/customer/invoices/{invoice['id']}/payment-qr")
+    assert response.status_code == 409
+    assert "fully paid" in response.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_customer_payment_qr_unavailable_without_admin_upi_configuration(async_client, admin_user, customer_user, driver_user):
+    invoice = await create_qr_test_invoice(async_client, admin_user, customer_user, driver_user)
+
+    response = await async_client.get(f"/api/v1/customer/invoices/{invoice['id']}/payment-qr")
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_customer_payment_qr_enforces_invoice_tenant_isolation(async_client, admin_user, customer_user, driver_user):
+    invoice = await create_qr_test_invoice(async_client, admin_user, customer_user, driver_user)
+    await set_admin_upi_id(async_client, "billing-team@oksbi")
+    other_company = CustomerCompany(
+        id=uuid.uuid4(),
+        name="Unrelated Customer",
+        billing_address="Unrelated Address",
+        status=CompanyStatus.ACTIVE,
+    )
+    await other_company.insert()
+    other_user = User(
+        id=uuid.uuid4(),
+        clerk_user_id=f"qr_other_{uuid.uuid4().hex[:8]}",
+        email=f"qr_other_{uuid.uuid4().hex[:8]}@other.com",
+        role=UserRole.CUSTOMER_USER,
+        customer_company_id=other_company.id,
+        is_active=True,
+    )
+    await other_user.insert()
+    app.dependency_overrides[get_current_customer_user] = lambda: other_user
+
+    response = await async_client.get(f"/api/v1/customer/invoices/{invoice['id']}/payment-qr")
+    assert response.status_code == 404
 
 
 @pytest.mark.anyio

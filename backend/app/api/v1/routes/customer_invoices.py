@@ -1,13 +1,27 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
+from decimal import Decimal
+from urllib.parse import urlencode
 import uuid
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from app.api.deps import get_current_customer_user
+from app.models.enums import InvoiceStatus
 from app.models.user import User
 from app.schemas.invoice import CustomerInvoiceRead
 from app.services.invoice_service import InvoiceService
+from app.services.settings_service import SettingsService
 
 router = APIRouter()
+
+
+class CustomerPaymentQrRead(BaseModel):
+    invoice_number: str
+    upi_id: str
+    amount_due: Decimal
+    upi_uri: str
+    qr_image_url: str
 
 
 @router.get("", response_model=List[CustomerInvoiceRead])
@@ -35,6 +49,52 @@ async def get_customer_invoice(
     return await InvoiceService.get_invoice_customer(invoice_id, current_user)
 
 
+@router.get("/{invoice_id}/payment-qr", response_model=CustomerPaymentQrRead)
+async def get_customer_payment_qr(
+    invoice_id: uuid.UUID,
+    current_user: User = Depends(get_current_customer_user),
+):
+    invoice = await InvoiceService.get_invoice_customer(invoice_id, current_user)
+    if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This invoice is already fully paid.",
+        )
+
+    settings = await SettingsService.get_settings()
+    upi_id = settings.cargox_upi_id.strip() if settings.cargox_upi_id else ""
+    if not upi_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "UPI payments are unavailable because CargoX has not configured a receiving UPI ID. "
+                "An administrator must set it under Admin Settings > Payment receiving account."
+            ),
+        )
+
+    amount_due = Decimal(str(invoice.amount_due))
+    upi_uri = "upi://pay?" + urlencode({
+        "pa": upi_id,
+        "pn": "CargoX",
+        "tr": invoice.invoice_number,
+        "am": format(amount_due, "f"),
+        "cu": "INR",
+    })
+    qr_image_url = "https://api.qrserver.com/v1/create-qr-code/?" + urlencode({
+        "size": "256x256",
+        "data": upi_uri,
+        "color": "0f172a",
+        "bgcolor": "ffffff",
+    })
+    return CustomerPaymentQrRead(
+        invoice_number=invoice.invoice_number,
+        upi_id=upi_id,
+        amount_due=amount_due,
+        upi_uri=upi_uri,
+        qr_image_url=qr_image_url,
+    )
+
+
 @router.post("/{invoice_id}/pay", response_model=CustomerInvoiceRead)
 async def pay_customer_invoice(
     invoice_id: uuid.UUID,
@@ -45,29 +105,7 @@ async def pay_customer_invoice(
     Allows authenticated customer to pay their own invoice.
     Enforces tenant isolation and records payment.
     """
-    from fastapi import HTTPException, status
-    from decimal import Decimal
-    from app.schemas.invoice import PaymentCreate
-    from app.models.enums import PaymentMethod
-    from app.services.authorization import AuthorizationService
-
-    invoice = await InvoiceService.get_invoice_customer(invoice_id, current_user)
-    
-    amount = payment_in.get("amount")
-    if amount is None:
-        amount = invoice.amount_due
-    
-    import uuid
-    pay_ref = payment_in.get("reference_number")
-    if not pay_ref or pay_ref.strip() == "":
-        pay_ref = f"PAY-CUST-{uuid.uuid4().hex[:8].upper()}"
-
-    pay_dto = PaymentCreate(
-        amount=Decimal(str(amount)),
-        method=PaymentMethod.BANK_TRANSFER,
-        reference_number=pay_ref,
-        notes=payment_in.get("notes", "Paid by Customer online")
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Payments are recorded after CargoX verifies receipt."
     )
-    
-    await InvoiceService.record_payment(invoice.id, pay_dto, current_user)
-    return await InvoiceService.get_invoice_customer(invoice.id, current_user)

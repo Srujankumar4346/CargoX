@@ -3,6 +3,7 @@ from app.api.v1.routes.admin_pricing import router as admin_pricing_router
 from app.api.v1.routes.admin_fleet import router as admin_fleet_router
 from app.api.v1.routes.admin_dispatch import router as admin_dispatch_router
 from app.api.v1.routes.admin_invoices import router as admin_invoices_router
+from app.api.v1.routes.admin_settings import router as admin_settings_router
 from app.api.v1.routes.admin_analytics import router as admin_analytics_router
 from app.api.v1.routes.customer_quotations import router as customer_quotations_router
 from app.api.v1.routes.customer_invoices import router as customer_invoices_router
@@ -24,6 +25,7 @@ api_router.include_router(admin_pricing_router, prefix="/admin", tags=["Admin Pr
 api_router.include_router(admin_fleet_router, prefix="/admin", tags=["Admin Fleet Management"])
 api_router.include_router(admin_dispatch_router, prefix="/admin", tags=["Admin Dispatch Workflow"])
 api_router.include_router(admin_invoices_router, prefix="/admin", tags=["Admin Invoices & Payments"])
+api_router.include_router(admin_settings_router, prefix="/admin", tags=["Admin Settings"])
 api_router.include_router(admin_analytics_router, prefix="/admin/analytics", tags=["Admin Analytics"])
 api_router.include_router(admin_expenses_router, prefix="/admin", tags=["Admin Expenses"])
 api_router.include_router(admin_maintenance_router, prefix="/admin", tags=["Admin Maintenance"])

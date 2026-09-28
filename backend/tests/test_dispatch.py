@@ -1,68 +1,25 @@
 import pytest
-from fastapi.testclient import TestClient
-from datetime import datetime, timedelta, timezone
+from httpx import AsyncClient
+from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
-from sqlalchemy import text
 
 from app.main import app
-from app.api.deps import get_current_admin, get_current_customer_user, get_current_driver, get_db
+from app.api.deps import get_current_admin, get_current_customer_user, get_current_driver
 from app.models.user import User
-from app.models.company import CustomerCompany, RecipientCompany
+from app.models.company import CustomerCompany
 from app.models.delivery import DeliveryRequest, Trip
 from app.models.fleet import Vehicle, Driver, VehicleAssignment
-from app.models.enums import UserRole, CompanyStatus, DeliveryRequestStatus, VehicleType, VehicleStatus, DriverStatus
-from app.db.database import SessionLocal
-
-@pytest.fixture
-def db_session():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-@pytest.fixture(autouse=True)
-
-
+from app.models.enums import UserRole, CompanyStatus, DeliveryRequestStatus, VehicleType, VehicleStatus, DriverStatus, QuotationStatus
+from app.models.pricing import Quotation
 
 @pytest.fixture(autouse=True)
 def cleanup_database():
-    db = SessionLocal()
     yield
-    try:
-        db.execute(text("DELETE FROM location_histories"))
-        db.execute(text("DELETE FROM payments"))
-        db.execute(text("DELETE FROM trip_expenses"))
-        db.execute(text("DELETE FROM proof_of_deliveries"))
-        db.execute(text("DELETE FROM vehicle_assignments"))
-        db.execute(text("DELETE FROM trips"))
-        db.execute(text("DELETE FROM driver_settlements"))
-        db.execute(text("DELETE FROM invoices"))
-        db.execute(text("DELETE FROM quotations"))
-        db.execute(text("DELETE FROM delivery_requests"))
-        db.execute(text("DELETE FROM compliance_documents"))
-        db.execute(text("DELETE FROM vehicle_maintenance"))
-        db.execute(text("DELETE FROM notifications"))
-        db.execute(text("DELETE FROM drivers"))
-        db.execute(text("DELETE FROM vehicles"))
-        db.execute(text("DELETE FROM pricing_configs"))
-        db.execute(text("DELETE FROM users"))
-        db.execute(text("DELETE FROM recipient_companies"))
-        db.execute(text("DELETE FROM customer_companies"))
-        db.commit()
-    except Exception:
-        db.rollback()
-    finally:
-        db.close()
     app.dependency_overrides.clear()
 
 @pytest.fixture
-def client():
-    return TestClient(app)
-
-@pytest.fixture
-def admin_user(db_session):
+async def admin_user():
     uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
@@ -71,13 +28,11 @@ def admin_user(db_session):
         role=UserRole.ADMIN,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def driver_user_1(db_session):
+async def driver_user_1():
     uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
@@ -86,13 +41,11 @@ def driver_user_1(db_session):
         role=UserRole.DRIVER,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def driver_user_2(db_session):
+async def driver_user_2():
     uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
@@ -101,13 +54,11 @@ def driver_user_2(db_session):
         role=UserRole.DRIVER,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def inactive_driver_user(db_session):
+async def inactive_driver_user():
     uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
@@ -116,26 +67,22 @@ def inactive_driver_user(db_session):
         role=UserRole.DRIVER,
         is_active=False
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def customer_company(db_session):
+async def customer_company():
     company = CustomerCompany(
         id=uuid.uuid4(),
         name=f"Company {uuid.uuid4().hex[:6]}",
         billing_address="123 Corporate Way, Mumbai",
         status=CompanyStatus.ACTIVE
     )
-    db_session.add(company)
-    db_session.commit()
-    db_session.refresh(company)
+    await company.insert()
     return company
 
 @pytest.fixture
-def customer_user(db_session, customer_company):
+async def customer_user(customer_company):
     uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
@@ -145,13 +92,11 @@ def customer_user(db_session, customer_company):
         customer_company_id=customer_company.id,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def vehicle_container_10t(db_session):
+async def vehicle_container_10t():
     v = Vehicle(
         id=uuid.uuid4(),
         registration_number=f"MH-{uuid.uuid4().hex[:4].upper()}-1001",
@@ -159,13 +104,11 @@ def vehicle_container_10t(db_session):
         capacity_tons=10.0,
         status=VehicleStatus.AVAILABLE
     )
-    db_session.add(v)
-    db_session.commit()
-    db_session.refresh(v)
+    await v.insert()
     return v
 
 @pytest.fixture
-def vehicle_container_5t(db_session):
+async def vehicle_container_5t():
     v = Vehicle(
         id=uuid.uuid4(),
         registration_number=f"MH-{uuid.uuid4().hex[:4].upper()}-5005",
@@ -173,44 +116,44 @@ def vehicle_container_5t(db_session):
         capacity_tons=5.0,
         status=VehicleStatus.AVAILABLE
     )
-    db_session.add(v)
-    db_session.commit()
-    db_session.refresh(v)
+    await v.insert()
     return v
 
 @pytest.fixture
-def driver_profile_1(db_session, driver_user_1):
+async def driver_profile_1(driver_user_1):
     d = Driver(
         id=uuid.uuid4(),
         user_id=driver_user_1.id,
         name="John Driver",
         phone="9876543210",
         license_number=f"DL-{uuid.uuid4().hex[:6].upper()}",
+        email=driver_user_1.email,
+        aadhaar_number="123456789012",
+        age=30,
         status=DriverStatus.AVAILABLE
     )
-    db_session.add(d)
-    db_session.commit()
-    db_session.refresh(d)
+    await d.insert()
     return d
 
 @pytest.fixture
-def driver_profile_2(db_session, driver_user_2):
+async def driver_profile_2(driver_user_2):
     d = Driver(
         id=uuid.uuid4(),
         user_id=driver_user_2.id,
         name="Sam Driver",
         phone="9876543211",
         license_number=f"DL-{uuid.uuid4().hex[:6].upper()}",
+        email=driver_user_2.email,
+        aadhaar_number="123456789013",
+        age=35,
         status=DriverStatus.AVAILABLE
     )
-    db_session.add(d)
-    db_session.commit()
-    db_session.refresh(d)
+    await d.insert()
     return d
 
 @pytest.fixture
-def accepted_delivery_request(db_session, customer_company):
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+async def accepted_delivery_request(customer_company):
+    now = datetime.now(timezone.utc)
     req = DeliveryRequest(
         id=uuid.uuid4(),
         request_number=f"REQ-{uuid.uuid4().hex[:6].upper()}",
@@ -226,21 +169,35 @@ def accepted_delivery_request(db_session, customer_company):
         created_at=now,
         updated_at=now
     )
-    db_session.add(req)
-    db_session.commit()
-    db_session.refresh(req)
+    await req.insert()
+    
+    q = Quotation(
+        request_id=req.id,
+        pricing_config_id=uuid.uuid4(),
+        distance_km=Decimal("150.0"),
+        base_rate_per_km=Decimal("50.0"),
+        internal_base_cost=Decimal("7500.0"),
+        cargox_margin=Decimal("1500.0"),
+        customer_total_charge=Decimal("9000.0"),
+        status=QuotationStatus.ACCEPTED,
+        created_at=now,
+        accepted_at=now,
+        expires_at=now
+    )
+    await q.insert()
+    
     return req
 
 # ----------------------------------------------------------------------
 # FLEET MANAGEMENT TESTS
 # ----------------------------------------------------------------------
 
-def test_admin_create_vehicle(client, db_session, admin_user):
+@pytest.mark.anyio
+async def test_admin_create_vehicle(async_client: AsyncClient, admin_user):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     reg_no = f"MH12-{uuid.uuid4().hex[:4].upper()}"
-    resp = client.post("/api/v1/admin/vehicles", json={
+    resp = await async_client.post("/api/v1/admin/vehicles", json={
         "registration_number": reg_no,
         "type": "CONTAINER",
         "capacity_tons": "12.5"
@@ -251,37 +208,40 @@ def test_admin_create_vehicle(client, db_session, admin_user):
     assert data["status"] == "AVAILABLE"
     assert Decimal(str(data["capacity_tons"])) == Decimal("12.5")
 
-def test_admin_create_duplicate_vehicle_rejected(client, db_session, admin_user, vehicle_container_10t):
+@pytest.mark.anyio
+async def test_admin_create_duplicate_vehicle_rejected(async_client: AsyncClient, admin_user, vehicle_container_10t):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
-    resp = client.post("/api/v1/admin/vehicles", json={
+    resp = await async_client.post("/api/v1/admin/vehicles", json={
         "registration_number": vehicle_container_10t.registration_number,
         "type": "CONTAINER",
         "capacity_tons": "10.0"
     })
     assert resp.status_code == 409
 
-def test_non_admin_fleet_creation_blocked(client, db_session, customer_user):
-    app.dependency_overrides[get_db] = lambda: db_session
+@pytest.mark.anyio
+async def test_non_admin_fleet_creation_blocked(async_client: AsyncClient, customer_user):
     # Without override for get_current_admin, OAuth2 Password bearer rejects or 401/403
-    resp = client.post("/api/v1/admin/vehicles", json={
+    resp = await async_client.post("/api/v1/admin/vehicles", json={
         "registration_number": "MH12AB1234",
         "type": "CONTAINER",
         "capacity_tons": "10.0"
     })
     assert resp.status_code in [401, 403]
 
-def test_admin_create_driver_success(client, db_session, admin_user, driver_user_1):
+@pytest.mark.anyio
+async def test_admin_create_driver_success(async_client: AsyncClient, admin_user, driver_user_1):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     lic_no = f"DL-{uuid.uuid4().hex[:6].upper()}"
-    resp = client.post("/api/v1/admin/drivers", json={
+    resp = await async_client.post("/api/v1/admin/drivers", json={
         "user_id": str(driver_user_1.id),
         "name": "John Driver",
         "phone": "9876543210",
-        "license_number": lic_no
+        "license_number": lic_no,
+        "email": driver_user_1.email,
+        "aadhaar_number": "123456789012",
+        "age": 30
     })
     assert resp.status_code == 201
     data = resp.json()
@@ -292,11 +252,11 @@ def test_admin_create_driver_success(client, db_session, admin_user, driver_user
 # DISPATCH WORKFLOW TESTS
 # ----------------------------------------------------------------------
 
-def test_dispatch_request_success(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
+@pytest.mark.anyio
+async def test_dispatch_request_success(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
-    resp = client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_1.id)
     })
@@ -308,116 +268,119 @@ def test_dispatch_request_success(client, db_session, admin_user, accepted_deliv
     assert data["driver_id"] == str(driver_profile_1.id)
 
     # Verify resource status transitions
-    db_session.refresh(accepted_delivery_request)
-    db_session.refresh(vehicle_container_10t)
-    db_session.refresh(driver_profile_1)
+    req = await DeliveryRequest.get(accepted_delivery_request.id)
+    veh = await Vehicle.get(vehicle_container_10t.id)
+    driv = await Driver.get(driver_profile_1.id)
 
-    assert accepted_delivery_request.status == DeliveryRequestStatus.DRIVER_ASSIGNED
-    assert vehicle_container_10t.status == VehicleStatus.ASSIGNED
-    assert driver_profile_1.status == DriverStatus.ON_TRIP
+    assert req.status == DeliveryRequestStatus.DRIVER_ASSIGNED
+    assert veh.status == VehicleStatus.ASSIGNED
+    assert driv.status == DriverStatus.ON_TRIP
 
-def test_dispatch_invalid_request_status_rejected(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
+@pytest.mark.anyio
+async def test_dispatch_invalid_request_status_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     # Set request status to SUBMITTED
     accepted_delivery_request.status = DeliveryRequestStatus.SUBMITTED
-    db_session.commit()
+    await accepted_delivery_request.save()
 
-    resp = client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_1.id)
     })
     assert resp.status_code == 400
     assert "must be in ACCEPTED status" in resp.json()["detail"]
 
-def test_dispatch_insufficient_capacity_rejected(client, db_session, admin_user, accepted_delivery_request, vehicle_container_5t, driver_profile_1):
-    # Request weight = 8.0 tons, vehicle capacity = 5.0 tons -> should fail
+@pytest.mark.anyio
+async def test_dispatch_insufficient_capacity_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_5t, driver_profile_1):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
-    resp = client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_5t.id),
         "driver_id": str(driver_profile_1.id)
     })
     assert resp.status_code == 400
     assert "insufficient" in resp.json()["detail"].lower()
 
-def test_dispatch_unavailable_vehicle_rejected(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
+@pytest.mark.anyio
+async def test_dispatch_unavailable_vehicle_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     # Set vehicle status to MAINTENANCE
     vehicle_container_10t.status = VehicleStatus.MAINTENANCE
-    db_session.commit()
+    await vehicle_container_10t.save()
 
-    resp = client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_1.id)
     })
     assert resp.status_code == 409
     assert "unavailable" in resp.json()["detail"].lower()
 
-def test_dispatch_inactive_driver_user_rejected(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, inactive_driver_user):
+@pytest.mark.anyio
+async def test_dispatch_unavailable_driver_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_user_1):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
-    driver_inact = Driver(
+    driver_unavail = Driver(
         id=uuid.uuid4(),
-        user_id=inactive_driver_user.id,
-        name="Inactive Driver",
+        user_id=driver_user_1.id,
+        name="Unavailable Driver",
         phone="9000000000",
-        license_number=f"DL-INACTIVE-{uuid.uuid4().hex[:6].upper()}",
-        status=DriverStatus.AVAILABLE
+        license_number=f"DL-UNAVAIL-{uuid.uuid4().hex[:6].upper()}",
+        email=driver_user_1.email,
+        aadhaar_number="123456789014",
+        age=40,
+        status=DriverStatus.ON_TRIP
     )
-    db_session.add(driver_inact)
-    db_session.commit()
+    await driver_unavail.insert()
 
-    resp = client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
-        "driver_id": str(driver_inact.id)
+        "driver_id": str(driver_unavail.id)
     })
     assert resp.status_code == 409
-    assert "inactive" in resp.json()["detail"].lower()
+    assert "unavailable" in resp.json()["detail"].lower()
 
-def test_duplicate_dispatch_rejected(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1, driver_profile_2):
+@pytest.mark.anyio
+async def test_duplicate_dispatch_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1, driver_profile_2):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     # First dispatch
-    client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_1.id)
     })
 
     # Reset request status to ACCEPTED manually to simulate race condition / duplicate dispatch attempt
+    accepted_delivery_request = await DeliveryRequest.get(accepted_delivery_request.id)
     accepted_delivery_request.status = DeliveryRequestStatus.ACCEPTED
-    db_session.commit()
+    await accepted_delivery_request.save()
 
     # Second dispatch attempt when trip already exists
-    resp = client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_2.id)
     })
     assert resp.status_code == 409
     assert "already been dispatched" in resp.json()["detail"].lower()
 
-def test_reassign_dispatch_success(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, vehicle_container_5t, driver_profile_1, driver_profile_2):
+@pytest.mark.anyio
+async def test_reassign_dispatch_success(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, vehicle_container_5t, driver_profile_1, driver_profile_2):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     # 1. Initial Dispatch
-    client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_1.id)
     })
 
     # Make vehicle_container_5t 10t for capacity check in reassignment
-    vehicle_container_5t.capacity_tons = 10.0
-    db_session.commit()
+    veh_5t = await Vehicle.get(vehicle_container_5t.id)
+    veh_5t.capacity_tons = 10.0
+    await veh_5t.save()
 
     # 2. Reassign to vehicle 2 and driver 2
-    resp_reassign = client.put(f"/api/v1/admin/requests/{accepted_delivery_request.id}/reassign", json={
+    resp_reassign = await async_client.put(f"/api/v1/admin/requests/{accepted_delivery_request.id}/reassign", json={
         "vehicle_id": str(vehicle_container_5t.id),
         "driver_id": str(driver_profile_2.id)
     })
@@ -427,20 +390,20 @@ def test_reassign_dispatch_success(client, db_session, admin_user, accepted_deli
     assert data["driver_id"] == str(driver_profile_2.id)
 
     # Check previous vehicle and driver returned to AVAILABLE
-    db_session.refresh(vehicle_container_10t)
-    db_session.refresh(driver_profile_1)
-    assert vehicle_container_10t.status == VehicleStatus.AVAILABLE
-    assert driver_profile_1.status == DriverStatus.AVAILABLE
+    veh_10t = await Vehicle.get(vehicle_container_10t.id)
+    driv_1 = await Driver.get(driver_profile_1.id)
+    assert veh_10t.status == VehicleStatus.AVAILABLE
+    assert driv_1.status == DriverStatus.AVAILABLE
 
     # Check new vehicle and driver assigned
-    db_session.refresh(vehicle_container_5t)
-    db_session.refresh(driver_profile_2)
-    assert vehicle_container_5t.status == VehicleStatus.ASSIGNED
-    assert driver_profile_2.status == DriverStatus.ON_TRIP
+    veh_5t = await Vehicle.get(vehicle_container_5t.id)
+    driv_2 = await Driver.get(driver_profile_2.id)
+    assert veh_5t.status == VehicleStatus.ASSIGNED
+    assert driv_2.status == DriverStatus.ON_TRIP
 
     # Check VehicleAssignment audit history (2 assignments exist under same Trip, 1 released, 1 active)
-    trip = db_session.query(Trip).filter(Trip.request_id == accepted_delivery_request.id).first()
-    assignments = db_session.query(VehicleAssignment).filter(VehicleAssignment.trip_id == trip.id).all()
+    trip = await Trip.find_one(Trip.request_id == accepted_delivery_request.id)
+    assignments = await VehicleAssignment.find(VehicleAssignment.trip_id == trip.id).to_list()
     assert len(assignments) == 2
     released_assignments = [a for a in assignments if a.released_at is not None]
     active_assignments = [a for a in assignments if a.released_at is None]
@@ -449,23 +412,23 @@ def test_reassign_dispatch_success(client, db_session, admin_user, accepted_deli
     assert released_assignments[0].vehicle_id == vehicle_container_10t.id
     assert active_assignments[0].vehicle_id == vehicle_container_5t.id
 
-def test_reassign_started_trip_rejected(client, db_session, admin_user, accepted_delivery_request, vehicle_container_10t, vehicle_container_5t, driver_profile_1, driver_profile_2):
+@pytest.mark.anyio
+async def test_reassign_started_trip_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, vehicle_container_5t, driver_profile_1, driver_profile_2):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
     # Dispatch
-    client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+    await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
         "vehicle_id": str(vehicle_container_10t.id),
         "driver_id": str(driver_profile_1.id)
     })
 
     # Simulate trip started
-    trip = db_session.query(Trip).filter(Trip.request_id == accepted_delivery_request.id).first()
-    trip.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    db_session.commit()
+    trip = await Trip.find_one(Trip.request_id == accepted_delivery_request.id)
+    trip.started_at = datetime.now(timezone.utc)
+    await trip.save()
 
     # Reassign attempt should fail with 400
-    resp = client.put(f"/api/v1/admin/requests/{accepted_delivery_request.id}/reassign", json={
+    resp = await async_client.put(f"/api/v1/admin/requests/{accepted_delivery_request.id}/reassign", json={
         "vehicle_id": str(vehicle_container_5t.id),
         "driver_id": str(driver_profile_2.id)
     })

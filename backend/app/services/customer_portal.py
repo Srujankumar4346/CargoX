@@ -114,7 +114,7 @@ class CustomerPortalService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
             
         # Allowed before IN_TRANSIT
-        if req.status in [DeliveryRequestStatus.IN_TRANSIT, DeliveryRequestStatus.DELIVERED, DeliveryRequestStatus.COMPLETED]:
+        if req.status in [DeliveryRequestStatus.IN_TRANSIT, DeliveryRequestStatus.DELIVERED, DeliveryRequestStatus.COMPLETED, DeliveryRequestStatus.CUSTOMER_CANCELLED, DeliveryRequestStatus.REJECTED]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot cancel request in state {req.status.value}")
             
         # Require reason if accepted

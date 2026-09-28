@@ -12,6 +12,7 @@ from app.models.enums import SettlementStatus, ExpenseStatus, ExpensePayer, Deli
 from app.models.user import User
 from app.models.fleet import Driver
 
+from beanie.operators import In
 class SettlementService:
     @staticmethod
     async def generate_settlement(
@@ -19,11 +20,11 @@ class SettlementService:
         driver_id: uuid.UUID,
         period_start: datetime,
         period_end: datetime,
-        base_pay: Decimal,
+        base_pay: Optional[Decimal],
         deductions: Decimal,
         deduction_reason: str = None
     ) -> DriverSettlement:
-        if base_pay < 0:
+        if base_pay is not None and base_pay < 0:
             raise HTTPException(status_code=400, detail="Base pay must be non-negative")
         if deductions < 0:
             raise HTTPException(status_code=400, detail="Deductions must be non-negative")
@@ -46,7 +47,7 @@ class SettlementService:
         completed_req_ids = [req.id for req in completed_requests]
         
         eligible_trips = await Trip.find(
-            Trip.request_id.in_(completed_req_ids),
+            In(Trip.request_id, completed_req_ids),
             Trip.settlement_id == None,
             Trip.completed_at >= period_start,
             Trip.completed_at < end_date_exclusive
@@ -67,10 +68,29 @@ class SettlementService:
 
         trip_ids = [t.id for t in trips]
 
+        # Extract financial allocation from quotations
+        from app.models.pricing import Quotation
+        
+        sum_customer = Decimal("0.00")
+        sum_service_fee = Decimal("0.00")
+        sum_driver_payable = Decimal("0.00")
+        
+        for trip in trips:
+            quote = await Quotation.find_one(Quotation.request_id == trip.request_id)
+            if not quote or quote.driver_payable_amount is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Trip {trip.id} has no immutable financial allocation snapshot in its Quotation."
+                )
+            
+            sum_customer += Decimal(str(quote.customer_total_charge))
+            sum_service_fee += Decimal(str(quote.service_fee_amount))
+            sum_driver_payable += Decimal(str(quote.driver_payable_amount))
+
         # Calculate reimbursements
         # Only APPROVED TripExpenses paid_by DRIVER
         reimb_expenses = await TripExpense.find(
-            TripExpense.trip_id.in_(trip_ids),
+            In(TripExpense.trip_id, trip_ids),
             TripExpense.status == ExpenseStatus.APPROVED,
             TripExpense.paid_by == ExpensePayer.DRIVER
         ).to_list()
@@ -78,15 +98,22 @@ class SettlementService:
         reimbursements = sum([e.amount for e in reimb_expenses])
         reimbursements = Decimal(str(reimbursements))
         
-        total_payout = base_pay + reimbursements - deductions
+        total_payout = sum_driver_payable + reimbursements - deductions
         if total_payout < 0:
-            raise HTTPException(status_code=400, detail="Deductions cannot exceed total compensation (base_pay + reimbursements)")
+            raise HTTPException(status_code=400, detail="Deductions cannot exceed total compensation")
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         settlement = DriverSettlement(
             driver_id=driver_id,
             period_start=period_start,
             period_end=period_end,
-            base_pay=base_pay,
+            customer_amount=sum_customer,
+            service_fee_percentage=None, # It can vary per trip, so we store the amounts
+            service_fee_amount=sum_service_fee,
+            driver_payable_amount=sum_driver_payable,
+            calculated_at=now,
+            base_pay=base_pay if base_pay is not None else Decimal('0.00'),
             reimbursements=reimbursements,
             deductions=deductions,
             deduction_reason=deduction_reason,
@@ -132,7 +159,8 @@ class SettlementService:
         if base_pay is not None:
             if base_pay < 0:
                 raise HTTPException(status_code=400, detail="Base pay must be non-negative")
-            settlement.base_pay = base_pay
+            if settlement.driver_payable_amount is None:
+                settlement.base_pay = base_pay
             
         if deductions is not None:
             if deductions < 0:
@@ -144,9 +172,10 @@ class SettlementService:
         if deduction_reason is not None:
             settlement.deduction_reason = deduction_reason
 
-        total_payout = settlement.base_pay + settlement.reimbursements - settlement.deductions
+        core_comp = settlement.driver_payable_amount if settlement.driver_payable_amount is not None else settlement.base_pay
+        total_payout = core_comp + settlement.reimbursements - settlement.deductions
         if total_payout < 0:
-            raise HTTPException(status_code=400, detail="Deductions cannot exceed total compensation (base_pay + reimbursements)")
+            raise HTTPException(status_code=400, detail="Deductions cannot exceed total compensation")
 
         settlement.total_payout = total_payout
 

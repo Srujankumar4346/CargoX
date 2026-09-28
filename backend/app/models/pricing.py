@@ -40,6 +40,9 @@ class Quotation(Document):
     internal_base_cost: DecimalType
     cargox_margin: DecimalType
     customer_total_charge: DecimalType
+    service_fee_percentage: Optional[DecimalType] = None
+    service_fee_amount: Optional[DecimalType] = None
+    driver_payable_amount: Optional[DecimalType] = None
     status: QuotationStatus = QuotationStatus.PENDING # type: ignore
     created_at: datetime
     accepted_at: Optional[datetime] = None

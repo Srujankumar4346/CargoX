@@ -10,6 +10,7 @@ import DispatchBoard from "../../components/DispatchBoard";
 import FleetManagementPanel from "../../components/FleetManagementPanel";
 import ActiveTripsPanel from "../../components/ActiveTripsPanel";
 import AdminSettingsPanel from "../../components/AdminSettingsPanel";
+import PaymentSettingsSection from "../../components/PaymentSettingsSection";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 
 const normalizeStatus = (status: string | undefined) => (status || "").toUpperCase().replace(/ /g, "_");
@@ -1110,7 +1111,10 @@ export default function AdminDashboard() {
           </div>
         )}
         {activeTab === 'settings' && (
-          <AdminSettingsPanel />
+          <div className="space-y-6">
+            <PaymentSettingsSection />
+            <AdminSettingsPanel />
+          </div>
         )}
 
         {activeTab === 'financials' && (

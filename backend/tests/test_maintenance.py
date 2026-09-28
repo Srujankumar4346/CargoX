@@ -1,58 +1,20 @@
 import pytest
 import uuid
-from sqlalchemy import text
-from app.db.database import SessionLocal
+from datetime import datetime, timedelta, timezone
+from httpx import AsyncClient
+
 from app.models.enums import DeliveryRequestStatus, UserRole, CompanyStatus, MaintenanceType, MaintenanceStatus
 from app.models.user import User
-from app.api.deps import get_current_admin, get_db
-from fastapi.testclient import TestClient
+from app.api.deps import get_current_admin
 from app.main import app
-from datetime import datetime, timedelta, timezone
 
 @pytest.fixture(autouse=True)
 def cleanup_database():
-    db = SessionLocal()
     yield
-    try:
-        db.execute(text("DELETE FROM location_histories"))
-        db.execute(text("DELETE FROM payments"))
-        db.execute(text("DELETE FROM trip_expenses"))
-        db.execute(text("DELETE FROM proof_of_deliveries"))
-        db.execute(text("DELETE FROM vehicle_assignments"))
-        db.execute(text("DELETE FROM trips"))
-        db.execute(text("DELETE FROM driver_settlements"))
-        db.execute(text("DELETE FROM invoices"))
-        db.execute(text("DELETE FROM quotations"))
-        db.execute(text("DELETE FROM delivery_requests"))
-        db.execute(text("DELETE FROM compliance_documents"))
-        db.execute(text("DELETE FROM vehicle_maintenance"))
-        db.execute(text("DELETE FROM notifications"))
-        db.execute(text("DELETE FROM drivers"))
-        db.execute(text("DELETE FROM vehicles"))
-        db.execute(text("DELETE FROM pricing_configs"))
-        db.execute(text("DELETE FROM users"))
-        db.execute(text("DELETE FROM recipient_companies"))
-        db.execute(text("DELETE FROM customer_companies"))
-        db.commit()
-    except Exception:
-        db.rollback()
-    finally:
-        db.close()
+    app.dependency_overrides.clear()
 
 @pytest.fixture
-def db_session():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-@pytest.fixture
-def admin_user(db_session):
+async def admin_user():
     user = User(
         id=uuid.uuid4(),
         clerk_user_id=f"user_admin_{uuid.uuid4().hex[:8]}",
@@ -60,16 +22,14 @@ def admin_user(db_session):
         role=UserRole.ADMIN,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
-def test_maintenance_lifecycle(client, db_session, admin_user):
+@pytest.mark.anyio
+async def test_maintenance_lifecycle(async_client: AsyncClient, admin_user):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_db] = lambda: db_session
 
-    v_resp = client.post("/api/v1/admin/vehicles", json={
+    v_resp = await async_client.post("/api/v1/admin/vehicles", json={
         "registration_number": f"MH01-{uuid.uuid4().hex[:4]}",
         "type": "CONTAINER",
         "capacity_tons": 10.0
@@ -79,7 +39,7 @@ def test_maintenance_lifecycle(client, db_session, admin_user):
     
     # 1. Schedule Maintenance
     sched_date = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    m_resp = client.post(f"/api/v1/admin/vehicles/{vehicle_id}/maintenance", json={
+    m_resp = await async_client.post(f"/api/v1/admin/vehicles/{vehicle_id}/maintenance", json={
         "maintenance_type": "ROUTINE",
         "scheduled_date": sched_date,
         "description": "Oil change"
@@ -89,23 +49,23 @@ def test_maintenance_lifecycle(client, db_session, admin_user):
     assert m_resp.json()["status"] == "SCHEDULED"
 
     # Cannot schedule another active maintenance
-    m2_resp = client.post(f"/api/v1/admin/vehicles/{vehicle_id}/maintenance", json={
+    m2_resp = await async_client.post(f"/api/v1/admin/vehicles/{vehicle_id}/maintenance", json={
         "maintenance_type": "REPAIR",
         "scheduled_date": sched_date
     })
     assert m2_resp.status_code == 409
     
     # 2. Start Maintenance
-    s_resp = client.post(f"/api/v1/admin/maintenance/{maintenance_id}/start")
+    s_resp = await async_client.post(f"/api/v1/admin/maintenance/{maintenance_id}/start")
     assert s_resp.status_code == 200
     assert s_resp.json()["status"] == "IN_PROGRESS"
     
     # Vehicle status should be MAINTENANCE
-    v_info = client.get(f"/api/v1/admin/vehicles/{vehicle_id}")
+    v_info = await async_client.get(f"/api/v1/admin/vehicles/{vehicle_id}")
     assert v_info.json()["status"] == "MAINTENANCE"
     
     # 3. Complete Maintenance
-    c_resp = client.post(f"/api/v1/admin/maintenance/{maintenance_id}/complete", json={
+    c_resp = await async_client.post(f"/api/v1/admin/maintenance/{maintenance_id}/complete", json={
         "cost": "1500.00",
         "mechanic_notes": "All good"
     })
@@ -114,5 +74,5 @@ def test_maintenance_lifecycle(client, db_session, admin_user):
     assert c_resp.json()["cost"] == "1500.00"
     
     # Vehicle status should be AVAILABLE
-    v_info2 = client.get(f"/api/v1/admin/vehicles/{vehicle_id}")
+    v_info2 = await async_client.get(f"/api/v1/admin/vehicles/{vehicle_id}")
     assert v_info2.json()["status"] == "AVAILABLE"

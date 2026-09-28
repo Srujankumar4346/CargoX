@@ -85,6 +85,12 @@ async def approve_request(
         cargox_margin = (dist * margin_rate).quantize(Decimal("0.01"))
         customer_total_charge = internal_base_cost + cargox_margin
         
+        from app.services.settings_service import SettingsService
+        system_settings = await SettingsService.get_settings()
+        fee_pct = system_settings.cargox_service_fee_percentage
+        service_fee = (customer_total_charge * fee_pct / Decimal("100")).quantize(Decimal("0.01"))
+        driver_payable = customer_total_charge - service_fee
+        
         quotation = Quotation(
             request_id=req.id,
             pricing_config_id=active_config.id,
@@ -93,6 +99,9 @@ async def approve_request(
             internal_base_cost=internal_base_cost,
             cargox_margin=cargox_margin,
             customer_total_charge=customer_total_charge,
+            service_fee_percentage=fee_pct,
+            service_fee_amount=service_fee,
+            driver_payable_amount=driver_payable,
             status=QuotationStatus.ACCEPTED,
             created_at=now,
             accepted_at=now,

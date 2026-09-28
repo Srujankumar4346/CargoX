@@ -9,7 +9,7 @@ class DriverSettlementGenerate(BaseModel):
     driver_id: uuid.UUID
     period_start: datetime
     period_end: datetime
-    base_pay: Decimal = Field(..., ge=0)
+    base_pay: Optional[Decimal] = Field(default=None, ge=0)
     deductions: Decimal = Field(default=0, ge=0)
     deduction_reason: Optional[str] = None
 
@@ -21,6 +21,13 @@ class DriverSettlementRead(BaseModel):
     driver_id: uuid.UUID
     period_start: datetime
     period_end: datetime
+    customer_amount: Optional[Decimal] = None
+    service_fee_percentage: Optional[Decimal] = None
+    service_fee_amount: Optional[Decimal] = None
+    driver_payable_amount: Optional[Decimal] = None
+    currency: str = "INR"
+    calculated_at: Optional[datetime] = None
+    
     base_pay: Decimal
     reimbursements: Decimal
     deductions: Decimal

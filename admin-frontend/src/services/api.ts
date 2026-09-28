@@ -202,6 +202,20 @@ export const api = {
 
 
   // Financials
+  getPaymentSettings: async () => {
+    const res = await authFetch(`${API_URL}/admin/settings/payment`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  updatePaymentSettings: async (cargoxUpiId: string) => {
+    const res = await authFetch(`${API_URL}/admin/settings/payment`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cargox_upi_id: cargoxUpiId }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   getInvoices: async () => {
     const res = await authFetch(`${API_URL}/admin/invoices`);
     if (!res.ok) throw new Error(await res.text());

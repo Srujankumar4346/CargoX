@@ -144,6 +144,12 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  getPaymentQr: async (invoiceId: string) => {
+    const res = await authFetch(`${API_URL}/customer/invoices/${invoiceId}/payment-qr`);
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.detail || "Unable to load payment QR.");
+    return payload;
+  },
   createPayment: async (data: any) => {
     const res = await authFetch(`${API_URL}/customer/invoices/${data.invoice_id}/pay`, {
       method: "POST",

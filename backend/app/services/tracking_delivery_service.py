@@ -122,6 +122,16 @@ class TrackingDeliveryService:
         await trip.save()
         await request.save()
         await NotificationService.process_pending_notifications()
+        
+        # Auto-generate Invoice when delivered
+        try:
+            from app.services.invoice_service import InvoiceService
+            from app.schemas.invoice import InvoiceCreate
+            await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), admin_user)
+        except Exception as e:
+            import logging
+            logging.getLogger("cargox").error(f"Failed to auto-generate invoice for trip {trip.id}: {e}", exc_info=True)
+
         return pod
 
     @staticmethod
@@ -185,13 +195,6 @@ class TrackingDeliveryService:
         await assignment.save()
         await request.save()
         await NotificationService.process_pending_notifications()
-        
-        # Auto-generate Invoice
-        try:
-            await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), admin_user)
-        except Exception as e:
-            import logging
-            logging.getLogger("cargox").error(f"Failed to auto-generate invoice for trip {trip.id}: {e}", exc_info=True)
             
         return trip
 

@@ -74,12 +74,12 @@ class InvoiceService:
         if not request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
-        # Guard: request must be COMPLETED
-        if request.status != DeliveryRequestStatus.COMPLETED:
+        # Invoices are issued after delivery, before payment completes the trip.
+        if request.status not in (DeliveryRequestStatus.DELIVERED, DeliveryRequestStatus.COMPLETED):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot generate invoice for request in status '{request.status.value}'. "
-                       f"Request must be COMPLETED."
+                       f"Request must be DELIVERED or COMPLETED."
             )
 
         # Guard: idempotent return if invoice already exists for this request
@@ -190,6 +190,15 @@ class InvoiceService:
             invoice.status = InvoiceStatus.PARTIALLY_PAID
 
         await invoice.save()
+
+        if invoice.status == InvoiceStatus.PAID:
+            request = await DeliveryRequest.find_one(DeliveryRequest.id == invoice.request_id)
+            if request and request.status == DeliveryRequestStatus.DELIVERED:
+                trip = await Trip.find_one(Trip.request_id == request.id)
+                if trip:
+                    from app.services.tracking_delivery_service import TrackingDeliveryService
+                    await TrackingDeliveryService.complete_trip(trip.id, admin_user)
+
         return payment
 
     @staticmethod

@@ -21,7 +21,7 @@ async def generate_invoice(
     current_admin: User = Depends(get_current_admin),
     ):
     """
-    Generates an invoice for a COMPLETED trip.
+    Generates an invoice for a DELIVERED or COMPLETED trip.
     Derives all financial figures from the frozen accepted Quotation.
     Invoice number is assigned from a concurrency-safe PostgreSQL sequence.
     Returns 409 if an invoice already exists for this trip.

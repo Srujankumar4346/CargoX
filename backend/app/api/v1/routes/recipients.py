@@ -65,4 +65,6 @@ async def delete_recipient(
     if not recipient or recipient.customer_company_id != current_user.customer_company_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
         
+    from app.models.delivery import DeliveryRequest
+    await DeliveryRequest.find(DeliveryRequest.recipient_company_id == recipient_id).update({"$set": {"recipient_company_id": None}})
     await recipient.delete()

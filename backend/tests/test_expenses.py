@@ -1,151 +1,139 @@
 import pytest
+from httpx import AsyncClient
+from datetime import datetime, timezone
+from decimal import Decimal
 import uuid
-from sqlalchemy import text
-from app.db.database import SessionLocal
-from app.models.enums import DeliveryRequestStatus, UserRole, CompanyStatus, ExpenseCategory, ExpenseStatus
+
+from app.main import app
+from app.api.deps import get_current_admin, get_current_customer_user, get_current_driver
 from app.models.user import User
 from app.models.company import CustomerCompany
-from app.api.deps import get_current_admin, get_current_customer_user, get_current_driver, get_db
-from fastapi.testclient import TestClient
-from app.main import app
-
-@pytest.fixture(autouse=True)
-
-
+from app.models.delivery import DeliveryRequest, Trip
+from app.models.fleet import Vehicle, Driver, VehicleAssignment
+from app.models.enums import UserRole, CompanyStatus, DeliveryRequestStatus, VehicleType, VehicleStatus, DriverStatus, QuotationStatus
+from app.models.pricing import Quotation
 
 @pytest.fixture(autouse=True)
 def cleanup_database():
-    db = SessionLocal()
     yield
-    try:
-        db.execute(text("DELETE FROM location_histories"))
-        db.execute(text("DELETE FROM payments"))
-        db.execute(text("DELETE FROM trip_expenses"))
-        db.execute(text("DELETE FROM proof_of_deliveries"))
-        db.execute(text("DELETE FROM vehicle_assignments"))
-        db.execute(text("DELETE FROM trips"))
-        db.execute(text("DELETE FROM driver_settlements"))
-        db.execute(text("DELETE FROM invoices"))
-        db.execute(text("DELETE FROM quotations"))
-        db.execute(text("DELETE FROM delivery_requests"))
-        db.execute(text("DELETE FROM compliance_documents"))
-        db.execute(text("DELETE FROM vehicle_maintenance"))
-        db.execute(text("DELETE FROM notifications"))
-        db.execute(text("DELETE FROM drivers"))
-        db.execute(text("DELETE FROM vehicles"))
-        db.execute(text("DELETE FROM pricing_configs"))
-        db.execute(text("DELETE FROM users"))
-        db.execute(text("DELETE FROM recipient_companies"))
-        db.execute(text("DELETE FROM customer_companies"))
-        db.commit()
-    except Exception:
-        db.rollback()
-    finally:
-        db.close()
+    app.dependency_overrides.clear()
 
 @pytest.fixture
-def db_session():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-@pytest.fixture
-def client():
-    return TestClient(app)
-
-@pytest.fixture
-def admin_user(db_session):
+async def admin_user():
+    uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
-        clerk_user_id=f"user_admin_{uuid.uuid4().hex[:8]}",
-        email=f"admin_{uuid.uuid4().hex[:8]}@cargox.com",
+        clerk_user_id=f"user_admin_{uid}",
+        email=f"admin_{uid}@cargox.com",
         role=UserRole.ADMIN,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def driver_user(db_session):
+async def driver_user():
+    uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
-        clerk_user_id=f"user_driver_{uuid.uuid4().hex[:8]}",
-        email=f"driver_{uuid.uuid4().hex[:8]}@cargox.com",
+        clerk_user_id=f"user_driver_{uid}",
+        email=f"driver_{uid}@cargox.com",
         role=UserRole.DRIVER,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
 @pytest.fixture
-def customer_user(db_session):
+async def customer_user():
     company = CustomerCompany(
         id=uuid.uuid4(),
         name=f"Company {uuid.uuid4().hex[:6]}",
         billing_address="123 Corporate Way, Mumbai",
         status=CompanyStatus.ACTIVE
     )
-    db_session.add(company)
-    db_session.commit()
-    
+    await company.insert()
+
+    uid = uuid.uuid4().hex[:8]
     user = User(
         id=uuid.uuid4(),
-        clerk_user_id=f"user_cust_{uuid.uuid4().hex[:8]}",
-        email=f"cust_{uuid.uuid4().hex[:8]}@company.com",
+        clerk_user_id=f"user_cust_{uid}",
+        email=f"cust_{uid}@company.com",
         role=UserRole.CUSTOMER_USER,
         customer_company_id=company.id,
         is_active=True
     )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
+    await user.insert()
     return user
 
-def setup_trip(client, db_session, admin_user, customer_user, driver_user):
-    app.dependency_overrides[get_current_admin] = lambda: admin_user
-    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
-    app.dependency_overrides[get_current_driver] = lambda: driver_user
-    app.dependency_overrides[get_db] = lambda: db_session
-
-    r_resp = client.post("/api/v1/customer/recipients", json={
-        "name": "Target Recipient", "contact_person": "Jane Doe",
-        "phone": "+919999999999", "address": "456 Destination Ave"
-    })
-    recipient_id = r_resp.json()["id"]
-
-    req_resp = client.post("/api/v1/customer/requests", json={
-        "goods_type": "PALLETIZED", "weight_tons": 5.0,
-        "pickup_company_name": "Source Corp", "pickup_address": "123 Origin St",
-        "recipient_company_id": recipient_id
-    })
-    request_id = req_resp.json()["id"]
-
-    client.post("/api/v1/admin/pricing-configs", json={"name": "Std", "base_rate_per_km": "20", "margin_per_km": "5"})
-    q_resp = client.post(f"/api/v1/admin/requests/{request_id}/quote", json={"distance_km": "100"})
-    quotation_id = q_resp.json()["id"]
-    client.post(f"/api/v1/customer/quotations/{quotation_id}/accept")
-
-    v_resp = client.post("/api/v1/admin/vehicles", json={"registration_number": f"MH01-{uuid.uuid4().hex[:4]}", "type": "CONTAINER", "capacity_tons": 10.0})
-    vehicle_id = v_resp.json()["id"]
-    d_prof_resp = client.post("/api/v1/admin/drivers", json={"user_id": str(driver_user.id), "name": "Driver", "phone": "+9199", "license_number": f"DL-{uuid.uuid4().hex[:4]}"})
-    driver_id = d_prof_resp.json()["id"]
-
-    disp_resp = client.post(f"/api/v1/admin/requests/{request_id}/dispatch", json={"vehicle_id": vehicle_id, "driver_id": driver_id})
-    return disp_resp.json()["trip_id"]
-
-def test_expense_lifecycle(client, db_session, admin_user, customer_user, driver_user):
-    trip_id = setup_trip(client, db_session, admin_user, customer_user, driver_user)
+@pytest.fixture
+async def active_trip(customer_user, driver_user):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    req = DeliveryRequest(
+        id=uuid.uuid4(),
+        request_number=f"REQ-{uuid.uuid4().hex[:6].upper()}",
+        customer_company_id=customer_user.customer_company_id,
+        pickup_company_name="Sender Corp",
+        pickup_address="123 Alpha St, Mumbai",
+        destination_company_name="Receiver Corp",
+        destination_address="456 Beta St, Pune",
+        goods_type="MACHINERY",
+        weight_tons=5.0,
+        distance_km=150.0,
+        status=DeliveryRequestStatus.DRIVER_ASSIGNED,
+        created_at=now,
+        updated_at=now
+    )
+    await req.insert()
     
-    # Try driver submit expense before active -> should fail? 
-    # Actually DRIVER_ASSIGNED is an active state. Let's test it.
+    trip = Trip(
+        id=uuid.uuid4(),
+        request_id=req.id,
+        assigned_at=now
+    )
+    await trip.insert()
+    
+    d = Driver(
+        id=uuid.uuid4(),
+        user_id=driver_user.id,
+        name="Driver Expense",
+        phone="9876543210",
+        license_number=f"DL-{uuid.uuid4().hex[:6].upper()}",
+        email=driver_user.email,
+        aadhaar_number="123456789012",
+        age=30,
+        status=DriverStatus.ON_TRIP
+    )
+    await d.insert()
+
+    v = Vehicle(
+        id=uuid.uuid4(),
+        registration_number=f"MH-{uuid.uuid4().hex[:4].upper()}-9999",
+        type=VehicleType.CONTAINER,
+        capacity_tons=10.0,
+        status=VehicleStatus.ASSIGNED
+    )
+    await v.insert()
+
+    assignment = VehicleAssignment(
+        id=uuid.uuid4(),
+        trip_id=trip.id,
+        vehicle_id=v.id,
+        driver_id=d.id,
+        assigned_at=now,
+        released_at=None
+    )
+    await assignment.insert()
+
+    return trip
+
+@pytest.mark.anyio
+async def test_expense_lifecycle(async_client: AsyncClient, admin_user, customer_user, driver_user, active_trip):
+    trip_id = str(active_trip.id)
+    
+    # Driver submit expense
     app.dependency_overrides[get_current_driver] = lambda: driver_user
-    resp1 = client.post(f"/api/v1/driver/trips/{trip_id}/expenses", json={
+    resp1 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/expenses", json={
         "amount": "50.00",
         "category": "FUEL",
         "description": "Initial fuel",
@@ -155,23 +143,22 @@ def test_expense_lifecycle(client, db_session, admin_user, customer_user, driver
     expense_id = resp1.json()["id"]
     assert resp1.json()["status"] == "PENDING_APPROVAL"
 
-    # Driver cannot mutate status
     # Admin mutate status
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    resp2 = client.patch(f"/api/v1/admin/expenses/{expense_id}/status", json={
+    resp2 = await async_client.patch(f"/api/v1/admin/expenses/{expense_id}/status", json={
         "status": "APPROVED"
     })
     assert resp2.status_code == 200
     assert resp2.json()["status"] == "APPROVED"
 
     # Cannot mutate approved expense
-    resp3 = client.patch(f"/api/v1/admin/expenses/{expense_id}/status", json={
+    resp3 = await async_client.patch(f"/api/v1/admin/expenses/{expense_id}/status", json={
         "status": "REJECTED"
     })
     assert resp3.status_code == 400
 
     # Admin direct submit -> APPROVED
-    resp4 = client.post(f"/api/v1/admin/trips/{trip_id}/expenses", json={
+    resp4 = await async_client.post(f"/api/v1/admin/trips/{trip_id}/expenses", json={
         "amount": "100.00",
         "category": "TOLL"
     })
@@ -179,12 +166,13 @@ def test_expense_lifecycle(client, db_session, admin_user, customer_user, driver
     assert resp4.json()["status"] == "APPROVED"
 
     # Complete the trip
-    db_session.execute(text(f"UPDATE delivery_requests SET status = 'COMPLETED' WHERE id = (SELECT request_id FROM trips WHERE id = '{trip_id}')"))
-    db_session.commit()
+    req = await DeliveryRequest.find_one(DeliveryRequest.id == active_trip.request_id)
+    req.status = DeliveryRequestStatus.COMPLETED
+    await req.save()
 
     # Driver submission on COMPLETED trip should fail
     app.dependency_overrides[get_current_driver] = lambda: driver_user
-    resp_driver_completed = client.post(f"/api/v1/driver/trips/{trip_id}/expenses", json={
+    resp_driver_completed = await async_client.post(f"/api/v1/driver/trips/{trip_id}/expenses", json={
         "amount": "10.00",
         "category": "OTHER"
     })
@@ -192,9 +180,8 @@ def test_expense_lifecycle(client, db_session, admin_user, customer_user, driver
 
     # Admin submission on COMPLETED trip should succeed
     app.dependency_overrides[get_current_admin] = lambda: admin_user
-    resp_admin_completed = client.post(f"/api/v1/admin/trips/{trip_id}/expenses", json={
+    resp_admin_completed = await async_client.post(f"/api/v1/admin/trips/{trip_id}/expenses", json={
         "amount": "20.00",
         "category": "OTHER"
     })
     assert resp_admin_completed.status_code == 200
-

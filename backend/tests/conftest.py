@@ -38,6 +38,7 @@ async def setup_db():
     from app.models.finance import Invoice, Payment, DriverSettlement
     from app.models.notifications import Notification
     from app.models.operations import TripExpense, VehicleMaintenance
+    from app.models.settings import SystemSettings
     
     await init_beanie(database=database, document_models=[
         CustomerCompany, RecipientCompany,
@@ -47,7 +48,7 @@ async def setup_db():
         DeliveryRequest, Trip, ProofOfDelivery, LocationHistory,
         Invoice, Payment, DriverSettlement,
         Notification,
-        TripExpense, VehicleMaintenance,
+        TripExpense, VehicleMaintenance, SystemSettings,
     ])
     
     yield

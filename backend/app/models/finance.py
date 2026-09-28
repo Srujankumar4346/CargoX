@@ -73,6 +73,13 @@ class DriverSettlement(Document):
     period_start: datetime
     period_end: datetime
     
+    customer_amount: Optional[DecimalType] = None
+    service_fee_percentage: Optional[DecimalType] = None
+    service_fee_amount: Optional[DecimalType] = None
+    driver_payable_amount: Optional[DecimalType] = None
+    currency: str = "INR"
+    calculated_at: Optional[datetime] = None
+    
     base_pay: DecimalType = Decimal('0.00')
     reimbursements: DecimalType = Decimal('0.00')
     deductions: DecimalType = Decimal('0.00')

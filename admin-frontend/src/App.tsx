@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { useAuth } from "@clerk/react";
 import LandingPage from "./pages/LandingPage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminLogin from "./pages/admin/AdminLogin";
 import DriverWorkspace from "./pages/driver/DriverWorkspace";
+import DriverLogin from "./pages/driver/DriverLogin";
 import { api, setTokenGetter } from "./services/api";
 
 function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; children: React.ReactNode }) {
@@ -60,7 +62,13 @@ function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; 
     if (normalizedRole === "DRIVER") {
       return <Navigate to="/driver" replace />;
     }
-    return <LandingPage />;
+    // If signed in but no valid role, show a message or redirect to a fallback
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-center">
+        <h2 className="text-2xl font-bold text-slate-100 mb-2">Access Denied</h2>
+        <p className="text-slate-400 max-w-md">Your account does not have access to this portal. If you are a driver, your account might not be activated.</p>
+      </div>
+    );
   }
 
   return <>{children}</>;
@@ -90,8 +98,8 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LandingPage />} />
-        <Route path="/register" element={<LandingPage />} />
+        <Route path="/driver/login" element={<DriverLogin />} />
+        <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<RoleGate allowedRole="ADMIN"><AdminDashboard /></RoleGate>} />
         <Route path="/driver" element={<RoleGate allowedRole="DRIVER"><DriverWorkspace /></RoleGate>} />
       </Routes>

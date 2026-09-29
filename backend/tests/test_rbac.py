@@ -85,9 +85,15 @@ async def test_get_current_customer_auto_creates_company():
 
 @pytest.mark.anyio
 async def test_get_current_driver_success():
+    from app.models.fleet import Driver
     user_mock = User(id=uuid.uuid4(), clerk_user_id="user_123", email="a@a.com", is_active=True, role=UserRole.DRIVER)
+    await user_mock.insert()
+    
+    driver_mock = Driver(user_id=user_mock.id, email="a@a.com", name="Test Driver", phone="123", aadhaar_number="123", license_number="123", age=30)
+    await driver_mock.insert()
+
     result = await get_current_driver(user_mock)
-    assert result == user_mock
+    assert result.id == user_mock.id
 
 @pytest.mark.anyio
 async def test_get_current_driver_failure():

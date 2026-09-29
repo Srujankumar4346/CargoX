@@ -104,4 +104,13 @@ async def get_current_customer_user(current_user: User = Depends(get_current_use
 async def get_current_driver(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != UserRole.DRIVER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
+        
+    from app.models.fleet import Driver
+    driver_record = await Driver.find_one(Driver.user_id == current_user.id)
+    if not driver_record:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your driver account has not been activated. Please contact CargoX administration.")
+        
+    if getattr(driver_record, "status", None) == "INACTIVE":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your driver account is currently inactive. Please contact CargoX administration.")
+        
     return current_user

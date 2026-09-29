@@ -24,6 +24,7 @@ class DriverStatus(str, enum.Enum):
     AVAILABLE = "AVAILABLE"
     ON_TRIP = "ON_TRIP"
     OFF_DUTY = "OFF_DUTY"
+    INACTIVE = "INACTIVE"
 
 class DeliveryRequestStatus(str, enum.Enum):
     DRAFT = "DRAFT"

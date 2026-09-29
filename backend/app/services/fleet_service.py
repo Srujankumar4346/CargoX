@@ -133,7 +133,8 @@ class FleetService:
                 id=uuid.uuid4(),
                 email=driver_in.email,
                 role=UserRole.DRIVER,
-                is_active=True
+                is_active=True,
+                clerk_user_id=f"pending_{uuid.uuid4()}"
             )
             await user.insert()
         elif user.role != UserRole.DRIVER:

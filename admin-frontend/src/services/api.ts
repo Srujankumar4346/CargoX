@@ -205,6 +205,53 @@ export const api = {
     return res.json();
   },
 
+  // Driver Workspace APIs
+  getDriverActiveTrip: async () => {
+    const res = await authFetch(`${API_URL}/driver/trips/active`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  getDriverTripsHistory: async () => {
+    const res = await authFetch(`${API_URL}/driver/trips/history`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  updateDriverLocation: async (tripId: number, lat: number, lng: number) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/location`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latitude: lat, longitude: lng }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  driverStartPickup: async (tripId: number) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/start-pickup`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  driverStartTransit: async (tripId: number) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/start-transit`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  driverArrive: async (tripId: number) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/arrive`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  driverSubmitPOD: async (tripId: number, data: any) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/pod`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+
 
   // Financials
   getPaymentSettings: async () => {

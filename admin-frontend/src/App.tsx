@@ -4,12 +4,18 @@ import { useAuth } from "@clerk/react";
 import LandingPage from "./pages/LandingPage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import DriverWorkspace from "./pages/driver/DriverWorkspace";
-import { api } from "./services/api";
+import { api, setTokenGetter } from "./services/api";
 
 function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [role, setRole] = useState<"ADMIN" | "DRIVER" | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (getToken) {
+      setTokenGetter(getToken);
+    }
+  }, [getToken]);
 
   useEffect(() => {
     let mounted = true;
@@ -59,6 +65,14 @@ function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; 
 }
 
 function App() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    if (getToken) {
+      setTokenGetter(getToken);
+    }
+  }, [getToken]);
+
   // Enforce dark mode by default unless user has saved 'light'
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');

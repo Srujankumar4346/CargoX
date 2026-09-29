@@ -97,6 +97,24 @@ async def test_get_current_driver_failure():
     assert exc.value.status_code == 403
 
 @pytest.mark.anyio
+async def test_authenticated_role_bootstrap_returns_user_role(async_client):
+    user = User(
+        id=uuid.uuid4(),
+        clerk_user_id="user_role_bootstrap",
+        email="driver_bootstrap@example.com",
+        is_active=True,
+        role=UserRole.DRIVER,
+    )
+    await user.insert()
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    resp = await async_client.get("/api/v1/auth/me")
+
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "DRIVER"
+    assert resp.json()["email"] == user.email
+
+@pytest.mark.anyio
 async def test_authorization_customer_access_allowed():
     company_id = uuid.uuid4()
     user_mock = User(id=uuid.uuid4(), clerk_user_id="123", role=UserRole.CUSTOMER_USER, email='test@example.com', customer_company_id=company_id)

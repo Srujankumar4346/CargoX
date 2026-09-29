@@ -63,6 +63,11 @@ export const api = {
     if (!res.ok) throw new Error("Invalid credentials");
     return res.json();
   },
+  getCurrentUserProfile: async () => {
+    const res = await authFetch(`${API_URL}/auth/me`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   // Bookings (Requests)
   createBooking: async (data: any) => {
     // Admins usually don't create bookings directly, but keeping it if needed

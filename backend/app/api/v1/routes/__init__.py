@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.admin_pricing import router as admin_pricing_router
 from app.api.v1.routes.admin_fleet import router as admin_fleet_router
 from app.api.v1.routes.admin_dispatch import router as admin_dispatch_router
@@ -21,6 +22,7 @@ from app.api.v1.routes.admin_users import router as admin_users_router
 from app.api.v1.routes.notifications import router as notifications_router
 
 api_router = APIRouter()
+api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(admin_pricing_router, prefix="/admin", tags=["Admin Pricing & Quotations"])
 api_router.include_router(admin_fleet_router, prefix="/admin", tags=["Admin Fleet Management"])
 api_router.include_router(admin_dispatch_router, prefix="/admin", tags=["Admin Dispatch Workflow"])

@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/LandingPage";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
-import DriverDashboard from "./pages/driver/DriverDashboard";
 import CustomerSettings from "./pages/customer/CustomerSettings";
 
 function App() {
@@ -25,7 +24,6 @@ function App() {
         <Route path="/register" element={<LandingPage />} />
         <Route path="/customer" element={<CustomerDashboard />} />
         <Route path="/customer/settings" element={<CustomerSettings />} />
-        <Route path="/driver" element={<DriverDashboard />} />
       </Routes>
     </Router>
   );

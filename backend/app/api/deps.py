@@ -22,35 +22,30 @@ def get_current_user_token(token: Annotated[str, Depends(oauth2_scheme)]) -> dic
         )
 
 async def get_current_user(token_data: dict = Depends(get_current_user_token)) -> User:
+    if token_data.get("iss") == "cargox_local":
+        # It's a local driver token. The `sub` is the user_id.
+        user_id = token_data.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid local token payload")
+        import uuid
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user_id format in token")
+        user = await User.get(user_uuid)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Local user not found")
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        return user
+
     clerk_user_id = token_data.get("sub")
     if not clerk_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
     user = await User.find_one(User.clerk_user_id == clerk_user_id)
     if not user:
-        email = token_data.get("email")
-        if not email and settings.CLERK_SECRET_KEY:
-            try:
-                import httpx
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"https://api.clerk.com/v1/users/{clerk_user_id}",
-                        headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"},
-                        timeout=5.0
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        email_addresses = data.get("email_addresses", [])
-                        for email_obj in email_addresses:
-                            if email_obj.get("id") == data.get("primary_email_address_id"):
-                                email = email_obj.get("email_address")
-                                break
-                        if not email and email_addresses:
-                            email = email_addresses[0].get("email_address")
-            except Exception:
-                pass
-                
-        email = email or f"{clerk_user_id}@placeholder.cargox.com"
+        email = token_data.get("email") or f"{clerk_user_id}@placeholder.cargox.com"
         
         # Check if user already exists by email (e.g. provisioned by Admin as DRIVER or invited)
         existing_by_email = await User.find_one(User.email == email)

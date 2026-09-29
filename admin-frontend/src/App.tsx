@@ -23,7 +23,8 @@ function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; 
     let mounted = true;
 
     if (!isLoaded) return;
-    if (!isSignedIn) {
+    const hasLocalToken = !!localStorage.getItem("access_token");
+    if (!isSignedIn && !hasLocalToken) {
       setRole(null);
       setLoading(false);
       return;
@@ -49,19 +50,16 @@ function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; 
     return <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">Loading workspace…</div>;
   }
 
-  if (!isSignedIn) {
+  const hasLocalToken = !!localStorage.getItem("access_token");
+  if (!isSignedIn && !hasLocalToken) {
     return <LandingPage />;
   }
 
   const normalizedRole = role ? role.toUpperCase() : null;
 
   if (normalizedRole !== allowedRole) {
-    if (normalizedRole === "ADMIN") {
-      return <Navigate to="/admin" replace />;
-    }
-    if (normalizedRole === "DRIVER") {
-      return <Navigate to="/driver" replace />;
-    }
+    // We intentionally do not auto-redirect cross-roles to avoid confusing behavior.
+    // If a Driver visits /admin, or an Admin visits /driver, they get Access Denied.
     // If signed in but no valid role, show a message or redirect to a fallback
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-center">

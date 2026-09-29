@@ -15,29 +15,38 @@ class AdminUserService:
         users = await User.find_all().to_list()
         
         if settings.CLERK_SECRET_KEY:
-            sync_needed = False
+            import asyncio
+            
+            async def sync_user(client: httpx.AsyncClient, user: User) -> bool:
+                if not (user.email and user.email.endswith("@placeholder.cargox.com") and user.clerk_user_id):
+                    return False
+                try:
+                    response = await client.get(
+                        f"https://api.clerk.com/v1/users/{user.clerk_user_id}",
+                        headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"}
+                    )
+                    if response.status_code == 200:
+                        clerk_data = response.json()
+                        primary_email_id = clerk_data.get("primary_email_address_id")
+                        for email_obj in clerk_data.get("email_addresses", []):
+                            if email_obj.get("id") == primary_email_id:
+                                user.email = email_obj.get("email_address")
+                                await user.save()
+                                return True
+                    elif response.status_code == 404:
+                        # Prevent endless 404 syncing by altering the placeholder
+                        user.email = user.email.replace("@placeholder.cargox.com", "@missing.cargox.com")
+                        await user.save()
+                        return True
+                except Exception as e:
+                    logger.error(f"Failed to sync email for user {user.clerk_user_id}: {e}")
+                return False
+
             async with httpx.AsyncClient() as client:
-                for user in users:
-                    if user.email and user.email.endswith("@placeholder.cargox.com"):
-                        try:
-                            response = await client.get(
-                                f"https://api.clerk.com/v1/users/{user.clerk_user_id}",
-                                headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"}
-                            )
-                            if response.status_code == 200:
-                                clerk_data = response.json()
-                                primary_email_id = clerk_data.get("primary_email_address_id")
-                                email_addresses = clerk_data.get("email_addresses", [])
-                                for email_obj in email_addresses:
-                                    if email_obj.get("id") == primary_email_id:
-                                        user.email = email_obj.get("email_address")
-                                        await user.save()
-                                        sync_needed = True
-                                        break
-                        except Exception as e:
-                            logger.error(f"Failed to sync email for user {user.clerk_user_id}: {e}")
-            if sync_needed:
-                users = await User.find_all().to_list()
+                tasks = [sync_user(client, user) for user in users]
+                results = await asyncio.gather(*tasks)
+                if any(results):
+                    users = await User.find_all().to_list()
 
         return users
     @staticmethod
@@ -75,24 +84,6 @@ class AdminUserService:
         target_user.role = new_role
         await target_user.save()
         
-        if new_role == UserRole.DRIVER:
-            from app.models.fleet import Driver
-            from app.models.enums import DriverStatus
-            existing_driver = await Driver.find_one(Driver.user_id == target_user.id)
-            if not existing_driver:
-                new_driver = Driver(
-                    user_id=target_user.id,
-                    name=target_user.email.split("@")[0].title() if target_user.email else "New Driver",
-                    email=target_user.email,
-                    phone="Pending",
-                    license_number="Pending",
-                    status=DriverStatus.AVAILABLE
-                )
-                await new_driver.insert()
-            else:
-                if getattr(existing_driver, "status", None) == "INACTIVE":
-                    existing_driver.status = DriverStatus.AVAILABLE
-                    await existing_driver.save()
         # Structured audit log
         logger.info(
             f"AUDIT_USER_ROLE_CHANGE | admin_user_id={current_admin.id} | "

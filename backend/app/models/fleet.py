@@ -20,6 +20,8 @@ class Driver(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
     user_id: Optional[uuid.UUID] = None
     email: str
+    username: Optional[str] = None
+    password_hash: Optional[str] = None
     aadhaar_number: str
     age: int
     name: str

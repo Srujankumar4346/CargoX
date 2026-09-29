@@ -79,7 +79,7 @@ export default function LandingPage() {
               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-500/50" /> Payments & POD</li>
             </ul>
             <Link 
-              to={isSignedIn && normalizedRole === "DRIVER" ? "/driver" : "/driver/login"} 
+              to={isSignedIn || localStorage.getItem("access_token") ? "/driver" : "/driver/login"} 
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-blue-900/20 transition hover:bg-blue-500 w-full"
             >
               Enter Driver Portal
@@ -103,7 +103,7 @@ export default function LandingPage() {
               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50" /> Dispatch & Finance</li>
             </ul>
             <Link 
-              to={isSignedIn && normalizedRole === "ADMIN" ? "/admin" : "/admin/login"} 
+              to={isSignedIn ? "/admin" : "/admin/login"} 
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-500/30 bg-slate-900/50 px-6 py-3.5 text-base font-semibold text-indigo-300 transition hover:bg-slate-800 hover:text-indigo-200 hover:border-indigo-500/50 w-full"
             >
               Enter Admin Portal

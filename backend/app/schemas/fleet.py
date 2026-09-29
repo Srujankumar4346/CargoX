@@ -27,6 +27,8 @@ class VehicleRead(BaseModel):
 
 class DriverCreate(BaseModel):
     email: str
+    username: Optional[str] = None
+    password: Optional[str] = None
     aadhaar_number: str
     age: int
     name: str = Field(..., min_length=1)
@@ -35,6 +37,8 @@ class DriverCreate(BaseModel):
 
 class DriverUpdate(BaseModel):
     email: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
     aadhaar_number: Optional[str] = None
     age: Optional[int] = None
     name: Optional[str] = None
@@ -46,6 +50,7 @@ class DriverRead(BaseModel):
     id: uuid.UUID
     user_id: Optional[uuid.UUID] = None
     email: str
+    username: Optional[str] = None
     aadhaar_number: str
     age: int
     name: str

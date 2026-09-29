@@ -38,10 +38,16 @@ export default function DriverWorkspace() {
   const [selectedTab, setSelectedTab] = useState("Dashboard");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  const [profile, setProfile] = useState<any>(null);
+
   const loadDriverData = async () => {
     setLoading(true);
     setError(null);
     try {
+      if (!user) {
+        const p = await api.getCurrentUserProfile();
+        setProfile(p);
+      }
       const activeRes = await api.getDriverActiveTrip();
       const historyRes = await api.getDriverTripsHistory();
 
@@ -55,7 +61,7 @@ export default function DriverWorkspace() {
   };
 
   useEffect(() => {
-    if (isLoaded && isSignedIn) {
+    if ((isLoaded && isSignedIn) || localStorage.getItem("access_token")) {
       loadDriverData();
     }
   }, [isLoaded, isSignedIn]);
@@ -91,7 +97,7 @@ export default function DriverWorkspace() {
     <div className="space-y-6 fade-in max-w-[1600px] mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-          Good Morning, {user?.firstName || user?.fullName || "Driver"}
+          Good Morning, {user?.firstName || user?.fullName || profile?.email?.split('@')[0] || "Driver"}
         </h1>
         <p className="mt-1 text-sm text-slate-400">Here are your deliveries for today.</p>
       </div>
@@ -447,18 +453,18 @@ export default function DriverWorkspace() {
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 max-w-2xl">
          <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold">
-               {user?.firstName?.[0] || "D"}
+               {user?.firstName?.[0] || profile?.email?.[0]?.toUpperCase() || "D"}
             </div>
             <div>
-               <h3 className="text-xl font-bold text-white">{user?.fullName || "Driver Name"}</h3>
+               <h3 className="text-xl font-bold text-white">{user?.fullName || profile?.email || "Driver Name"}</h3>
                <p className="text-blue-400 text-sm font-semibold">Verified Driver</p>
             </div>
          </div>
          
-         <div className="space-y-4 pt-4 border-t border-slate-800 text-sm">
+          <div className="space-y-4 pt-4 border-t border-slate-800 text-sm">
             <div className="grid grid-cols-[150px_1fr]">
                <span className="text-slate-500">Email</span>
-               <span className="text-slate-200">{user?.primaryEmailAddress?.emailAddress}</span>
+               <span className="text-slate-200">{user?.primaryEmailAddress?.emailAddress || profile?.email}</span>
             </div>
             <div className="grid grid-cols-[150px_1fr]">
                <span className="text-slate-500">Account Status</span>
@@ -495,7 +501,14 @@ export default function DriverWorkspace() {
         </div>
         <div className="flex items-center gap-3">
           <NotificationDropdown userType="DRIVER" userId={0} />
-          <UserButton />
+          {isSignedIn ? <UserButton /> : (
+            <button 
+              onClick={() => { localStorage.removeItem("access_token"); window.location.href = "/"; }}
+              className="text-sm font-semibold text-red-400 border border-red-500/30 rounded px-2 py-1"
+            >
+              Log out
+            </button>
+          )}
         </div>
       </div>
 
@@ -557,10 +570,17 @@ export default function DriverWorkspace() {
                     DR
                  </div>
                  <div className="text-right">
-                    <p className="text-sm font-bold text-white">{user?.fullName || "Driver"}</p>
+                    <p className="text-sm font-bold text-white">{user?.fullName || profile?.email?.split('@')[0] || "Driver"}</p>
                     <p className="text-[10px] text-slate-400 uppercase tracking-wider">Driver</p>
                  </div>
-                 <UserButton />
+                 {isSignedIn ? <UserButton /> : (
+                    <button 
+                      onClick={() => { localStorage.removeItem("access_token"); window.location.href = "/"; }}
+                      className="text-xs font-semibold text-red-400 border border-red-500/30 rounded px-2 py-1 ml-2"
+                    >
+                      Log out
+                    </button>
+                 )}
               </div>
            </div>
         </header>

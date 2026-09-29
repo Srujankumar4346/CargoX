@@ -56,13 +56,23 @@ function DriverForm({ onDone }: { onDone: () => void }) {
     const aadhaar = String(form.get("aadhaar_number") || "").replace(/\s/g, "");
     const age = Number(form.get("age"));
     if (phone.length !== 10 || aadhaar.length !== 12 || age < 18 || age > 75) { setError("Enter a valid phone, Aadhaar, and age from 18 to 75."); setSaving(false); return; }
-    try { await api.createDriver({ email: form.get("email"), aadhaar_number: aadhaar, age, name: form.get("name"), phone, license_number: form.get("license_number") }); event.currentTarget.reset(); onDone(); } catch (err: any) { setError(err?.message || "Unable to add driver."); } finally { setSaving(false); }
+    try { await api.createDriver({ 
+      email: form.get("email"), 
+      aadhaar_number: aadhaar, 
+      age, 
+      name: form.get("name"), 
+      phone, 
+      license_number: form.get("license_number"),
+      username: form.get("username") || undefined,
+      password: form.get("password") || undefined
+    }); event.currentTarget.reset(); onDone(); } catch (err: any) { setError(err?.message || "Unable to add driver."); } finally { setSaving(false); }
   }} className="space-y-3">
     {error && <div className="flex gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><AlertCircle size={15} />{error}</div>}
     <div className="grid gap-3 sm:grid-cols-2">
       <input name="name" required placeholder="Full name" className="fleet-input" /><input name="email" type="email" required placeholder="Email address" className="fleet-input" />
       <input name="phone" required inputMode="numeric" maxLength={10} placeholder="Mobile number" className="fleet-input" /><input name="age" type="number" required min="18" max="75" placeholder="Age" className="fleet-input" />
       <input name="license_number" required placeholder="License number" className="fleet-input" /><input name="aadhaar_number" required inputMode="numeric" maxLength={14} placeholder="Aadhaar number" className="fleet-input" />
+      <input name="username" placeholder="Login Username (Optional)" className="fleet-input" /><input name="password" type="text" placeholder="Login Password (Optional)" className="fleet-input" />
     </div>
     <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"><Plus size={16} />{saving ? "Adding driver..." : "Add driver"}</button>
   </form>;
@@ -89,12 +99,14 @@ function InlineEdit({ kind, record, onCancel, onSaved }: any) {
   const [error, setError] = useState("");
   const isDriver = kind === "driver";
   const fields = isDriver
-    ? [{ name: "name", value: record.name }, { name: "email", value: record.email, type: "email" }, { name: "phone", value: record.phone }, { name: "age", value: record.age, type: "number" }, { name: "license_number", value: record.license_number }, { name: "aadhaar_number", value: record.aadhaar_number }]
+    ? [{ name: "name", value: record.name }, { name: "email", value: record.email, type: "email" }, { name: "phone", value: record.phone }, { name: "age", value: record.age, type: "number" }, { name: "license_number", value: record.license_number }, { name: "aadhaar_number", value: record.aadhaar_number }, { name: "username", value: record.username || "" }, { name: "password", value: "", placeholder: "Leave blank to keep same" }]
     : [{ name: "registration_number", value: record.registration_number }, { name: "capacity_tons", value: record.capacity_tons, type: "number" }];
   const statuses = isDriver ? ["AVAILABLE", "ON_TRIP", "INACTIVE"] : ["AVAILABLE", "ON_TRIP", "MAINTENANCE"];
   return <form onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); const data: any = Object.fromEntries(form.entries());
     if (data.age) data.age = Number(data.age); if (data.capacity_tons) data.capacity_tons = Number(data.capacity_tons);
+    if (isDriver && !data.password) delete data.password;
+    if (isDriver && !data.username) delete data.username;
     try { await (isDriver ? api.updateDriver(record.id, data) : api.updateVehicle(record.id, data)); onSaved(); } catch (err: any) { setError(err?.message || "Unable to save changes."); }
   }} className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
     <div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-300">Edit {kind}</p><button type="button" onClick={onCancel}><X size={16} className="text-slate-500" /></button></div>

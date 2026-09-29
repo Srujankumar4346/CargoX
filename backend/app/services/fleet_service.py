@@ -105,6 +105,14 @@ class FleetService:
 
     @staticmethod
     async def create_driver(driver_in: DriverCreate) -> Driver:
+        if driver_in.username:
+            existing_username = await Driver.find_one(Driver.username == driver_in.username)
+            if existing_username:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Driver with username '{driver_in.username}' already exists"
+                )
+
         existing_email = await Driver.find_one(Driver.email == driver_in.email)
         if existing_email:
             raise HTTPException(
@@ -133,8 +141,7 @@ class FleetService:
                 id=uuid.uuid4(),
                 email=driver_in.email,
                 role=UserRole.DRIVER,
-                is_active=True,
-                clerk_user_id=f"pending_{uuid.uuid4()}"
+                is_active=True
             )
             await user.insert()
         elif user.role != UserRole.DRIVER:
@@ -149,8 +156,14 @@ class FleetService:
             name=driver_in.name,
             phone=driver_in.phone,
             license_number=driver_in.license_number,
+            username=driver_in.username,
             status=DriverStatus.AVAILABLE
         )
+        
+        if driver_in.password:
+            from app.core.security import get_password_hash
+            driver.password_hash = get_password_hash(driver_in.password)
+            
         await driver.insert()
         return driver
 
@@ -191,6 +204,19 @@ class FleetService:
             driver.phone = driver_in.phone
         if driver_in.status is not None:
             driver.status = driver_in.status
+            
+        if driver_in.username is not None and driver_in.username != driver.username:
+            existing_username = await Driver.find_one(Driver.username == driver_in.username)
+            if existing_username:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Driver with username '{driver_in.username}' already exists"
+                )
+            driver.username = driver_in.username
+            
+        if driver_in.password is not None:
+            from app.core.security import get_password_hash
+            driver.password_hash = get_password_hash(driver_in.password)
 
         await driver.save()
         return driver

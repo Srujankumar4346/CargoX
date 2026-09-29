@@ -51,11 +51,13 @@ function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; 
     return <LandingPage />;
   }
 
-  if (role !== allowedRole) {
-    if (role === "ADMIN") {
+  const normalizedRole = role ? role.toUpperCase() : null;
+
+  if (normalizedRole !== allowedRole) {
+    if (normalizedRole === "ADMIN") {
       return <Navigate to="/admin" replace />;
     }
-    if (role === "DRIVER") {
+    if (normalizedRole === "DRIVER") {
       return <Navigate to="/driver" replace />;
     }
     return <LandingPage />;

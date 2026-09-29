@@ -28,8 +28,9 @@ export default function LandingPage() {
     };
   }, [isLoaded, isSignedIn]);
 
-  const dashboardLink = role === "DRIVER" ? "/driver" : "/admin";
-  const dashboardLabel = role === "DRIVER" ? "Go to Driver Dashboard" : "Go to Admin Dashboard";
+  const normalizedRole = role ? role.toUpperCase() : null;
+  const dashboardLink = normalizedRole === "DRIVER" ? "/driver" : "/admin";
+  const dashboardLabel = normalizedRole === "DRIVER" ? "Go to Driver Dashboard" : "Go to Admin Dashboard";
 
   return (
     <div className="min-h-screen bg-[#020b1a] text-slate-100">
@@ -52,7 +53,7 @@ export default function LandingPage() {
             </Show>
             <Show when="signed-in">
               <Link to={dashboardLink} className="mr-2 rounded-lg px-4 py-2 text-sm font-medium text-slate-300 transition hover:text-white">
-                {role === "DRIVER" ? "Driver Dashboard" : "Dashboard"}
+                {normalizedRole === "DRIVER" ? "Driver Dashboard" : "Dashboard"}
               </Link>
               <UserButton />
             </Show>

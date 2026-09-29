@@ -75,6 +75,24 @@ class AdminUserService:
         target_user.role = new_role
         await target_user.save()
         
+        if new_role == UserRole.DRIVER:
+            from app.models.fleet import Driver
+            from app.models.enums import DriverStatus
+            existing_driver = await Driver.find_one(Driver.user_id == target_user.id)
+            if not existing_driver:
+                new_driver = Driver(
+                    user_id=target_user.id,
+                    name=target_user.email.split("@")[0].title() if target_user.email else "New Driver",
+                    email=target_user.email,
+                    phone="Pending",
+                    license_number="Pending",
+                    status=DriverStatus.AVAILABLE
+                )
+                await new_driver.insert()
+            else:
+                if getattr(existing_driver, "status", None) == "INACTIVE":
+                    existing_driver.status = DriverStatus.AVAILABLE
+                    await existing_driver.save()
         # Structured audit log
         logger.info(
             f"AUDIT_USER_ROLE_CHANGE | admin_user_id={current_admin.id} | "

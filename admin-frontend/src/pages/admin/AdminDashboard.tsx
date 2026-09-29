@@ -1353,6 +1353,54 @@ export default function AdminDashboard() {
                                             <UserPlus size={13} /> Make Admin
                                          </button>
                                       )}
+                                      {u.role !== 'DRIVER' && u.role !== 'ADMIN' && (
+                                         <button
+                                            onClick={() => showConfirm({
+                                              title: "Promote to Driver",
+                                              message: `Grant driver access to "${u.email}"? A driver profile will be provisioned automatically.`,
+                                              confirmLabel: "Make Driver",
+                                              confirmClass: "bg-emerald-600 hover:bg-emerald-500",
+                                              onConfirm: async () => {
+                                                closeConfirm();
+                                                try {
+                                                  await api.updateUserRole(u.id, "DRIVER");
+                                                  alert("User promoted to Driver successfully.");
+                                                  loadData();
+                                                } catch (e: any) {
+                                                  alert("Failed to promote: " + e.message);
+                                                }
+                                              }
+                                            })}
+                                            title="Make Driver"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 transition shadow-sm"
+                                         >
+                                            <UserPlus size={13} /> Make Driver
+                                         </button>
+                                      )}
+                                      {u.role === 'DRIVER' && (
+                                         <button
+                                            onClick={() => showConfirm({
+                                              title: "Revoke Driver Access",
+                                              message: `Remove driver access for "${u.email}"? They will be downgraded to a standard customer account.`,
+                                              confirmLabel: "Revoke Driver",
+                                              confirmClass: "bg-red-600 hover:bg-red-500",
+                                              onConfirm: async () => {
+                                                closeConfirm();
+                                                try {
+                                                  await api.updateUserRole(u.id, "CUSTOMER_USER");
+                                                  alert("Driver access revoked. User is now a standard customer.");
+                                                  loadData();
+                                                } catch (e: any) {
+                                                  alert("Failed to revoke driver: " + e.message);
+                                                }
+                                              }
+                                            })}
+                                            title="Revoke Driver"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition shadow-sm"
+                                         >
+                                            <UserMinus size={13} /> Revoke Driver
+                                         </button>
+                                      )}
                                      {u.role === 'ADMIN' && (
                                         <button 
                                             onClick={() => showConfirm({

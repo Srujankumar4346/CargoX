@@ -68,21 +68,22 @@ export default function DriverWorkspace() {
 
   const handleAction = async (action: string) => {
     if (!activeTrip) return;
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
     try {
       switch (action) {
         case 'start-pickup':
-          await api.driverStartPickup(activeTrip.id);
+          await api.driverStartPickup(targetTripId);
           break;
         case 'start-transit':
-          await api.driverStartTransit(activeTrip.id);
+          await api.driverStartTransit(targetTripId);
           break;
         case 'arrive':
-          await api.driverArrive(activeTrip.id);
+          await api.driverArrive(targetTripId);
           break;
         case 'submit-pod':
           const podName = prompt("Enter receiver name for POD:");
           if (!podName) return;
-          await api.driverSubmitPOD(activeTrip.id, { receiver_name: podName, signature: "signed" });
+          await api.driverSubmitPOD(targetTripId, { receiver_name: podName, signature: "signed" });
           break;
       }
       loadDriverData();
@@ -147,9 +148,9 @@ export default function DriverWorkspace() {
               <>
                 <div className="mb-6">
                   <div className="text-xl font-bold text-white flex items-center gap-2">
-                    Trip #{activeTrip.request?.request_number || String(activeTrip.id).padStart(4, '0')}
+                    Trip #{activeTrip.request_number || activeTrip.request?.request_number || String(activeTrip.trip_id || activeTrip.id).slice(-8).toUpperCase()}
                   </div>
-                  <div className="text-sm text-slate-500">Order #{activeTrip.booking_id || "ORD"}</div>
+                  <div className="text-sm text-slate-500">Order #{activeTrip.request_number || activeTrip.booking_id || "ORD"}</div>
                 </div>
 
                 <div className="flex flex-col md:flex-row items-center gap-4 mb-8">
@@ -158,8 +159,8 @@ export default function DriverWorkspace() {
                       <MapPin className="text-blue-500 shrink-0 mt-1" size={20} />
                       <div>
                         <div className="text-xs text-slate-400 mb-1">Pickup Location</div>
-                        <div className="font-semibold text-white text-sm mb-1">{activeTrip.request?.pickup_company_name || activeTrip.request?.customer_name || "Pickup"}</div>
-                        <div className="text-xs text-slate-500 line-clamp-2">{activeTrip.request?.pickup_address}</div>
+                        <div className="font-semibold text-white text-sm mb-1">{activeTrip.pickup_company_name || activeTrip.request?.pickup_company_name || activeTrip.request?.customer_name || "Pickup"}</div>
+                        <div className="text-xs text-slate-500 line-clamp-2">{activeTrip.pickup_address || activeTrip.request?.pickup_address}</div>
                         <button className="mt-3 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2 font-medium transition">
                           <Navigation size={12}/> Navigate to Pickup
                         </button>
@@ -174,8 +175,8 @@ export default function DriverWorkspace() {
                       <MapPin className="text-red-500 shrink-0 mt-1" size={20} />
                       <div>
                         <div className="text-xs text-slate-400 mb-1">Destination</div>
-                        <div className="font-semibold text-white text-sm mb-1">{activeTrip.request?.destination_company_name || "Destination"}</div>
-                        <div className="text-xs text-slate-500 line-clamp-2">{activeTrip.request?.destination_address}</div>
+                        <div className="font-semibold text-white text-sm mb-1">{activeTrip.destination_company_name || activeTrip.request?.destination_company_name || "Destination"}</div>
+                        <div className="text-xs text-slate-500 line-clamp-2">{activeTrip.destination_address || activeTrip.request?.destination_address}</div>
                         <button className="mt-3 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2 font-medium transition">
                           <Navigation size={12}/> Navigate to Destination
                         </button>
@@ -189,19 +190,19 @@ export default function DriverWorkspace() {
                     <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
                       <Package size={14}/> Cargo Type
                     </div>
-                    <div className="text-white font-medium text-sm">{activeTrip.request?.goods_type || "Cargo"}</div>
+                    <div className="text-white font-medium text-sm">{activeTrip.goods_type || activeTrip.request?.goods_type || "Cargo"}</div>
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
                       <Package size={14}/> Weight
                     </div>
-                    <div className="text-white font-medium text-sm">{activeTrip.request?.weight_tons || "0"} Tons</div>
+                    <div className="text-white font-medium text-sm">{activeTrip.weight_tons ?? activeTrip.request?.weight_tons ?? "0"} Tons</div>
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
                       <Truck size={14}/> Vehicle
                     </div>
-                    <div className="text-white font-medium text-sm">{activeTrip.vehicle?.registration_number || activeTrip.vehicle_registration || "Assigned"}</div>
+                    <div className="text-white font-medium text-sm">{activeTrip.vehicle_registration || activeTrip.vehicle?.registration_number || "Assigned"}</div>
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
@@ -218,7 +219,6 @@ export default function DriverWorkspace() {
                   <div className="absolute top-4 left-0 w-full h-0.5 bg-slate-800"></div>
                   
                   {/* Need to determine progress based on status */}
-                  {/* Statuses: ASSIGNED, IN_TRANSIT, ARRIVED, DELIVERED */}
                   <div className="relative z-10 flex justify-between">
                      <div className="flex flex-col items-center">
                         <div className="w-5 h-5 rounded-full bg-emerald-500 border-4 border-slate-900 flex items-center justify-center"></div>
@@ -243,7 +243,12 @@ export default function DriverWorkspace() {
                   <button onClick={() => alert("Updating location...")} className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-2">
                      <Navigation size={14} /> Update Location
                   </button>
-                  {normalizeStatus(activeTrip.status) === "ASSIGNED" && (
+                  {["DRIVER_ASSIGNED", "ASSIGNED"].includes(normalizeStatus(activeTrip.status)) && (
+                    <button onClick={() => handleAction("start-pickup")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2">
+                       Start Pickup
+                    </button>
+                  )}
+                  {normalizeStatus(activeTrip.status) === "PICKUP_IN_PROGRESS" && (
                     <button onClick={() => handleAction("start-transit")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2">
                        Start Transit
                     </button>
@@ -279,7 +284,6 @@ export default function DriverWorkspace() {
             </div>
             
             <div className="space-y-4">
-               {/* Mocked activity for now, assuming backend logs are not detailed enough */}
                {activeTrip ? (
                  <>
                    <div className="flex gap-4 items-start">
@@ -309,13 +313,12 @@ export default function DriverWorkspace() {
             </div>
             
             <div className="rounded-lg overflow-hidden border border-slate-700 h-64 bg-slate-800 relative flex items-center justify-center">
-               {/* Using a placeholder if MapContainer fails, but MapContainer is standard */}
                <MapContainer center={[17.3850, 78.4867]} zoom={6} scrollWheelZoom={false} className="h-full w-full z-0">
                   <TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  {activeTrip && activeTrip.request?.pickup_lat && activeTrip.request?.destination_lat && (
+                  {activeTrip && (activeTrip.pickup_lat || activeTrip.request?.pickup_lat) && (activeTrip.destination_lat || activeTrip.request?.destination_lat) && (
                      <>
-                        <CircleMarker center={[activeTrip.request.pickup_lat, activeTrip.request.pickup_lng]} radius={6} color="#3b82f6" fillColor="#3b82f6" fillOpacity={1}></CircleMarker>
-                        <CircleMarker center={[activeTrip.request.destination_lat, activeTrip.request.destination_lng]} radius={6} color="#ef4444" fillColor="#ef4444" fillOpacity={1}></CircleMarker>
+                        <CircleMarker center={[activeTrip.pickup_lat || activeTrip.request.pickup_lat, activeTrip.pickup_lng || activeTrip.request.pickup_lng]} radius={6} color="#3b82f6" fillColor="#3b82f6" fillOpacity={1}></CircleMarker>
+                        <CircleMarker center={[activeTrip.destination_lat || activeTrip.request.destination_lat, activeTrip.destination_lng || activeTrip.request.destination_lng]} radius={6} color="#ef4444" fillColor="#ef4444" fillOpacity={1}></CircleMarker>
                      </>
                   )}
                </MapContainer>
@@ -327,23 +330,23 @@ export default function DriverWorkspace() {
             <div className="space-y-3 text-sm">
                <div className="grid grid-cols-[120px_1fr] gap-2">
                  <div className="text-slate-500 flex items-center gap-2"><ClipboardList size={14}/> Order Number</div>
-                 <div className="text-white font-medium">{activeTrip?.request?.request_number || "—"}</div>
+                 <div className="text-white font-medium">{activeTrip?.request_number || activeTrip?.request?.request_number || "—"}</div>
                </div>
                <div className="grid grid-cols-[120px_1fr] gap-2">
                  <div className="text-slate-500 flex items-center gap-2"><Truck size={14}/> Trip Number</div>
-                 <div className="text-white font-medium">{activeTrip?.id ? `CX-${String(activeTrip.id).padStart(4, '0')}` : "—"}</div>
+                 <div className="text-white font-medium">{activeTrip?.trip_id ? `CX-${String(activeTrip.trip_id).slice(-8).toUpperCase()}` : (activeTrip?.id ? `CX-${String(activeTrip.id).padStart(4, '0')}` : "—")}</div>
                </div>
                <div className="grid grid-cols-[120px_1fr] gap-2">
                  <div className="text-slate-500 flex items-center gap-2"><MapPin className="text-blue-500" size={14}/> Pickup</div>
-                 <div className="text-white">{activeTrip?.request?.pickup_address || "—"}</div>
+                 <div className="text-white">{activeTrip?.pickup_address || activeTrip?.request?.pickup_address || "—"}</div>
                </div>
                <div className="grid grid-cols-[120px_1fr] gap-2">
                  <div className="text-slate-500 flex items-center gap-2"><MapPin className="text-red-500" size={14}/> Destination</div>
-                 <div className="text-white">{activeTrip?.request?.destination_address || "—"}</div>
+                 <div className="text-white">{activeTrip?.destination_address || activeTrip?.request?.destination_address || "—"}</div>
                </div>
                <div className="grid grid-cols-[120px_1fr] gap-2 pt-2 border-t border-slate-800">
                  <div className="text-slate-500 flex items-center gap-2"><Activity size={14}/> Distance</div>
-                 <div className="text-white">{activeTrip?.request?.distance_km ? `${activeTrip.request.distance_km} km` : "—"}</div>
+                 <div className="text-white">{(activeTrip?.distance_km ?? activeTrip?.request?.distance_km) ? `${activeTrip?.distance_km ?? activeTrip?.request?.distance_km} km` : "—"}</div>
                </div>
             </div>
           </div>
@@ -359,19 +362,19 @@ export default function DriverWorkspace() {
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
            <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-4">
               <div>
-                 <p className="text-sm text-slate-400">Order #{activeTrip.booking_id || "ORD"}</p>
-                 <p className="text-xl font-bold text-white">Trip #{activeTrip.request?.request_number || String(activeTrip.id).padStart(4, '0')}</p>
+                 <p className="text-sm text-slate-400">Order #{activeTrip.request_number || activeTrip.booking_id || "ORD"}</p>
+                 <p className="text-xl font-bold text-white">Trip #{activeTrip.request_number || activeTrip.request?.request_number || String(activeTrip.trip_id || activeTrip.id).slice(-8).toUpperCase()}</p>
               </div>
               <StatusBadge status={activeTrip.status} />
            </div>
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Pickup</p>
-                 <p className="text-white text-sm">{activeTrip.request?.pickup_address}</p>
+                 <p className="text-white text-sm">{activeTrip.pickup_address || activeTrip.request?.pickup_address}</p>
               </div>
               <div>
                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Destination</p>
-                 <p className="text-white text-sm">{activeTrip.request?.destination_address}</p>
+                 <p className="text-white text-sm">{activeTrip.destination_address || activeTrip.request?.destination_address}</p>
               </div>
            </div>
         </div>
@@ -386,11 +389,11 @@ export default function DriverWorkspace() {
       <h2 className="text-2xl font-bold text-white">Previous Orders</h2>
       <div className="space-y-4">
         {history.length > 0 ? history.map((trip: any) => (
-          <div key={trip.id} className="rounded-xl border border-slate-800 bg-slate-900 p-5 flex flex-col md:flex-row justify-between gap-4">
+          <div key={trip.trip_id || trip.id} className="rounded-xl border border-slate-800 bg-slate-900 p-5 flex flex-col md:flex-row justify-between gap-4">
              <div>
-                <p className="font-bold text-white text-lg">Trip #{trip.request?.request_number || trip.id}</p>
-                <p className="text-sm text-slate-400 mt-1">{trip.request?.pickup_address || "Pickup"} → {trip.request?.destination_address || "Destination"}</p>
-                <p className="text-xs text-slate-500 mt-2">Cargo: {trip.request?.goods_type} | Weight: {trip.request?.weight_tons}t</p>
+                <p className="font-bold text-white text-lg">Trip #{trip.request_number || trip.request?.request_number || trip.trip_id || trip.id}</p>
+                <p className="text-sm text-slate-400 mt-1">{trip.pickup_address || trip.request?.pickup_address || "Pickup"} → {trip.destination_address || trip.request?.destination_address || "Destination"}</p>
+                <p className="text-xs text-slate-500 mt-2">Cargo: {trip.goods_type || trip.request?.goods_type} | Weight: {trip.weight_tons ?? trip.request?.weight_tons}t</p>
              </div>
              <div className="text-left md:text-right flex flex-col justify-between">
                 <div><StatusBadge status={trip.status} /></div>

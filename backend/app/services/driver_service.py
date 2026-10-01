@@ -24,6 +24,7 @@ class DriverService:
             "goods_type": request.goods_type,
             "goods_description": request.goods_description,
             "weight_tons": Decimal(str(request.weight_tons)),
+            "distance_km": Decimal(str(request.distance_km)) if request.distance_km is not None else None,
             "special_instructions": request.special_instructions,
             "pickup_company_name": request.pickup_company_name,
             "pickup_address": request.pickup_address,

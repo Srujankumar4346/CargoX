@@ -17,6 +17,7 @@ class DriverTripRead(BaseModel):
     goods_type: str
     goods_description: Optional[str] = None
     weight_tons: Decimal
+    distance_km: Optional[Decimal] = None
     special_instructions: Optional[str] = None
     
     pickup_company_name: str

@@ -28,6 +28,36 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.12em] ${tone}`}>{status?.replace(/_/g, " ") || "UNKNOWN"}</span>;
 }
 
+const openGoogleMapsLocation = (lat?: number | null, lng?: number | null, address?: string | null) => {
+  let url = "";
+  if (lat && lng) {
+    url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  } else if (address) {
+    url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+  }
+  if (url) {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } else {
+    alert("Location coordinates or address not available.");
+  }
+};
+
+const openGoogleMapsRoute = (pickupLat?: number | null, pickupLng?: number | null, pickupAddress?: string | null, destLat?: number | null, destLng?: number | null, destAddress?: string | null) => {
+  const origin = (pickupLat && pickupLng) ? `${pickupLat},${pickupLng}` : pickupAddress;
+  const destination = (destLat && destLng) ? `${destLat},${destLng}` : destAddress;
+
+  if (origin && destination) {
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  } else if (destination) {
+    openGoogleMapsLocation(destLat, destLng, destAddress);
+  } else if (origin) {
+    openGoogleMapsLocation(pickupLat, pickupLng, pickupAddress);
+  } else {
+    alert("Route details not available.");
+  }
+};
+
 export default function DriverWorkspace() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -161,7 +191,10 @@ export default function DriverWorkspace() {
                         <div className="text-xs text-slate-400 mb-1">Pickup Location</div>
                         <div className="font-semibold text-white text-sm mb-1">{activeTrip.pickup_company_name || activeTrip.request?.pickup_company_name || activeTrip.request?.customer_name || "Pickup"}</div>
                         <div className="text-xs text-slate-500 line-clamp-2">{activeTrip.pickup_address || activeTrip.request?.pickup_address}</div>
-                        <button className="mt-3 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2 font-medium transition">
+                        <button
+                          onClick={() => openGoogleMapsLocation(activeTrip.pickup_lat || activeTrip.request?.pickup_lat, activeTrip.pickup_lng || activeTrip.request?.pickup_lng, activeTrip.pickup_address || activeTrip.request?.pickup_address)}
+                          className="mt-3 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2 font-medium transition cursor-pointer"
+                        >
                           <Navigation size={12}/> Navigate to Pickup
                         </button>
                       </div>
@@ -177,7 +210,10 @@ export default function DriverWorkspace() {
                         <div className="text-xs text-slate-400 mb-1">Destination</div>
                         <div className="font-semibold text-white text-sm mb-1">{activeTrip.destination_company_name || activeTrip.request?.destination_company_name || "Destination"}</div>
                         <div className="text-xs text-slate-500 line-clamp-2">{activeTrip.destination_address || activeTrip.request?.destination_address}</div>
-                        <button className="mt-3 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2 font-medium transition">
+                        <button
+                          onClick={() => openGoogleMapsLocation(activeTrip.destination_lat || activeTrip.request?.destination_lat, activeTrip.destination_lng || activeTrip.request?.destination_lng, activeTrip.destination_address || activeTrip.request?.destination_address)}
+                          className="mt-3 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-md flex items-center gap-2 font-medium transition cursor-pointer"
+                        >
                           <Navigation size={12}/> Navigate to Destination
                         </button>
                       </div>
@@ -309,7 +345,22 @@ export default function DriverWorkspace() {
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-black/10">
             <div className="flex items-center justify-between mb-4">
                <h2 className="text-sm font-bold text-white tracking-wider uppercase">Route & Tracking</h2>
-               <button className="text-xs text-blue-400 border border-blue-400/30 rounded px-2 py-1 hover:bg-blue-400/10">Open in Maps</button>
+               <button
+                 onClick={() => {
+                   if (!activeTrip) return;
+                   openGoogleMapsRoute(
+                     activeTrip.pickup_lat || activeTrip.request?.pickup_lat,
+                     activeTrip.pickup_lng || activeTrip.request?.pickup_lng,
+                     activeTrip.pickup_address || activeTrip.request?.pickup_address,
+                     activeTrip.destination_lat || activeTrip.request?.destination_lat,
+                     activeTrip.destination_lng || activeTrip.request?.destination_lng,
+                     activeTrip.destination_address || activeTrip.request?.destination_address
+                   );
+                 }}
+                 className="text-xs text-blue-400 border border-blue-400/30 rounded px-2 py-1 hover:bg-blue-400/10 cursor-pointer"
+               >
+                 Open in Maps
+               </button>
             </div>
             
             <div className="rounded-lg overflow-hidden border border-slate-700 h-64 bg-slate-800 relative flex items-center justify-center">

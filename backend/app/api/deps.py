@@ -111,7 +111,7 @@ async def get_current_user(
         await user.save()
 
     # If a driver profile exists by email or user role is DRIVER, ensure bidirectional link
-    if driver_by_email:
+    if driver_by_email and getattr(driver_by_email, "status", None) != "INACTIVE":
         if user.role != UserRole.DRIVER and user.role != UserRole.ADMIN:
             user.role = UserRole.DRIVER
             await user.save()
@@ -160,7 +160,7 @@ async def get_current_admin(current_user: User = Depends(get_current_user)) -> U
     return current_user
 
 async def get_current_customer_user(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in (UserRole.CUSTOMER_USER, UserRole.ADMIN):
+    if current_user.role not in (UserRole.CUSTOMER_USER, UserRole.ADMIN, UserRole.DRIVER):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
     if not current_user.customer_company_id:
         from app.models.company import CustomerCompany

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, ArrowRight, CheckCircle2, CircleDollarSign, Download, Eye, FileText, LogOut, Map as MapIcon, MapPin, Package, Plus, Settings, Truck, X } from "lucide-react";
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/react";
-import { api, setTokenGetter } from "../../services/api";
+import { api, setTokenGetter, setUserEmailGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import StructuredAddressForm, { type AddressData } from "../../components/StructuredAddressForm";
@@ -47,6 +47,11 @@ export default function CustomerDashboard() {
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
 
   useEffect(() => { if (getToken) setTokenGetter(getToken); }, [getToken]);
+  useEffect(() => {
+    if (user?.primaryEmailAddress?.emailAddress) {
+      setUserEmailGetter(() => user.primaryEmailAddress?.emailAddress);
+    }
+  }, [user]);
 
   const loadData = async () => {
     setBookingsError(""); setInvoicesError("");

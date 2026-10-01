@@ -1,6 +1,7 @@
 import pytest
 import uuid
 from fastapi import HTTPException
+from starlette.requests import Request
 from app.api.deps import get_current_user, get_current_admin, get_current_customer_user, get_current_driver
 from app.models.user import User
 from app.models.enums import UserRole
@@ -50,6 +51,29 @@ async def test_get_current_user_auto_provisioning():
     assert result.role == UserRole.CUSTOMER_USER
 
 @pytest.mark.anyio
+async def test_get_current_user_matches_clerk_session_by_email_header():
+    company_id = uuid.uuid4()
+    user = User(
+        id=uuid.uuid4(),
+        clerk_user_id="previous_clerk_id",
+        email="customer@example.com",
+        role=UserRole.CUSTOMER_USER,
+        customer_company_id=company_id,
+    )
+    await user.insert()
+    request = Request({
+        "type": "http",
+        "headers": [(b"x-user-email", b"customer@example.com")],
+    })
+
+    result = await get_current_user({"sub": "current_clerk_id"}, request)
+
+    assert result.id == user.id
+    assert result.role == UserRole.CUSTOMER_USER
+    assert result.customer_company_id == company_id
+    assert result.clerk_user_id == "current_clerk_id"
+
+@pytest.mark.anyio
 async def test_get_current_admin_success():
     user_mock = User(id=uuid.uuid4(), clerk_user_id="user_123", email="a@a.com", is_active=True, role=UserRole.ADMIN)
     result = await get_current_admin(user_mock)
@@ -70,11 +94,11 @@ async def test_get_current_customer_success():
     assert result == user_mock
 
 @pytest.mark.anyio
-async def test_get_current_customer_failure_wrong_role():
+async def test_get_current_customer_allows_driver_role():
     user_mock = User(id=uuid.uuid4(), clerk_user_id="user_123", email="a@a.com", is_active=True, role=UserRole.DRIVER)
-    with pytest.raises(HTTPException) as exc:
-        await get_current_customer_user(user_mock)
-    assert exc.value.status_code == 403
+    result = await get_current_customer_user(user_mock)
+    assert result == user_mock
+    assert result.customer_company_id is not None
 
 @pytest.mark.anyio
 async def test_get_current_customer_auto_creates_company():

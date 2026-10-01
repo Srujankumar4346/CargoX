@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     
     # RBAC
     CARGOX_PRIMARY_ADMIN_CLERK_ID: str | None = None
+    CARGOX_PRIMARY_ADMIN_EMAIL: str = "srujankumar4346@gmail.com"
     
     # CORS
     CORS_ORIGINS: Any = [

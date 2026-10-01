@@ -40,6 +40,8 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
 async def driver_login(req: DriverLoginRequest):
     driver = await Driver.find_one(Driver.username == req.username)
     if not driver:
+        driver = await Driver.find_one(Driver.email == req.username.strip().lower())
+    if not driver:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
     if not driver.password_hash or not verify_password(req.password, driver.password_hash):
@@ -49,7 +51,26 @@ async def driver_login(req: DriverLoginRequest):
         raise HTTPException(status_code=403, detail="Your driver account is currently inactive")
         
     if not driver.user_id:
-        raise HTTPException(status_code=403, detail="Driver is not linked to a user account")
+        user = await User.find_one(User.email == driver.email)
+        if not user:
+            import uuid
+            user = User(
+                id=uuid.uuid4(),
+                email=driver.email,
+                role=UserRole.DRIVER,
+                is_active=True
+            )
+            await user.insert()
+        elif user.role != UserRole.DRIVER:
+            user.role = UserRole.DRIVER
+            await user.save()
+        driver.user_id = user.id
+        await driver.save()
+    else:
+        user = await User.get(driver.user_id)
+        if user and user.role != UserRole.DRIVER:
+            user.role = UserRole.DRIVER
+            await user.save()
         
     token = create_driver_token(data={"sub": str(driver.user_id), "role": "DRIVER"})
     return {"access_token": token}

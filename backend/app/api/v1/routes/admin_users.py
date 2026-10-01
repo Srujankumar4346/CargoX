@@ -23,6 +23,9 @@ class UserResponse(BaseModel):
 class RoleUpdateRequest(BaseModel):
     role: UserRole
 
+class GrantDriverAccessRequest(BaseModel):
+    email: str
+
 @router.get("/", response_model=List[UserResponse])
 async def get_users(current_admin: User = Depends(get_current_admin)):
     """
@@ -40,3 +43,15 @@ async def update_user_role(
     Update a user's role (Admin only). Cannot demote primary admin.
     """
     return await AdminUserService.update_user_role(user_id, request.role, current_admin)
+
+@router.post("/grant-driver-access", response_model=UserResponse)
+async def grant_driver_access(
+    request: GrantDriverAccessRequest,
+    current_admin: User = Depends(get_current_admin)
+):
+    """
+    Explicitly grant driver portal access to an email address.
+    Provisions or upgrades the User to DRIVER role and creates an active Driver profile.
+    """
+    return await AdminUserService.grant_driver_access_by_email(request.email, current_admin)
+

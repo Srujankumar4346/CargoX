@@ -1,12 +1,19 @@
 import { Link } from "react-router-dom";
 import { Truck, Shield, ArrowRight } from "lucide-react";
-import { Show, UserButton, useAuth } from "@clerk/react";
+import { Show, UserButton, useAuth, useUser } from "@clerk/react";
 import { useEffect, useState } from "react";
-import { api } from "../services/api";
+import { api, setUserEmailGetter } from "../services/api";
 
 export default function LandingPage() {
   const { isLoaded, isSignedIn } = useAuth();
+  const { user: clerkUser } = useUser();
   const [role, setRole] = useState<"ADMIN" | "DRIVER" | null>(null);
+
+  useEffect(() => {
+    if (clerkUser?.primaryEmailAddress?.emailAddress) {
+      setUserEmailGetter(() => clerkUser.primaryEmailAddress?.emailAddress);
+    }
+  }, [clerkUser]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
@@ -26,7 +33,7 @@ export default function LandingPage() {
     return () => {
       mounted = false;
     };
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, clerkUser]);
 
   const normalizedRole = role ? role.toUpperCase() : null;
   const dashboardLink = normalizedRole === "DRIVER" ? "/driver" : "/admin";

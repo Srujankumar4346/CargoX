@@ -167,6 +167,8 @@ export default function AdminDashboard() {
   const [newDriverName, setNewDriverName] = useState("");
   const [newDriverLicense, setNewDriverLicense] = useState("");
   const [newVehicleReg, setNewVehicleReg] = useState("");
+  const [grantDriverEmail, setGrantDriverEmail] = useState("");
+  const [grantingDriver, setGrantingDriver] = useState(false);
 
   // ── In-app Confirm Modal state ───────────────────────────────────────────
   const [confirmModal, setConfirmModal] = useState<{
@@ -1317,8 +1319,45 @@ export default function AdminDashboard() {
 
           {activeTab === 'users' && (
            <div>
-             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-foreground">Team & User Management</h2>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Team & User Management</h2>
+                  <p className="text-xs text-muted mt-1">Manage user roles and grant driver portal access</p>
+                </div>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!grantDriverEmail.trim()) return;
+                    setGrantingDriver(true);
+                    try {
+                      await api.grantDriverAccess(grantDriverEmail.trim());
+                      alert(`Driver portal access successfully granted to ${grantDriverEmail.trim()}`);
+                      setGrantDriverEmail("");
+                      loadData();
+                    } catch (err: any) {
+                      alert("Failed to grant driver access: " + err.message);
+                    } finally {
+                      setGrantingDriver(false);
+                    }
+                  }}
+                  className="flex items-center gap-2 w-full sm:w-auto"
+                >
+                  <input
+                    type="email"
+                    required
+                    value={grantDriverEmail}
+                    onChange={(e) => setGrantDriverEmail(e.target.value)}
+                    placeholder="Enter driver's email..."
+                    className="px-3 py-2 text-xs rounded-lg border border-border-theme bg-surface text-foreground placeholder:text-muted focus:outline-none focus:border-blue-500 w-full sm:w-64"
+                  />
+                  <button
+                    type="submit"
+                    disabled={grantingDriver}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 transition whitespace-nowrap shadow-sm"
+                  >
+                    <Truck size={14} /> {grantingDriver ? "Granting..." : "Grant Driver Access"}
+                  </button>
+                </form>
              </div>
              
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
@@ -1350,7 +1389,55 @@ export default function AdminDashboard() {
                                   </span>
                                </td>
                                 <td className="p-4 text-right">
-                                   <div className="flex items-center justify-end gap-2">
+                                   <div className="flex items-center justify-end gap-2 flex-wrap">
+                                      {u.role !== 'DRIVER' && (
+                                         <button
+                                            onClick={() => showConfirm({
+                                              title: "Grant Driver Portal Access",
+                                              message: `Grant driver privileges to "${u.email}"? They will gain access to the CargoX Driver Portal and can be assigned trips.`,
+                                              confirmLabel: "Make Driver",
+                                              confirmClass: "bg-emerald-600 hover:bg-emerald-500",
+                                              onConfirm: async () => {
+                                                closeConfirm();
+                                                try {
+                                                  await api.updateUserRole(u.id, "DRIVER");
+                                                  alert("User granted Driver privileges successfully.");
+                                                  loadData();
+                                                } catch (e: any) {
+                                                  alert("Failed to update role: " + e.message);
+                                                }
+                                              }
+                                            })}
+                                            title="Make Driver"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300 transition shadow-sm"
+                                         >
+                                            <Truck size={13} /> Make Driver
+                                         </button>
+                                      )}
+                                      {u.role === 'DRIVER' && (
+                                         <button
+                                            onClick={() => showConfirm({
+                                              title: "Revoke Driver Privileges",
+                                              message: `Revoke driver access for "${u.email}"? They will be downgraded to a standard customer account and lose driver workspace privileges.`,
+                                              confirmLabel: "Revoke Driver",
+                                              confirmClass: "bg-amber-600 hover:bg-amber-500",
+                                              onConfirm: async () => {
+                                                closeConfirm();
+                                                try {
+                                                  await api.updateUserRole(u.id, "CUSTOMER_USER");
+                                                  alert("Driver access revoked. User is now a standard customer.");
+                                                  loadData();
+                                                } catch (e: any) {
+                                                  alert("Failed to revoke driver: " + e.message);
+                                                }
+                                              }
+                                            })}
+                                            title="Revoke Driver"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 hover:text-amber-300 transition shadow-sm"
+                                         >
+                                            <UserMinus size={13} /> Revoke Driver
+                                         </button>
+                                      )}
                                       {u.role !== 'ADMIN' && (
                                          <button
                                             onClick={() => showConfirm({

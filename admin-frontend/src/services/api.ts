@@ -1,9 +1,14 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api/v1";
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
+let userEmailGetter: (() => string | null | undefined) | null = null;
 
 export function setTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter;
+}
+
+export function setUserEmailGetter(getter: () => string | null | undefined) {
+  userEmailGetter = getter;
 }
 
 async function authFetch(url: string, options: RequestInit = {}) {
@@ -32,11 +37,31 @@ async function authFetch(url: string, options: RequestInit = {}) {
     token = localStorage.getItem('access_token');
   }
 
+  // Extract user email so backend can link pre-provisioned driver accounts accurately
+  let userEmail: string | null = null;
+  if (userEmailGetter) {
+    try {
+      userEmail = userEmailGetter() || null;
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (!userEmail && typeof window !== 'undefined' && (window as any).Clerk?.user?.primaryEmailAddress?.emailAddress) {
+    userEmail = (window as any).Clerk.user.primaryEmailAddress.emailAddress;
+  }
+  if (!userEmail) {
+    userEmail = localStorage.getItem('user_email');
+  }
+
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   } else {
     console.warn(`[authFetch] No auth token found for ${url}`);
+  }
+
+  if (userEmail) {
+    headers.set('X-User-Email', userEmail);
   }
   
   const res = await fetch(url, { ...options, headers });
@@ -440,6 +465,15 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  grantDriverAccess: async (email: string) => {
+    const res = await authFetch(`${API_URL}/admin/users/grant-driver-access`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();

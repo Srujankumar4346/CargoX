@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Truck, AlertCircle } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { api } from "../../services/api";
+import { Truck, AlertCircle, Mail, ArrowLeft } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { SignInButton, useAuth } from "@clerk/react";
 
 export default function DriverLogin() {
   const [username, setUsername] = useState("");
@@ -9,6 +9,12 @@ export default function DriverLogin() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { isSignedIn } = useAuth();
+
+  // If already signed in via Clerk, can enter driver portal
+  if (isSignedIn) {
+    navigate("/driver", { replace: true });
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,14 +61,14 @@ export default function DriverLogin() {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Username</label>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Username or Email</label>
             <input 
               required 
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" 
-              placeholder="Enter your username" 
+              placeholder="Username or registered email" 
             />
           </div>
           <div>
@@ -81,9 +87,30 @@ export default function DriverLogin() {
             disabled={loading}
             className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-bold text-white transition hover:bg-blue-500 disabled:opacity-50 mt-4"
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Signing in..." : "Sign In with Credentials"}
           </button>
         </form>
+
+        <div className="relative my-6 text-center">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800"></div></div>
+          <span className="relative bg-[#071425] px-3 text-xs uppercase text-slate-500 tracking-wider">or sign in with email</span>
+        </div>
+
+        <SignInButton mode="modal">
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 hover:border-blue-500/50"
+          >
+            <Mail size={16} className="text-blue-400" />
+            Sign in with Email / Google
+          </button>
+        </SignInButton>
+
+        <div className="mt-6 text-center">
+          <Link to="/" className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition">
+            <ArrowLeft size={13} /> Back to CargoX Home
+          </Link>
+        </div>
       </div>
     </div>
   );

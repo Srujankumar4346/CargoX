@@ -13,7 +13,18 @@ class AdminUserService:
     @staticmethod
     async def get_users():
         users = await User.find_all().to_list()
-        
+        from app.models.fleet import Driver
+
+        # Heal placeholder/missing emails by checking Driver table
+        for user in users:
+            if user.email and ("@placeholder.cargox.com" in user.email or "@missing.cargox.com" in user.email):
+                driver = await Driver.find_one(Driver.user_id == user.id)
+                if driver and driver.email:
+                    user.email = driver.email
+                    if user.role != UserRole.DRIVER:
+                        user.role = UserRole.DRIVER
+                    await user.save()
+
         if settings.CLERK_SECRET_KEY:
             import asyncio
             
@@ -49,6 +60,7 @@ class AdminUserService:
                     users = await User.find_all().to_list()
 
         return users
+
     @staticmethod
     async def update_user_role(target_user_id: str, new_role: UserRole, current_admin: User):
         try:
@@ -62,9 +74,6 @@ class AdminUserService:
             
         old_role = target_user.role
         
-        if old_role == new_role:
-            return target_user
-            
         # Protect primary admin
         if target_user.clerk_user_id == settings.CARGOX_PRIMARY_ADMIN_CLERK_ID:
             if new_role != UserRole.ADMIN:
@@ -73,7 +82,7 @@ class AdminUserService:
                     detail="Primary administrator cannot be demoted."
                 )
 
-        if new_role == UserRole.ADMIN:
+        if new_role == UserRole.ADMIN and old_role != UserRole.ADMIN:
             admin_count = await User.find(User.role == UserRole.ADMIN).count()
             if admin_count >= 5:
                 raise HTTPException(
@@ -83,6 +92,40 @@ class AdminUserService:
 
         target_user.role = new_role
         await target_user.save()
+
+        from app.models.fleet import Driver
+        from app.models.enums import DriverStatus
+
+        if new_role == UserRole.DRIVER:
+            # Ensure driver record exists and is linked and AVAILABLE
+            driver = await Driver.find_one(Driver.user_id == target_user.id)
+            if not driver and target_user.email:
+                driver = await Driver.find_one(Driver.email == target_user.email)
+            if driver:
+                driver.user_id = target_user.id
+                if driver.status == DriverStatus.INACTIVE:
+                    driver.status = DriverStatus.AVAILABLE
+                await driver.save()
+            else:
+                driver = Driver(
+                    user_id=target_user.id,
+                    email=target_user.email,
+                    name=target_user.email.split("@")[0].replace(".", " ").title() if target_user.email else "Driver",
+                    phone="0000000000",
+                    age=30,
+                    license_number=f"DL-{uuid.uuid4().hex[:8].upper()}",
+                    aadhaar_number="000000000000",
+                    status=DriverStatus.AVAILABLE
+                )
+                await driver.insert()
+        elif old_role == UserRole.DRIVER and new_role != UserRole.DRIVER:
+            # When demoted from driver, mark driver record inactive
+            driver = await Driver.find_one(Driver.user_id == target_user.id)
+            if not driver and target_user.email:
+                driver = await Driver.find_one(Driver.email == target_user.email)
+            if driver:
+                driver.status = DriverStatus.INACTIVE
+                await driver.save()
         
         # Structured audit log
         logger.info(
@@ -92,3 +135,58 @@ class AdminUserService:
         )
         
         return target_user
+
+    @staticmethod
+    async def grant_driver_access_by_email(email: str, current_admin: User):
+        from app.models.fleet import Driver
+        from app.models.enums import DriverStatus
+
+        clean_email = email.strip().lower()
+        if not clean_email or "@" not in clean_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email address")
+
+        user = await User.find_one(User.email == clean_email)
+        if not user:
+            user = User(
+                id=uuid.uuid4(),
+                email=clean_email,
+                role=UserRole.DRIVER,
+                is_active=True
+            )
+            await user.insert()
+        else:
+            if user.role != UserRole.DRIVER:
+                old_role = user.role
+                user.role = UserRole.DRIVER
+                await user.save()
+                logger.info(
+                    f"AUDIT_USER_ROLE_CHANGE | admin_user_id={current_admin.id} | "
+                    f"target_user_id={user.id} | old_role={old_role.value} | "
+                    f"new_role=DRIVER | timestamp={datetime.utcnow().isoformat()}"
+                )
+
+        # Ensure Driver record exists and is AVAILABLE
+        driver = await Driver.find_one(Driver.email == clean_email)
+        if not driver:
+            driver = await Driver.find_one(Driver.user_id == user.id)
+            
+        if driver:
+            driver.user_id = user.id
+            driver.email = clean_email
+            if driver.status == DriverStatus.INACTIVE:
+                driver.status = DriverStatus.AVAILABLE
+            await driver.save()
+        else:
+            driver = Driver(
+                user_id=user.id,
+                email=clean_email,
+                name=clean_email.split("@")[0].replace(".", " ").title(),
+                phone="0000000000",
+                age=30,
+                license_number=f"DL-{uuid.uuid4().hex[:8].upper()}",
+                aadhaar_number="000000000000",
+                status=DriverStatus.AVAILABLE
+            )
+            await driver.insert()
+
+        return user

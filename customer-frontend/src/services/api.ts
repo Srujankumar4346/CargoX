@@ -1,9 +1,14 @@
 const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api/v1";
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
+let userEmailGetter: (() => string | null | undefined) | null = null;
 
 export function setTokenGetter(getter: () => Promise<string | null>) {
   tokenGetter = getter;
+}
+
+export function setUserEmailGetter(getter: () => string | null | undefined) {
+  userEmailGetter = getter;
 }
 
 async function authFetch(url: string, options: RequestInit = {}) {
@@ -32,9 +37,29 @@ async function authFetch(url: string, options: RequestInit = {}) {
     token = localStorage.getItem('access_token');
   }
 
+  // Extract user email
+  let userEmail: string | null = null;
+  if (userEmailGetter) {
+    try {
+      userEmail = userEmailGetter() || null;
+    } catch (e) {
+      // ignore
+    }
+  }
+  if (!userEmail && typeof window !== 'undefined' && (window as any).Clerk?.user?.primaryEmailAddress?.emailAddress) {
+    userEmail = (window as any).Clerk.user.primaryEmailAddress.emailAddress;
+  }
+  if (!userEmail) {
+    userEmail = localStorage.getItem('user_email');
+  }
+
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  if (userEmail) {
+    headers.set('X-User-Email', userEmail);
   }
   
   return fetch(url, { ...options, headers });

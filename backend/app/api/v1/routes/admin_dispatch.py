@@ -9,7 +9,7 @@ from app.api.deps import get_current_admin
 from app.models.user import User
 from app.models.delivery import Trip, DeliveryRequest
 from app.models.fleet import VehicleAssignment
-from app.models.enums import DeliveryRequestStatus
+from app.models.enums import DeliveryRequestStatus, InvoiceStatus
 from app.schemas.dispatch import DispatchRequest, DispatchRead
 from app.schemas.delivery_request import DeliveryRequestRead, CancelRequestSchema
 from app.schemas.tracking_delivery import PODRead
@@ -81,10 +81,12 @@ async def approve_request(
                     req.pickup_lat, req.pickup_lng,
                     req.destination_lat, req.destination_lng
                 )
+                await req.save()
             else:
-                # Default minimum booking distance (10 km) if coordinates unavailable
-                req.distance_km = Decimal("10.00")
-            await req.save()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot approve request without an actual approved distance",
+                )
 
         # Calculate the snapshot from the approved request distance.
         dist = Decimal(str(req.distance_km))
@@ -271,13 +273,81 @@ async def get_trip_detail(
             VehicleAssignment.trip_id == trip.id,
             sort=[("assigned_at", -1)]
         )
+    # Load full invoice and payment tracking records
+    from app.models.finance import Invoice, Payment
+    from app.models.company import CustomerCompany
+    from app.models.fleet import Driver, Vehicle
+
+    request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+    customer_company = await CustomerCompany.find_one(CustomerCompany.id == request.customer_company_id) if request and request.customer_company_id else None
+    invoice = await Invoice.find_one(Invoice.request_id == trip.request_id)
+
+    payments_list = []
+    if invoice:
+        raw_payments = await Payment.find(Payment.invoice_id == invoice.id).sort("-paid_at").to_list()
+        # Collect recording drivers/admins
+        recorder_ids = list({p.recorded_by for p in raw_payments if p.recorded_by})
+        recorders = await User.find({"_id": {"$in": recorder_ids}}).to_list() if recorder_ids else []
+        recorder_by_id = {u.id: u.email for u in recorders}
+
+        for p in raw_payments:
+            payments_list.append({
+                "payment_id": str(p.id),
+                "invoice_id": str(p.invoice_id),
+                "amount": float(p.amount),
+                "payment_method": p.method.value if hasattr(p.method, "value") else str(p.method),
+                "provider_payment_id": p.gateway_payment_id,
+                "provider_order_id": p.gateway_order_id,
+                "collection_reference": p.reference_number,
+                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+                "recorded_by_id": str(p.recorded_by) if p.recorded_by else None,
+                "recorded_by_email": recorder_by_id.get(p.recorded_by),
+                "notes": p.notes,
+            })
+
+    # Resolve driver and vehicle details
+    vehicle_obj = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id) if assignment else None
+    driver_obj = await Driver.find_one(Driver.id == assignment.driver_id) if assignment else None
+
     return {
         "id": trip.id,
         "request_id": trip.request_id,
+        "delivery_request_number": request.request_number if request else None,
+        "customer_company_name": customer_company.name if customer_company else (request.pickup_company_name if request else None),
         "assigned_at": trip.assigned_at,
         "current_lat": trip.current_lat,
         "current_lng": trip.current_lng,
-        "assignment": assignment
+        "started_at": trip.started_at,
+        "arrived_at": trip.arrived_at,
+        "delivered_at": trip.delivered_at,
+        "completed_at": trip.completed_at,
+        "trip_status": request.status.value if request else None,
+        "assignment": assignment,
+        "vehicle": {
+            "id": str(vehicle_obj.id) if vehicle_obj else None,
+            "registration_number": vehicle_obj.registration_number if vehicle_obj else None,
+            "type": vehicle_obj.type.value if vehicle_obj and hasattr(vehicle_obj.type, "value") else (str(vehicle_obj.type) if vehicle_obj else None),
+            "capacity_tons": vehicle_obj.capacity_tons if vehicle_obj else None,
+        } if vehicle_obj else None,
+        "driver": {
+            "id": str(driver_obj.id) if driver_obj else None,
+            "name": driver_obj.name if driver_obj else None,
+            "phone": driver_obj.phone if driver_obj else None,
+        } if driver_obj else None,
+        "invoice": {
+            "invoice_id": str(invoice.id) if invoice else None,
+            "invoice_number": invoice.invoice_number if invoice else None,
+            "total_amount": float(invoice.total_amount) if invoice else None,
+            "amount_paid": float(invoice.amount_paid) if invoice else 0.0,
+            "amount_due": float(invoice.amount_due) if invoice else None,
+            "invoice_status": invoice.status.value if invoice else None,
+            "payment_method": invoice.payment_method.value if invoice and invoice.payment_method and hasattr(invoice.payment_method, "value") else (str(invoice.payment_method) if invoice and invoice.payment_method else None),
+            "payment_intent_status": invoice.payment_intent_status if invoice else None,
+            "gateway_order_id": invoice.gateway_order_id if invoice else None,
+            "gateway_payment_id": invoice.gateway_payment_id if invoice else None,
+            "is_fully_paid": (invoice.status == InvoiceStatus.PAID) if invoice else False,
+            "payments": payments_list,
+        } if invoice else None
     }
 
 @router.get("/trips/{trip_id}/location")

@@ -38,6 +38,54 @@ class DriverService:
                 collection_status = "PENDING_VERIFICATION" if invoice.payment_intent_status == "PENDING_CONFIRMATION" else "NOT_REQUIRED"
                 amount_due_col = Decimal(str(invoice.amount_due))
 
+        # CargoX Business Payment Details (configured from SystemSettings / PaymentGatewayService)
+        from app.services.settings_service import SettingsService
+        from app.services.payment_gateway_service import PaymentGatewayService
+        from urllib.parse import urlencode
+
+        system_settings = await SettingsService.get_settings()
+        cargox_upi = (system_settings.cargox_upi_id or "").strip() or None
+        
+        qr_image_url = None
+        upi_uri = None
+        payment_status_display = "Payment Due"
+        gateway_order_id = getattr(invoice, "gateway_order_id", None) if invoice else None
+        gateway_key_id = PaymentGatewayService.get_public_key_id()
+
+        if invoice:
+            if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
+                payment_status_display = "Paid"
+            elif invoice.payment_intent_status == "PENDING_CONFIRMATION":
+                payment_status_display = "Payment Confirmation Pending"
+            elif invoice.payment_intent_status in ("PROCESSING", "AWAITING_VERIFICATION"):
+                payment_status_display = "Processing"
+            else:
+                payment_status_display = "Payment Due"
+
+            # Generate dynamic QR code if balance remains and UPI ID exists
+            exact_due = Decimal(str(invoice.amount_due))
+            if exact_due > Decimal("0.00") and cargox_upi:
+                upi_uri = "upi://pay?" + urlencode({
+                    "pa": cargox_upi,
+                    "pn": "CargoX Logistics",
+                    "am": f"{exact_due:.2f}",
+                    "tr": invoice.invoice_number,
+                    "tn": f"Delivery Payment {invoice.invoice_number}",
+                    "cu": "INR",
+                })
+                qr_image_url = "https://api.qrserver.com/v1/create-qr-code/?" + urlencode({
+                    "size": "256x256",
+                    "data": upi_uri,
+                    "color": "0f172a",
+                    "bgcolor": "ffffff",
+                })
+
+        payment_instructions = (
+            f"Present this official CargoX QR code to the customer. Ask them to scan using Google Pay, PhonePe, Paytm, or BHIM. "
+            f"Payment goes directly to CargoX corporate account ({cargox_upi or 'CargoX Finance'}). "
+            f"If collecting Cash, record it using 'Record Collection' below."
+        )
+
         return {
             "trip_id": trip.id,
             "request_id": request.id,
@@ -72,7 +120,16 @@ class DriverService:
             "payment_method": payment_method_val,
             "collection_status": collection_status,
             "amount_due_for_collection": amount_due_col,
-            "invoice_number": inv_num
+            "invoice_number": inv_num,
+            # CargoX Business Payment Details
+            "business_name": "CargoX Logistics",
+            "cargox_upi_id": cargox_upi,
+            "qr_image_url": qr_image_url,
+            "upi_uri": upi_uri,
+            "payment_status_display": payment_status_display,
+            "gateway_order_id": gateway_order_id,
+            "gateway_key_id": gateway_key_id,
+            "payment_instructions": payment_instructions,
         }
 
     @staticmethod

@@ -10,7 +10,8 @@ import {
   Modal,
   Alert,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Image
 } from 'react-native';
 import { Colors } from './src/theme/colors';
 import { apiRequest, storage } from './src/services/api';
@@ -478,26 +479,84 @@ export default function App() {
                   <Text style={styles.routeText}>Pickup: {activeTrip.pickup_address}</Text>
                   <Text style={styles.routeText}>Destination: {activeTrip.destination_address}</Text>
 
-                  {/* Pay on Delivery Information Block */}
-                  {activeTrip.collection_status && activeTrip.collection_status !== 'NOT_REQUIRED' && (
-                    <View style={{ backgroundColor: Colors.surface, borderRadius: 8, padding: 12, marginTop: 12, borderWidth: 1, borderColor: Colors.border }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>
-                          Payment Method: {activeTrip.payment_method || 'Pay on Delivery'}
+                  {/* CargoX Corporate Business Payment & Customer Delivery QR */}
+                  <View style={{ backgroundColor: Colors.surface, borderRadius: 10, padding: 14, marginTop: 14, borderWidth: 1, borderColor: Colors.border }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: Colors.primary, fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                        💳 CARGOX PAYMENT DETAILS
+                      </Text>
+                      <View style={{
+                        backgroundColor: activeTrip.payment_status_display === 'Paid'
+                          ? 'rgba(16,185,129,0.15)'
+                          : activeTrip.payment_status_display === 'Payment Confirmation Pending'
+                          ? 'rgba(168,85,247,0.15)'
+                          : 'rgba(245,158,11,0.15)',
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 4
+                      }}>
+                        <Text style={{
+                          color: activeTrip.payment_status_display === 'Paid'
+                            ? Colors.success
+                            : activeTrip.payment_status_display === 'Payment Confirmation Pending'
+                            ? '#c084fc'
+                            : Colors.warning,
+                          fontSize: 10,
+                          fontWeight: '800'
+                        }}>
+                          {activeTrip.payment_status_display || (activeTrip.collection_status === 'COLLECTED' ? 'Paid' : 'Payment Due')}
                         </Text>
-                        <View style={{ backgroundColor: activeTrip.collection_status === 'COLLECTED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
-                          <Text style={{ color: activeTrip.collection_status === 'COLLECTED' ? Colors.success : Colors.warning, fontSize: 10, fontWeight: '800' }}>
-                            {activeTrip.collection_status}
-                          </Text>
-                        </View>
                       </View>
-                      {activeTrip.amount_due_for_collection && (
-                        <Text style={{ color: Colors.textPrimary, fontSize: 16, fontWeight: '800', marginTop: 4 }}>
-                          Due for Collection: ₹{parseFloat(activeTrip.amount_due_for_collection).toFixed(2)}
+                    </View>
+
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>
+                        Beneficiary: <Text style={{ color: Colors.textPrimary, fontWeight: '700' }}>{activeTrip.business_name || 'CargoX Logistics'}</Text>
+                      </Text>
+                      {activeTrip.cargox_upi_id && (
+                        <Text style={{ color: Colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                          CargoX Corporate UPI: <Text style={{ color: Colors.textPrimary, fontWeight: '700' }}>{activeTrip.cargox_upi_id}</Text>
+                        </Text>
+                      )}
+                      {activeTrip.invoice_number && (
+                        <Text style={{ color: Colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                          Invoice Reference: <Text style={{ color: Colors.textPrimary, fontWeight: '700' }}>{activeTrip.invoice_number}</Text>
                         </Text>
                       )}
                     </View>
-                  )}
+
+                    {/* Exact Outstanding Amount */}
+                    <View style={{ marginTop: 10, padding: 10, backgroundColor: 'rgba(15,23,42,0.8)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }}>
+                      <Text style={{ color: Colors.textMuted, fontSize: 10, textTransform: 'uppercase', fontWeight: '700' }}>
+                        Current Outstanding Balance
+                      </Text>
+                      <Text style={{ color: Colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 2 }}>
+                        ₹{activeTrip.amount_due_for_collection ? parseFloat(activeTrip.amount_due_for_collection).toFixed(2) : '0.00'}
+                      </Text>
+                    </View>
+
+                    {/* Delivery Payment QR Code */}
+                    {activeTrip.qr_image_url && activeTrip.amount_due_for_collection && parseFloat(activeTrip.amount_due_for_collection) > 0 && (
+                      <View style={{ alignItems: 'center', marginTop: 12, padding: 12, backgroundColor: '#ffffff', borderRadius: 12 }}>
+                        <Image
+                          source={{ uri: activeTrip.qr_image_url }}
+                          style={{ width: 170, height: 170 }}
+                          resizeMode="contain"
+                        />
+                        <Text style={{ color: '#0f172a', fontSize: 11, fontWeight: '800', marginTop: 6 }}>
+                          SCAN TO PAY CARGOX CORPORATE
+                        </Text>
+                        <Text style={{ color: '#475569', fontSize: 10, textAlign: 'center', marginTop: 2 }}>
+                          Works with Google Pay, PhonePe, Paytm & any UPI app
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Instructions for Driver & Customer */}
+                    <Text style={{ color: Colors.textMuted, fontSize: 10, lineHeight: 14, marginTop: 10 }}>
+                      ℹ️ {activeTrip.payment_instructions || 'Customer must pay using the official CargoX corporate QR or link. If collecting cash at delivery, tap "Record Collection".'}
+                    </Text>
+                  </View>
 
                   {/* Step-by-Step Execution Workflow */}
                   <View style={styles.actionBlock}>

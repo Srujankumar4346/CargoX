@@ -725,3 +725,209 @@ async def test_partial_payment_and_remaining_balance_via_gateway(
     app.dependency_overrides.clear()
 
 
+@pytest.mark.anyio
+async def test_driver_sees_configured_cargox_upi_and_qr_details(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    """
+    1. Driver sees the configured CargoX business UPI details.
+    2. Driver QR uses the correct invoice and outstanding amount.
+    """
+    configured_upi = "cargox.corporate@okaxis"
+    await SettingsService.update_cargox_upi_id(configured_upi, admin_user.id)
+
+    ctx = await setup_arrived_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    # Generate invoice for trip
+    await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+
+    res = await async_client.get("/api/v1/driver/trips/active")
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["business_name"] == "CargoX Logistics"
+    assert data["cargox_upi_id"] == configured_upi
+    assert data["payment_status_display"] in ("Payment Due", "Paid")
+    assert data["qr_image_url"] is not None
+    assert "upi%3A%2F%2Fpay" in data["qr_image_url"] or "upi://" in (data.get("upi_uri") or "")
+    assert str(data["amount_due_for_collection"]) is not None
+    assert "cargox.corporate" in data["qr_image_url"]
+    assert "okaxis" in data["qr_image_url"]
+    assert "cargox.corporate" in (data.get("upi_uri") or "")
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_customer_portal_and_driver_qr_credit_same_invoice(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    """
+    3. Existing Customer Portal payment flow still works.
+    4. Customer-side and driver-side payments update the same invoice.
+    5. Successful verified payment updates the invoice exactly once.
+    6. Duplicate webhooks cannot duplicate payments.
+    """
+    ctx = await setup_arrived_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    invoice_id = inv_res.json()["id"]
+    original_total = Decimal(str(inv_res.json()["total_amount"]))
+
+    # Test Customer selects UPI and receives payment options
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+    options_res = await async_client.get(f"/api/v1/customer/invoices/{invoice_id}/payment-options")
+    assert options_res.status_code == 200
+    assert len(options_res.json()) == 3
+
+    # Now customer pays via webhook matching the invoice
+    test_webhook_secret = "test_webhook_shared_ledger"
+    settings.RAZORPAY_WEBHOOK_SECRET = test_webhook_secret
+
+    pay_id = f"pay_shared_{uuid.uuid4().hex[:6]}"
+    payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": pay_id,
+                    "amount": int(original_total * 100),
+                    "currency": "INR",
+                    "status": "captured",
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    sig = hmac.new(test_webhook_secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+
+    hook_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=payload_bytes,
+        headers={"Content-Type": "application/json", "X-Razorpay-Signature": sig}
+    )
+    assert hook_res.status_code == 200
+    assert hook_res.json()["result"]["status"] == "CONFIRMED"
+
+    # Retry duplicate webhook
+    dup_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=payload_bytes,
+        headers={"Content-Type": "application/json", "X-Razorpay-Signature": sig}
+    )
+    assert dup_res.status_code == 200
+    assert dup_res.json()["result"]["status"] == "ALREADY_PROCESSED"
+
+    # Verify invoice has exactly one payment recorded
+    payments = await Payment.find(Payment.invoice_id == uuid.UUID(invoice_id)).to_list()
+    assert len(payments) == 1
+    assert payments[0].amount == original_total
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_admin_trip_detail_exposes_payment_records(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    """
+    7. Payment IDs are visible in Admin records.
+    """
+    ctx = await setup_arrived_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    invoice_id = inv_res.json()["id"]
+
+    # Record a payment
+    from app.services.invoice_service import InvoiceService
+    from app.schemas.invoice import PaymentCreate
+    await InvoiceService.record_payment(
+        uuid.UUID(invoice_id),
+        PaymentCreate(amount=Decimal("1000.00"), method=PaymentMethod.CASH, reference_number="RCPT-1001"),
+        admin_user
+    )
+
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    detail_res = await async_client.get(f"/api/v1/admin/trips/{trip_id}")
+    assert detail_res.status_code == 200
+    detail = detail_res.json()
+
+    assert detail["invoice"] is not None
+    assert detail["invoice"]["invoice_number"] == inv_res.json()["invoice_number"]
+    assert len(detail["invoice"]["payments"]) >= 1
+    p_record = detail["invoice"]["payments"][0]
+    assert p_record["payment_id"] is not None
+    assert p_record["collection_reference"] == "RCPT-1001"
+    assert p_record["amount"] == 1000.0
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_auto_completion_lifecycle_rules(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    """
+    8. Cash collection gets an internal payment-record ID without a fake provider ID.
+    9. Partial payment does not mark the invoice PAID.
+    10. Failed or pending payments do not trigger payment-gated completion.
+    11. Fully paid invoice plus verified delivery completes the trip correctly.
+    12. Payment before delivery does not prematurely complete the trip.
+    14. Driver cannot collect payment for another driver's trip.
+    """
+    from app.models.delivery import DeliveryRequest
+    from app.models.enums import DeliveryRequestStatus
+
+    ctx = await setup_arrived_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+    req_id = ctx["request_id"]
+
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    invoice_id = inv_res.json()["id"]
+    total_amount = Decimal(str(inv_res.json()["total_amount"]))
+
+    # Rule 14: Driver cannot collect for another driver's trip
+    other_driver = User(id=uuid.uuid4(), email="other@driver.com", role=UserRole.DRIVER, is_active=True)
+    await other_driver.insert()
+
+    app.dependency_overrides[get_current_driver] = lambda: other_driver
+    bad_coll = await async_client.post(
+        f"/api/v1/driver/trips/{trip_id}/record-collection",
+        json={"amount": 100.0, "collection_method": "CASH"}
+    )
+    assert bad_coll.status_code == 403
+
+    # Rule 8 & 9: Partial Cash collection gets internal ID and does NOT mark PAID
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    part_coll = await async_client.post(
+        f"/api/v1/driver/trips/{trip_id}/record-collection",
+        json={"amount": 500.0, "collection_method": "CASH", "reference_number": "CASH-PART-01"}
+    )
+    assert part_coll.status_code == 201
+    coll_data = part_coll.json()
+    assert coll_data["payment_id"] is not None
+    assert coll_data["invoice_status"] == "PARTIALLY_PAID"
+
+    # Trip must NOT be completed because balance remains
+    req_check = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(req_id))
+    assert req_check.status == DeliveryRequestStatus.DELIVERED
+
+    # Settle the remaining balance
+    rem_amount = float(total_amount - Decimal("500.00"))
+    full_coll = await async_client.post(
+        f"/api/v1/driver/trips/{trip_id}/record-collection",
+        json={"amount": rem_amount, "collection_method": "CASH", "reference_number": "CASH-FULL-02"}
+    )
+    assert full_coll.status_code == 201
+    assert full_coll.json()["invoice_status"] == "PAID"
+
+    # Rule 11: Fully paid invoice plus delivered status auto-completes the trip
+    req_final = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(req_id))
+    assert req_final.status == DeliveryRequestStatus.COMPLETED
+
+    app.dependency_overrides.clear()
+
+

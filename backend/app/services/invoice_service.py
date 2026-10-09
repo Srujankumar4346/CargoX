@@ -52,6 +52,8 @@ class InvoiceService:
                     "amount": p.amount,
                     "method": p.method,
                     "reference_number": p.reference_number,
+                    "gateway_order_id": getattr(p, "gateway_order_id", None),
+                    "gateway_payment_id": getattr(p, "gateway_payment_id", None),
                     "notes": p.notes,
                     "paid_at": p.paid_at,
                     "recorded_by": p.recorded_by,

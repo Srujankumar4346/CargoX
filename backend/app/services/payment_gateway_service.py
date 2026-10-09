@@ -336,12 +336,12 @@ class PaymentGatewayService:
                 trip = await Trip.find_one(Trip.request_id == req.id)
                 if trip:
                     from app.services.tracking_delivery_service import TrackingDeliveryService
-                    # Auto-close delivery
+                    from app.models.enums import UserRole
                     admin_proxy = User(
                         id=sys_admin_id,
                         clerk_user_id="system_gateway",
                         email="gateway@cargox.com",
-                        role=None
+                        role=UserRole.ADMIN
                     )
                     try:
                         await TrackingDeliveryService.complete_trip(trip.id, admin_proxy)

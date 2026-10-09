@@ -34,6 +34,8 @@ class PaymentRead(BaseModel):
     amount: Decimal
     method: PaymentMethod
     reference_number: Optional[str] = None
+    gateway_order_id: Optional[str] = None
+    gateway_payment_id: Optional[str] = None
     notes: Optional[str] = None
     paid_at: datetime
     recorded_by: uuid.UUID

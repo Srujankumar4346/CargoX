@@ -51,6 +51,16 @@ class DriverTripRead(BaseModel):
     amount_due_for_collection: Optional[Decimal] = None
     invoice_number: Optional[str] = None
 
+    # CargoX Business Payment & Customer Delivery QR (Securely scoped to active invoice)
+    business_name: Optional[str] = "CargoX Logistics"
+    cargox_upi_id: Optional[str] = None
+    qr_image_url: Optional[str] = None
+    upi_uri: Optional[str] = None
+    payment_status_display: Optional[str] = None # "Payment Due", "Paid", "Processing", "Payment Confirmation Pending"
+    gateway_order_id: Optional[str] = None
+    gateway_key_id: Optional[str] = None
+    payment_instructions: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

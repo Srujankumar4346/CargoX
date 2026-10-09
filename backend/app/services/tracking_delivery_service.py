@@ -123,11 +123,23 @@ class TrackingDeliveryService:
         await request.save()
         await NotificationService.process_pending_notifications()
         
-        # Auto-generate Invoice when delivered
+        # Auto-generate Invoice when delivered, or check if already fully settled to complete trip
         try:
             from app.services.invoice_service import InvoiceService
             from app.schemas.invoice import InvoiceCreate
+            from app.models.finance import Invoice
+            from app.models.enums import InvoiceStatus
+            
             await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), admin_user)
+
+            # Check if invoice is already settled (e.g. customer paid beforehand via portal)
+            inv = await Invoice.find_one(Invoice.request_id == request.id)
+            if inv and inv.status == InvoiceStatus.PAID:
+                try:
+                    await TrackingDeliveryService.complete_trip(trip.id, admin_user)
+                except Exception as comp_err:
+                    import logging
+                    logging.getLogger("cargox").warning(f"Auto-completion after POD verification skipped: {comp_err}")
         except Exception as e:
             import logging
             logging.getLogger("cargox").error(f"Failed to auto-generate invoice for trip {trip.id}: {e}", exc_info=True)

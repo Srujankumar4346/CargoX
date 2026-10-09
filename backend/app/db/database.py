@@ -34,13 +34,17 @@ async def init_db():
     from app.models.operations import TripExpense, VehicleMaintenance
     from app.models.settings import SystemSettings
     
-    await init_beanie(database=database, document_models=[
-        CustomerCompany, RecipientCompany,
-        User,
-        Vehicle, Driver, VehicleAssignment,
-        PricingConfig, Quotation,
-        DeliveryRequest, Trip, ProofOfDelivery, LocationHistory,
-        Invoice, Payment, DriverSettlement,
-        Notification,
-        TripExpense, VehicleMaintenance, SystemSettings,
-    ])
+    await init_beanie(
+        database=database,
+        allow_index_dropping=True,
+        document_models=[
+            CustomerCompany, RecipientCompany,
+            User,
+            Vehicle, Driver, VehicleAssignment,
+            PricingConfig, Quotation,
+            DeliveryRequest, Trip, ProofOfDelivery, LocationHistory,
+            Invoice, Payment, DriverSettlement,
+            Notification,
+            TripExpense, VehicleMaintenance, SystemSettings,
+        ]
+    )

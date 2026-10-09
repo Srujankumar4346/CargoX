@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "CargoX Operations",
+    "slug": "cargox-operations",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cargox.operations",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "CargoX Operations needs location to verify driver proximity and update delivery progress.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CargoX Operations requires background location during active transit to update delivery milestones reliably.",
+        "NSCameraUsageDescription": "Camera access is needed by drivers to capture Proof of Delivery (POD) photos upon delivery."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.cargox.operations",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

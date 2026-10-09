@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "CargoX Customer",
+    "slug": "cargox-customer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cargox.customer",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "CargoX needs location access to pinpoint pickup and destination addresses for seamless goods transport."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.cargox.customer",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

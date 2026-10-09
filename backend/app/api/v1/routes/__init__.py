@@ -18,6 +18,7 @@ from app.api.v1.routes.admin_expenses import router as admin_expenses_router
 from app.api.v1.routes.driver_expenses import router as driver_expenses_router
 from app.api.v1.routes.admin_maintenance import router as admin_maintenance_router
 from app.api.v1.routes.admin_settlements import router as admin_settlements_router
+from app.api.v1.routes.admin_finance import router as admin_finance_router
 from app.api.v1.routes.admin_users import router as admin_users_router
 from app.api.v1.routes.notifications import router as notifications_router
 
@@ -27,6 +28,7 @@ api_router.include_router(admin_pricing_router, prefix="/admin", tags=["Admin Pr
 api_router.include_router(admin_fleet_router, prefix="/admin", tags=["Admin Fleet Management"])
 api_router.include_router(admin_dispatch_router, prefix="/admin", tags=["Admin Dispatch Workflow"])
 api_router.include_router(admin_invoices_router, prefix="/admin", tags=["Admin Invoices & Payments"])
+api_router.include_router(admin_finance_router, prefix="/admin/finance", tags=["Admin Finance & Reports"])
 api_router.include_router(admin_settings_router, prefix="/admin", tags=["Admin Settings"])
 api_router.include_router(admin_analytics_router, prefix="/admin/analytics", tags=["Admin Analytics"])
 api_router.include_router(admin_expenses_router, prefix="/admin", tags=["Admin Expenses"])
@@ -42,3 +44,4 @@ api_router.include_router(recipients_router, prefix="/customer/recipients", tags
 api_router.include_router(requests_router, prefix="/customer/requests", tags=["Customer Requests"])
 api_router.include_router(customer_tracking_router, prefix="/customer/requests", tags=["Customer Tracking"])
 api_router.include_router(customer_fleet_router, prefix="/customer/fleet", tags=["Customer Fleet"])
+

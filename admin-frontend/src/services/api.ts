@@ -477,5 +477,128 @@ export const api = {
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  },
+
+  // Financial Control Center (Admin Reporting)
+  getFinancialSummary: async (params: { period?: string; reference_date?: string; start_date?: string; end_date?: string } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set("period", params.period);
+    if (params.reference_date) searchParams.set("reference_date", params.reference_date);
+    if (params.start_date) searchParams.set("start_date", params.start_date);
+    if (params.end_date) searchParams.set("end_date", params.end_date);
+
+    const res = await authFetch(`${API_URL}/admin/finance/reports/summary?${searchParams.toString()}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getFinancialExpenses: async (params: { period?: string; reference_date?: string; start_date?: string; end_date?: string } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set("period", params.period);
+    if (params.reference_date) searchParams.set("reference_date", params.reference_date);
+    if (params.start_date) searchParams.set("start_date", params.start_date);
+    if (params.end_date) searchParams.set("end_date", params.end_date);
+
+    const res = await authFetch(`${API_URL}/admin/finance/reports/expenses?${searchParams.toString()}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getFinancialSettlements: async (params: { period?: string; reference_date?: string; start_date?: string; end_date?: string } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set("period", params.period);
+    if (params.reference_date) searchParams.set("reference_date", params.reference_date);
+    if (params.start_date) searchParams.set("start_date", params.start_date);
+    if (params.end_date) searchParams.set("end_date", params.end_date);
+
+    const res = await authFetch(`${API_URL}/admin/finance/reports/settlements?${searchParams.toString()}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getFinancialTaxes: async (params: { period?: string; reference_date?: string; start_date?: string; end_date?: string } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set("period", params.period);
+    if (params.reference_date) searchParams.set("reference_date", params.reference_date);
+    if (params.start_date) searchParams.set("start_date", params.start_date);
+    if (params.end_date) searchParams.set("end_date", params.end_date);
+
+    const res = await authFetch(`${API_URL}/admin/finance/reports/taxes?${searchParams.toString()}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getFinancialBookings: async (params: {
+    period?: string;
+    reference_date?: string;
+    start_date?: string;
+    end_date?: string;
+    customer_id?: string;
+    trip_status?: string;
+    invoice_status?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set("period", params.period);
+    if (params.reference_date) searchParams.set("reference_date", params.reference_date);
+    if (params.start_date) searchParams.set("start_date", params.start_date);
+    if (params.end_date) searchParams.set("end_date", params.end_date);
+    if (params.customer_id) searchParams.set("customer_id", params.customer_id);
+    if (params.trip_status) searchParams.set("trip_status", params.trip_status);
+    if (params.invoice_status) searchParams.set("invoice_status", params.invoice_status);
+    if (params.search) searchParams.set("search", params.search);
+    if (params.page) searchParams.set("page", params.page.toString());
+    if (params.page_size) searchParams.set("page_size", params.page_size.toString());
+
+    const res = await authFetch(`${API_URL}/admin/finance/reports/bookings?${searchParams.toString()}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getBookingFinancial360: async (requestId: string) => {
+    const res = await authFetch(`${API_URL}/admin/finance/reports/bookings/${requestId}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  exportFinancialCsv: async (params: { period?: string; reference_date?: string; start_date?: string; end_date?: string } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set("period", params.period);
+    if (params.reference_date) searchParams.set("reference_date", params.reference_date);
+    if (params.start_date) searchParams.set("start_date", params.start_date);
+    if (params.end_date) searchParams.set("end_date", params.end_date);
+
+    let token = null;
+    if (tokenGetter) {
+      try { token = await tokenGetter(); } catch (e) {}
+    }
+    if (!token && typeof window !== 'undefined' && (window as any).Clerk?.session) {
+      try { token = await (window as any).Clerk.session.getToken(); } catch (e) {}
+    }
+    if (!token) token = localStorage.getItem('access_token');
+
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_URL}/admin/finance/reports/export/csv?${searchParams.toString()}`, { headers });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const disposition = res.headers.get("content-disposition");
+    let filename = `CargoX_Financial_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    if (disposition && disposition.indexOf("filename=") !== -1) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match && match[1]) filename = match[1];
+    }
+
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   }
 };

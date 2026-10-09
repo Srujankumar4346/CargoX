@@ -26,3 +26,19 @@ class SettingsService:
         settings.updated_by = updated_by
         await settings.save()
         return settings
+
+    @staticmethod
+    async def update_settings(
+        updated_by: uuid.UUID,
+        cargox_upi_id: str | None = None,
+        cargox_service_fee_percentage: Decimal | None = None
+    ) -> SystemSettings:
+        settings = await SettingsService.get_settings()
+        if cargox_upi_id is not None:
+            settings.cargox_upi_id = cargox_upi_id.strip() if cargox_upi_id.strip() else None
+        if cargox_service_fee_percentage is not None:
+            settings.cargox_service_fee_percentage = cargox_service_fee_percentage
+        settings.updated_at = datetime.now(timezone.utc)
+        settings.updated_by = updated_by
+        await settings.save()
+        return settings

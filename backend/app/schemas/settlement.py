@@ -39,3 +39,19 @@ class DriverSettlementRead(BaseModel):
     generated_by: uuid.UUID
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class DriverSettlementSummaryRead(BaseModel):
+    id: uuid.UUID
+    period_start: datetime
+    period_end: datetime
+    driver_payable_amount: Optional[Decimal] = None
+    reimbursements: Decimal = Decimal("0.00")
+    deductions: Decimal = Decimal("0.00")
+    total_payout: Decimal = Decimal("0.00")
+    currency: str = "INR"
+    status: SettlementStatus
+    paid_at: Optional[datetime] = None
+    reference_number: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

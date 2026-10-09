@@ -6,6 +6,7 @@ from app.api.deps import get_current_driver
 from app.models.user import User
 from app.schemas.driver_pwa import LocationUpdate, DriverTripRead
 from app.schemas.tracking_delivery import PODSubmission, PODRead
+from app.schemas.settlement import DriverSettlementSummaryRead
 from app.services.driver_service import DriverService
 from app.services.tracking_delivery_service import TrackingDeliveryService
 
@@ -80,4 +81,27 @@ async def submit_pod(
     Submits Proof of Delivery for an ARRIVED trip, transitioning status to POD_SUBMITTED.
     """
     return await TrackingDeliveryService.submit_pod(trip_id, pod_in, current_driver)
+
+
+@router.get("/settlements", response_model=List[DriverSettlementSummaryRead])
+async def list_driver_settlements(
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Returns settlement summaries for the authenticated driver.
+    Strictly isolated: customer invoice totals and CargoX service fees are never exposed.
+    """
+    from app.models.fleet import Driver
+    from app.models.finance import DriverSettlement
+
+    driver = await Driver.find_one(Driver.user_id == current_driver.id)
+    if not driver:
+        driver = await Driver.find_one(Driver.email == current_driver.email)
+    if not driver:
+        return []
+
+    settlements = await DriverSettlement.find(
+        DriverSettlement.driver_id == driver.id
+    ).sort("-period_start").to_list()
+    return settlements
 

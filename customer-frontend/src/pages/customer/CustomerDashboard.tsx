@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertCircle, ArrowRight, CheckCircle2, CircleDollarSign, Download, Eye, FileText, LogOut, Map as MapIcon, MapPin, Package, Plus, Settings, Truck, X } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, CircleDollarSign, Download, Eye, FileText, Map as MapIcon, MapPin, Menu, Package, Plus, Settings, Truck, X } from "lucide-react";
 import { useAuth, useUser, UserButton, SignInButton } from "@clerk/react";
 import { api, setTokenGetter, setUserEmailGetter } from "../../services/api";
 import TrackingMap from "../../components/TrackingMap";
@@ -45,6 +45,7 @@ export default function CustomerDashboard() {
   const [cancelReason, setCancelReason] = useState("");
   const [editBookingData, setEditBookingData] = useState<any>(null);
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   useEffect(() => { if (getToken) setTokenGetter(getToken); }, [getToken]);
   useEffect(() => {
@@ -136,7 +137,93 @@ export default function CustomerDashboard() {
     {cancelBookingId && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"><div className="flex items-center justify-between"><h3 className="text-lg font-bold">Cancel booking</h3><button onClick={() => setCancelBookingId(null)}><X size={18} /></button></div><p className="mt-2 text-sm text-slate-400">This booking has already been processed. Please provide a reason.</p><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="mt-4 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm outline-none" rows={3} placeholder="Cancellation reason" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setCancelBookingId(null)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm">Close</button><button onClick={cancelBooking} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold">Confirm cancel</button></div></div></div>}
     {trackingTrip && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-bold"><MapIcon size={18} className="text-blue-400" />Live tracking</h3><button onClick={() => setTrackingTrip(null)}><X size={18} /></button></div><TrackingMap trip={{ ...trackingTrip, request: trackingTrip }} locations={trackingLocations} /></div></div>}
 
-    <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur"><div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6"><Link to="/customer" className="flex items-center gap-3"><span className="rounded-lg bg-blue-500/15 p-2 text-blue-400"><Truck size={20} /></span><span><span className="block text-sm font-bold text-white">CargoX Customer</span><span className="hidden text-[10px] uppercase tracking-[0.15em] text-slate-500 sm:block">Reliable Transport. Greener Tomorrow.</span></span></Link><nav className="hidden items-center gap-6 text-sm text-slate-400 md:flex"><a href="#dashboard" className="text-blue-300">Dashboard</a><button onClick={openNewBooking}>Book Transport</button><a href="#bookings">My Bookings</a><a href="#invoices">My Invoices</a><Link to="/customer/settings">Settings</Link></nav><div className="flex items-center gap-3"><NotificationDropdown userType="CUSTOMER" userId={1} /><div className="hidden text-right sm:block"><p className="max-w-32 truncate text-xs font-semibold text-slate-200">{companyName}</p><p className="text-[10px] uppercase tracking-wider text-slate-600">Customer portal</p></div><UserButton /><Link to="/customer/settings" className="text-slate-500 hover:text-white" title="Settings"><Settings size={17} /></Link><Link to="/" className="text-slate-500 hover:text-white" title="Logout"><LogOut size={17} /></Link></div></div></header>
+    <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsMobileNavOpen(!isMobileNavOpen)} 
+            className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:text-white md:hidden"
+            aria-label="Toggle navigation menu"
+          >
+            {isMobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+          </button>
+          <Link to="/customer" className="flex items-center gap-2.5">
+            <span className="rounded-xl bg-blue-500/15 p-2 text-blue-400">
+              <Truck size={20} />
+            </span>
+            <span>
+              <span className="block text-sm font-bold tracking-tight text-white sm:text-base">CargoX Customer</span>
+              <span className="hidden text-[10px] uppercase tracking-[0.15em] text-slate-500 sm:block">Reliable Fleet Goods Transport</span>
+            </span>
+          </Link>
+        </div>
+
+        {/* Desktop Navigation */}
+        <nav className="hidden items-center gap-6 text-sm text-slate-400 md:flex">
+          <a href="#dashboard" className="text-blue-300 transition-colors hover:text-white">Dashboard</a>
+          <button onClick={openNewBooking} className="text-slate-300 transition-colors hover:text-white">Book Transport</button>
+          <a href="#bookings" className="text-slate-300 transition-colors hover:text-white">My Bookings</a>
+          <a href="#invoices" className="text-slate-300 transition-colors hover:text-white">My Invoices</a>
+          <Link to="/customer/settings" className="text-slate-300 transition-colors hover:text-white">Settings</Link>
+        </nav>
+
+        {/* Right Action Icons */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <NotificationDropdown userType="CUSTOMER" userId={1} />
+          <div className="hidden text-right lg:block">
+            <p className="max-w-32 truncate text-xs font-semibold text-slate-200">{companyName}</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Customer portal</p>
+          </div>
+          <UserButton />
+          <Link to="/customer/settings" className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 hover:text-white" title="Settings">
+            <Settings size={16} />
+          </Link>
+        </div>
+      </div>
+
+      {/* Mobile Drawer Navigation */}
+      {isMobileNavOpen && (
+        <div className="border-t border-slate-800/80 bg-slate-950/95 px-4 py-3 md:hidden">
+          <div className="flex flex-col space-y-2 text-sm font-semibold">
+            <a 
+              href="#dashboard" 
+              onClick={() => setIsMobileNavOpen(false)}
+              className="rounded-lg bg-blue-600/10 px-3 py-2 text-blue-300"
+            >
+              Dashboard
+            </a>
+            <button 
+              onClick={() => { setIsMobileNavOpen(false); openNewBooking(); }} 
+              className="flex items-center justify-between rounded-lg px-3 py-2 text-left text-white hover:bg-slate-900"
+            >
+              <span>+ Book Transport</span>
+              <span className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold">New</span>
+            </button>
+            <a 
+              href="#bookings" 
+              onClick={() => setIsMobileNavOpen(false)}
+              className="rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900"
+            >
+              My Bookings
+            </a>
+            <a 
+              href="#invoices" 
+              onClick={() => setIsMobileNavOpen(false)}
+              className="rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900"
+            >
+              My Invoices
+            </a>
+            <Link 
+              to="/customer/settings" 
+              onClick={() => setIsMobileNavOpen(false)}
+              className="rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900"
+            >
+              Account Settings
+            </Link>
+          </div>
+        </div>
+      )}
+    </header>
 
     <main id="dashboard" className="customer-dashboard mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {showBookingFlow && <BookingFlow data={formData} setData={setFormData} step={bookingStep} setStep={setBookingStep} onSubmit={submitBooking} onClose={() => { setShowBookingFlow(false); setSubmittedBooking(null); setEditBookingData(null); }} isEdit={Boolean(editBookingData)} submittedBooking={submittedBooking} onBookAnother={openNewBooking} />}

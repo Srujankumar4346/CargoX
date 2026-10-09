@@ -11,6 +11,7 @@ import FleetManagementPanel from "../../components/FleetManagementPanel";
 import ActiveTripsPanel from "../../components/ActiveTripsPanel";
 import AdminSettingsPanel from "../../components/AdminSettingsPanel";
 import PaymentSettingsSection from "../../components/PaymentSettingsSection";
+import FinancialControlCenter from "../../components/FinancialControlCenter";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
 
 const normalizeStatus = (status: string | undefined) => (status || "").toUpperCase().replace(/ /g, "_");
@@ -558,7 +559,7 @@ export default function AdminDashboard() {
             onClick={() => { setActiveTab('financials'); setIsMobileSidebarOpen(false); }} 
             className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'financials' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
           >
-             <MapIcon size={18}/> <span>Financials</span>
+             <IndianRupee size={18}/> <span>Financial Reports</span>
           </button>
           <button 
             onClick={() => { setActiveTab('users'); setIsMobileSidebarOpen(false); }} 
@@ -1142,8 +1143,12 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'financials' && (
-          <div>
-             <h1 className="text-3xl font-bold text-foreground mb-6">Business Dashboard</h1>
+          <div className="space-y-8">
+             <FinancialControlCenter />
+             
+             <div className="border-t border-slate-800 pt-8 mt-12">
+               <h2 className="text-xl font-bold text-foreground mb-4">Historical Invoicing & Pricing Setup</h2>
+             </div>
              
              {(() => {
                  const totalInvoiced = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_amount || 0), 0) || parseFloat(dashboard?.total_invoiced || 0);

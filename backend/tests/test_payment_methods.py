@@ -1081,4 +1081,75 @@ async def test_admin_payment_settings_and_monitoring(
     app.dependency_overrides.clear()
 
 
+@pytest.mark.anyio
+async def test_arrival_real_payment_type_selection_and_completion(
+    async_client: AsyncClient,
+    admin_user: User,
+    customer_user: User,
+    driver_user: User,
+):
+    """
+    Verifies that:
+    1. At arrival before admin invoice generation, driver sees the REAL quote amount (not ₹0.00 mock).
+    2. Payment status is correctly 'Payment Due' (not premature 'Payment Successful').
+    3. Payment type is selected (Cash on Delivery or UPI).
+    4. Driver records collection for the real balance due.
+    5. After payment is successful, the trip is completed automatically.
+    """
+    from app.services.settings_service import SettingsService
+    from app.models.delivery import DeliveryRequest
+    from app.models.enums import DeliveryRequestStatus
+
+    cargox_upi = "cargox.settle@axis"
+    await SettingsService.update_cargox_upi_id(cargox_upi, admin_user.id)
+
+    # Setup trip that has arrived at destination without prior admin invoice call
+    ctx = await setup_arrived_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+    req_id = ctx["request_id"]
+
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+
+    # 1. Driver gets active trip at destination:
+    # Must show real quotation amount, NOT 0.00, and status 'Payment Due'
+    active_res = await async_client.get("/api/v1/driver/trips/active")
+    assert active_res.status_code == 200
+    trip_data = active_res.json()
+    total_due = Decimal(str(trip_data["amount_due_for_collection"]))
+    assert total_due > Decimal("0.00") # Real non-zero amount
+    assert Decimal(str(trip_data["invoice_total_amount"])) == total_due
+    assert Decimal(str(trip_data["invoice_paid_amount"])) == Decimal("0.00")
+    assert trip_data["payment_status_display"] == "Payment Due"
+
+    # 2. Driver records cash collection for the full real amount
+    coll_res = await async_client.post(
+        f"/api/v1/driver/trips/{trip_id}/record-collection",
+        json={
+            "amount": float(total_due),
+            "collection_method": "CASH",
+            "reference_number": "CASH-SITE-001",
+            "notes": "Collected cash at destination"
+        }
+    )
+    assert coll_res.status_code == 201
+    coll_data = coll_res.json()
+    assert coll_data["invoice_status"] == "PAID"
+    assert Decimal(str(coll_data["remaining_balance"])) == Decimal("0.00")
+
+    # 3. After payment is successful, request must be COMPLETED
+    req_check = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(req_id))
+    assert req_check.status == DeliveryRequestStatus.COMPLETED
+
+    # 4. Status check confirms payment is successful and trip is completed
+    status_res = await async_client.get(f"/api/v1/driver/trips/{trip_id}/payment-status")
+    assert status_res.status_code == 200
+    st_data = status_res.json()
+    assert st_data["is_fully_paid"] is True
+    assert st_data["status"] == "Payment Successful"
+    assert st_data["trip_completed"] is True
+
+    app.dependency_overrides.clear()
+
+
+
 

@@ -14,21 +14,93 @@ from app.services.authorization import AuthorizationService
 from app.services.notification_service import NotificationService
 from app.models.notifications import NotificationChannel
 
+from app.models.pricing import Quotation
+import random
+import logging
+
+logger = logging.getLogger("cargox")
+
 class DriverService:
     @staticmethod
-    async def _build_driver_trip_read(trip: Trip, request: DeliveryRequest, vehicle: Vehicle, assignment: VehicleAssignment) -> Dict[str, Any]:
-        # Check associated invoice for Pay on Delivery info
+    async def _ensure_invoice_for_trip(trip: Trip, request: DeliveryRequest) -> Optional[Invoice]:
+        """
+        Ensures that an Invoice exists for the delivery trip.
+        If an invoice hasn't been explicitly generated yet by admin, but an accepted
+        quotation exists, creates the official invoice with real pricing from the quotation.
+        """
         invoice = await Invoice.find_one(Invoice.request_id == request.id)
-        pm = getattr(invoice, "payment_method", None)
+        if invoice:
+            return invoice
+
+        # Find quotation for this delivery request
+        quotation = await Quotation.find_one(Quotation.request_id == request.id)
+        if not quotation:
+            return None
+
+        year = datetime.now(timezone.utc).year
+        seq_val = random.randint(1000, 999999)
+        invoice_number = f"INV-{year}-{seq_val:06d}"
+
+        subtotal = Decimal(str(quotation.customer_total_charge))
+        tax = Decimal("0.00")
+        discount = Decimal("0.00")
+        total_amount = subtotal + tax - discount
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        new_invoice = Invoice(
+            invoice_number=invoice_number,
+            request_id=request.id,
+            customer_company_id=request.customer_company_id,
+            quotation_id=quotation.id,
+            subtotal=subtotal,
+            tax=tax,
+            discount=discount,
+            total_amount=total_amount,
+            amount_paid=Decimal("0.00"),
+            amount_due=total_amount,
+            status=InvoiceStatus.UNPAID,
+            issued_at=now,
+            due_at=now,
+        )
+        try:
+            await new_invoice.insert()
+            return new_invoice
+        except Exception as err:
+            logger.warning(f"Concurrent invoice insert handled in _ensure_invoice_for_trip: {err}")
+            return await Invoice.find_one(Invoice.request_id == request.id)
+
+    @staticmethod
+    async def _build_driver_trip_read(trip: Trip, request: DeliveryRequest, vehicle: Vehicle, assignment: VehicleAssignment) -> Dict[str, Any]:
+        # Check associated invoice for Pay on Delivery info, or ensure it if quotation exists
+        invoice = await Invoice.find_one(Invoice.request_id == request.id)
+        if not invoice:
+            # Auto-ensure invoice for arrived/pod_submitted/delivered trips if quotation exists
+            if request.status in (
+                DeliveryRequestStatus.ARRIVED,
+                DeliveryRequestStatus.POD_SUBMITTED,
+                DeliveryRequestStatus.DELIVERED,
+                DeliveryRequestStatus.COMPLETED
+            ):
+                invoice = await DriverService._ensure_invoice_for_trip(trip, request)
+
+        quotation = None
+        if not invoice:
+            quotation = await Quotation.find_one(Quotation.request_id == request.id)
+
+        pm = getattr(invoice, "payment_method", None) if invoice else None
         payment_method_val = pm.value if pm else None
         
         collection_status = "NOT_REQUIRED"
         amount_due_col = None
         inv_num = None
+        inv_total = None
+        inv_paid = None
 
         if invoice:
             inv_num = invoice.invoice_number
-            if invoice.status == InvoiceStatus.PAID:
+            inv_total = Decimal(str(invoice.total_amount))
+            inv_paid = Decimal(str(invoice.amount_paid))
+            if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
                 collection_status = "COLLECTED"
                 amount_due_col = Decimal("0.00")
             elif payment_method_val == "PAY_ON_DELIVERY" or (not invoice.payment_method and invoice.amount_due > Decimal("0")):
@@ -37,6 +109,12 @@ class DriverService:
             else:
                 collection_status = "PENDING_VERIFICATION" if invoice.payment_intent_status == "PENDING_CONFIRMATION" else "NOT_REQUIRED"
                 amount_due_col = Decimal(str(invoice.amount_due))
+        elif quotation:
+            quote_amount = Decimal(str(quotation.customer_total_charge))
+            inv_total = quote_amount
+            inv_paid = Decimal("0.00")
+            amount_due_col = quote_amount
+            collection_status = "DUE"
 
         # CargoX Business Payment Details (configured from SystemSettings / PaymentGatewayService)
         from app.services.settings_service import SettingsService
@@ -71,6 +149,24 @@ class DriverService:
                     "am": f"{exact_due:.2f}",
                     "tr": invoice.invoice_number,
                     "tn": f"Delivery Payment {invoice.invoice_number}",
+                    "cu": "INR",
+                })
+                qr_image_url = "https://api.qrserver.com/v1/create-qr-code/?" + urlencode({
+                    "size": "256x256",
+                    "data": upi_uri,
+                    "color": "0f172a",
+                    "bgcolor": "ffffff",
+                })
+        elif quotation:
+            exact_due = Decimal(str(quotation.customer_total_charge))
+            payment_status_display = "Payment Due"
+            if exact_due > Decimal("0.00") and cargox_upi:
+                upi_uri = "upi://pay?" + urlencode({
+                    "pa": cargox_upi,
+                    "pn": "CargoX Logistics",
+                    "am": f"{exact_due:.2f}",
+                    "tr": f"REQ-{request.request_number}",
+                    "tn": f"Delivery Payment {request.request_number}",
                     "cu": "INR",
                 })
                 qr_image_url = "https://api.qrserver.com/v1/create-qr-code/?" + urlencode({
@@ -122,8 +218,8 @@ class DriverService:
             "collection_status": collection_status,
             "amount_due_for_collection": amount_due_col,
             "invoice_number": inv_num,
-            "invoice_total_amount": Decimal(str(invoice.total_amount)) if invoice else None,
-            "invoice_paid_amount": Decimal(str(invoice.amount_paid)) if invoice else None,
+            "invoice_total_amount": inv_total,
+            "invoice_paid_amount": inv_paid,
             # CargoX Business Payment Details
             "business_name": "CargoX Logistics",
             "cargox_upi_id": cargox_upi,
@@ -508,9 +604,11 @@ class DriverService:
 
         invoice = await Invoice.find_one(Invoice.request_id == request.id)
         if not invoice:
+            invoice = await DriverService._ensure_invoice_for_trip(trip, request)
+        if not invoice:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No invoice generated for this trip yet. Cannot record collection."
+                detail="No invoice or accepted quotation found for this trip. Cannot record collection."
             )
 
         if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0"):
@@ -573,10 +671,20 @@ class DriverService:
             invoice.payment_intent_status = "PARTIALLY_COLLECTED"
         await invoice.save()
 
-        # If trip is delivered and invoice is paid, complete the trip
-        if invoice.status == InvoiceStatus.PAID and request.status == DeliveryRequestStatus.DELIVERED:
+        # If invoice is fully paid, ensure trip completion
+        if invoice.status == InvoiceStatus.PAID:
             from app.services.tracking_delivery_service import TrackingDeliveryService
-            await TrackingDeliveryService.complete_trip(trip.id, driver_user)
+            # If trip is arrived or pod_submitted, mark delivered before completing
+            if request.status in (DeliveryRequestStatus.ARRIVED, DeliveryRequestStatus.POD_SUBMITTED):
+                request.status = DeliveryRequestStatus.DELIVERED
+                trip.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                await request.save()
+                await trip.save()
+            if request.status == DeliveryRequestStatus.DELIVERED:
+                try:
+                    await TrackingDeliveryService.complete_trip(trip.id, driver_user)
+                except Exception as comp_err:
+                    logger.warning(f"Auto-completion in record_trip_collection encountered: {comp_err}")
 
         return DriverCollectionRead(
             payment_id=payment.id,
@@ -628,7 +736,11 @@ class DriverService:
 
         invoice = await Invoice.find_one(Invoice.request_id == trip.request_id)
         if not invoice:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice has not been generated for this trip.")
+            delivery_req = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+            if delivery_req:
+                invoice = await DriverService._ensure_invoice_for_trip(trip, delivery_req)
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice has not been generated for this trip and no quotation found.")
 
         if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
             raise HTTPException(
@@ -754,14 +866,20 @@ class DriverService:
 
         trip_completed = (request.status == DeliveryRequestStatus.COMPLETED) if request else False
 
-        # If fully paid and delivered, trigger auto-completion if not already completed
-        if is_fully_paid and request and request.status == DeliveryRequestStatus.DELIVERED and not trip_completed:
+        # If fully paid and at arrival/pod/delivered, trigger auto-completion if not already completed
+        if is_fully_paid and request and not trip_completed:
             from app.services.tracking_delivery_service import TrackingDeliveryService
-            try:
-                await TrackingDeliveryService.complete_trip(trip.id, driver_user)
-                trip_completed = True
-            except Exception as e:
-                logger.warning(f"Auto-completion check during status check encountered: {e}")
+            if request.status in (DeliveryRequestStatus.ARRIVED, DeliveryRequestStatus.POD_SUBMITTED):
+                request.status = DeliveryRequestStatus.DELIVERED
+                trip.delivered_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                await request.save()
+                await trip.save()
+            if request.status == DeliveryRequestStatus.DELIVERED:
+                try:
+                    await TrackingDeliveryService.complete_trip(trip.id, driver_user)
+                    trip_completed = True
+                except Exception as e:
+                    logger.warning(f"Auto-completion check during status check encountered: {e}")
 
         # Check latest payment method
         latest_payment = await Payment.find_one(Payment.invoice_id == invoice.id, sort=[("paid_at", -1)])

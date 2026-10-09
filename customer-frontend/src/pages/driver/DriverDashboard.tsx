@@ -118,6 +118,10 @@ export default function DriverDashboard() {
   const [paymentOrder, setPaymentOrder] = useState<any>(null);
   const [paymentState, setPaymentState] = useState<string>("Payment Due");
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentType, setPaymentType] = useState<"UPI" | "CASH">("UPI");
+  const [cashAmount, setCashAmount] = useState<string>("");
+  const [cashRef, setCashRef] = useState<string>("");
+  const [recordingCash, setRecordingCash] = useState(false);
 
   const fetchActiveTrip = async () => {
     setLoading(true);
@@ -136,10 +140,14 @@ export default function DriverDashboard() {
       } else {
         const data = await res.json();
         setTrip(data);
-        if (data.payment_status_display === "Paid" || parseFloat(data.amount_due_for_collection || "0") <= 0) {
+        const due = parseFloat(data.amount_due_for_collection || "0");
+        const total = parseFloat(data.invoice_total_amount || "0");
+        if (data.payment_status_display === "Paid" || (due <= 0 && total > 0)) {
           setPaymentState("Payment Successful");
         } else if (data.payment_status_display) {
           setPaymentState(data.payment_status_display);
+        } else {
+          setPaymentState("Payment Due");
         }
       }
     } catch (err: any) {
@@ -190,7 +198,7 @@ export default function DriverDashboard() {
         const data = await res.json();
         setPaymentState(data.status);
         if (data.is_fully_paid) {
-          alert("Payment verified! Balance settled in full.");
+          alert("Payment verified! Balance settled in full. Trip completed successfully.");
         }
         fetchActiveTrip();
       }
@@ -198,6 +206,51 @@ export default function DriverDashboard() {
       console.error("Status check failed:", err);
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  const handleRecordCash = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!trip) return;
+    const due = parseFloat(String(trip.amount_due_for_collection || "0"));
+    const amountVal = cashAmount ? parseFloat(cashAmount) : due;
+    if (isNaN(amountVal) || amountVal <= 0) {
+      alert("Please enter a valid cash amount greater than ₹0");
+      return;
+    }
+    if (amountVal > due) {
+      alert(`Entered cash amount (₹${amountVal}) cannot exceed the balance due (₹${due}).`);
+      return;
+    }
+
+    setRecordingCash(true);
+    try {
+      const res = await fetch(`/api/v1/driver/trips/${trip.trip_id}/record-collection`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          amount: amountVal,
+          collection_method: "CASH",
+          reference_number: cashRef.trim() || `CASH-${Date.now().toString().slice(-6)}`,
+          notes: "Cash collected at delivery site"
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to record cash payment");
+      }
+      alert(`Cash payment of ₹${amountVal.toFixed(2)} recorded successfully! Trip completed.`);
+      setPaymentState("Payment Successful");
+      setCashAmount("");
+      setCashRef("");
+      fetchActiveTrip();
+    } catch (err: any) {
+      alert(err.message || "Failed to record cash payment");
+    } finally {
+      setRecordingCash(false);
     }
   };
 
@@ -551,24 +604,105 @@ export default function DriverDashboard() {
                 {/* Destination Actions */}
                 {parseFloat(String(trip.amount_due_for_collection || "0")) > 0 ? (
                   <div className="space-y-3">
-                    <div className="flex space-x-2">
+                    {/* Payment Type Selection Tabs */}
+                    <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
                       <button
-                        disabled={paymentLoading}
-                        onClick={handlePayCargoXNow}
-                        className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition active:scale-[0.98]"
+                        type="button"
+                        onClick={() => setPaymentType("UPI")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center space-x-1 transition ${
+                          paymentType === "UPI"
+                            ? "bg-emerald-600 text-white shadow"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
                       >
-                        <QrCode className="w-4 h-4" />
-                        <span>{paymentLoading ? "Creating Order..." : "Pay CargoX Now"}</span>
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>Online UPI (CargoX)</span>
                       </button>
                       <button
-                        disabled={paymentLoading}
-                        onClick={handleCheckPaymentStatus}
-                        className="py-3 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 flex items-center space-x-1"
+                        type="button"
+                        onClick={() => setPaymentType("CASH")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center space-x-1 transition ${
+                          paymentType === "CASH"
+                            ? "bg-blue-600 text-white shadow"
+                            : "text-slate-400 hover:text-slate-200"
+                        }`}
                       >
-                        <RotateCw className={`w-3.5 h-3.5 ${paymentLoading ? "animate-spin text-emerald-400" : ""}`} />
-                        <span>Status</span>
+                        <IndianRupee className="w-3.5 h-3.5" />
+                        <span>Cash on Delivery</span>
                       </button>
                     </div>
+
+                    {/* UPI Flow */}
+                    {paymentType === "UPI" && (
+                      <div className="space-y-3">
+                        <div className="flex space-x-2">
+                          <button
+                            disabled={paymentLoading}
+                            onClick={handlePayCargoXNow}
+                            className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition active:scale-[0.98]"
+                          >
+                            <QrCode className="w-4 h-4" />
+                            <span>{paymentLoading ? "Creating Order..." : "Generate QR / Pay CargoX Now"}</span>
+                          </button>
+                          <button
+                            disabled={paymentLoading}
+                            onClick={handleCheckPaymentStatus}
+                            className="py-3 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 flex items-center space-x-1"
+                          >
+                            <RotateCw className={`w-3.5 h-3.5 ${paymentLoading ? "animate-spin text-emerald-400" : ""}`} />
+                            <span>Verify Status</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cash Flow */}
+                    {paymentType === "CASH" && (
+                      <form onSubmit={handleRecordCash} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-xs">
+                        <div className="flex items-center space-x-1.5 text-blue-400 font-bold uppercase tracking-wider text-[11px]">
+                          <IndianRupee className="w-3.5 h-3.5" />
+                          <span>Record Cash Payment</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Collect cash directly from customer. Once recorded, the invoice is settled and trip completes.
+                        </p>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                              Cash Received (₹)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={cashAmount}
+                              placeholder={parseFloat(String(trip.amount_due_for_collection || "0")).toFixed(2)}
+                              onChange={(e) => setCashAmount(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                              Receipt / Reference # (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              value={cashRef}
+                              placeholder={`CASH-${Date.now().toString().slice(-6)}`}
+                              onChange={(e) => setCashRef(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={recordingCash}
+                          className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow transition flex items-center justify-center space-x-1.5"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>{recordingCash ? "Recording..." : `Confirm Cash Received (₹${cashAmount ? parseFloat(cashAmount).toFixed(2) : parseFloat(String(trip.amount_due_for_collection || "0")).toFixed(2)})`}</span>
+                        </button>
+                      </form>
+                    )}
 
                     {/* QR Display */}
                     {(paymentState === "QR Ready" || paymentState === "Waiting for Payment") && (paymentOrder || trip.qr_image_url) && (

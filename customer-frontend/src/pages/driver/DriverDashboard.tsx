@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { MapPin, Navigation, Phone, WifiOff, CheckCircle, Clock } from "lucide-react";
+import { MapPin, Navigation, Phone, WifiOff, CheckCircle, Clock, QrCode, RotateCw, Copy, ExternalLink, IndianRupee } from "lucide-react";
 
 interface DriverTrip {
   trip_id: string;
@@ -30,6 +30,21 @@ interface DriverTrip {
   arrived_at?: string;
   current_lat?: number;
   current_lng?: number;
+  customer_name?: string;
+  payment_method?: string;
+  collection_status?: string;
+  amount_due_for_collection?: string | number;
+  invoice_number?: string;
+  invoice_total_amount?: string | number;
+  invoice_paid_amount?: string | number;
+  business_name?: string;
+  cargox_upi_id?: string;
+  qr_image_url?: string;
+  upi_uri?: string;
+  payment_status_display?: string;
+  gateway_order_id?: string;
+  gateway_key_id?: string;
+  payment_instructions?: string;
 }
 
 // IndexedDB Helper for Offline Location Telemetry Queue
@@ -100,6 +115,9 @@ export default function DriverDashboard() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [locationLog, setLocationLog] = useState<string[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState<any>(null);
+  const [paymentState, setPaymentState] = useState<string>("Payment Due");
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   const fetchActiveTrip = async () => {
     setLoading(true);
@@ -118,11 +136,68 @@ export default function DriverDashboard() {
       } else {
         const data = await res.json();
         setTrip(data);
+        if (data.payment_status_display === "Paid" || parseFloat(data.amount_due_for_collection || "0") <= 0) {
+          setPaymentState("Payment Successful");
+        } else if (data.payment_status_display) {
+          setPaymentState(data.payment_status_display);
+        }
       }
     } catch (err: any) {
       setError(err.message || "Network error loading trip");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePayCargoXNow = async () => {
+    if (!trip) return;
+    setPaymentLoading(true);
+    try {
+      const res = await fetch(`/api/v1/driver/trips/${trip.trip_id}/pay-cargox-now`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Payment order creation failed");
+      }
+      const data = await res.json();
+      setPaymentOrder(data);
+      setPaymentState(data.payment_status_display || "Waiting for Payment");
+      fetchActiveTrip();
+    } catch (err: any) {
+      alert(err.message || "Could not initiate payment");
+      setPaymentState("Payment Failed");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleCheckPaymentStatus = async () => {
+    if (!trip) return;
+    setPaymentLoading(true);
+    try {
+      const res = await fetch(`/api/v1/driver/trips/${trip.trip_id}/payment-status`, {
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token") || ""}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPaymentState(data.status);
+        if (data.is_fully_paid) {
+          alert("Payment verified! Balance settled in full.");
+        }
+        fetchActiveTrip();
+      }
+    } catch (err) {
+      console.error("Status check failed:", err);
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
@@ -420,6 +495,130 @@ export default function DriverDashboard() {
                 </div>
               )}
             </div>
+
+            {/* RAPIDO / UBER-STYLE DESTINATION COLLECT PAYMENT SECTION */}
+            {["ARRIVED", "POD_SUBMITTED", "DELIVERED"].includes(trip.status) && (
+              <div className="bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-emerald-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                      <IndianRupee className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-white uppercase tracking-wider">Collect Customer Payment</h3>
+                      <p className="text-[10px] text-slate-400">Direct settlement to CargoX corporate current account</p>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
+                    paymentState === "Payment Successful"
+                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                      : paymentState === "Waiting for Payment"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30 animate-pulse"
+                      : paymentState === "Payment Failed"
+                      ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                      : paymentState === "Payment Partially Completed"
+                      ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                      : "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                  }`}>
+                    ● {paymentState}
+                  </span>
+                </div>
+
+                {/* Outstanding Ledger Summary */}
+                <div className="grid grid-cols-2 gap-2 text-xs p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Booking / Trip</span>
+                    <span className="font-extrabold text-slate-200">#{trip.request_number}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Customer</span>
+                    <span className="font-bold text-slate-200 truncate block">{trip.customer_name || trip.pickup_company_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Invoice Total</span>
+                    <span className="font-bold text-slate-300">
+                      ₹{trip.invoice_total_amount ? parseFloat(String(trip.invoice_total_amount)).toFixed(2) : "0.00"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Amount Due</span>
+                    <span className="font-black text-emerald-400 text-sm">
+                      ₹{trip.amount_due_for_collection ? parseFloat(String(trip.amount_due_for_collection)).toFixed(2) : "0.00"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Destination Actions */}
+                {parseFloat(String(trip.amount_due_for_collection || "0")) > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex space-x-2">
+                      <button
+                        disabled={paymentLoading}
+                        onClick={handlePayCargoXNow}
+                        className="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition active:scale-[0.98]"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>{paymentLoading ? "Creating Order..." : "Pay CargoX Now"}</span>
+                      </button>
+                      <button
+                        disabled={paymentLoading}
+                        onClick={handleCheckPaymentStatus}
+                        className="py-3 px-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 flex items-center space-x-1"
+                      >
+                        <RotateCw className={`w-3.5 h-3.5 ${paymentLoading ? "animate-spin text-emerald-400" : ""}`} />
+                        <span>Status</span>
+                      </button>
+                    </div>
+
+                    {/* QR Display */}
+                    {(paymentState === "QR Ready" || paymentState === "Waiting for Payment") && (paymentOrder || trip.qr_image_url) && (
+                      <div className="p-4 rounded-xl bg-white text-slate-900 text-center space-y-2">
+                        <img
+                          src={paymentOrder?.qr_image_url || trip.qr_image_url}
+                          alt="CargoX UPI QR"
+                          className="w-44 h-44 mx-auto object-contain"
+                        />
+                        <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          Scan with Google Pay, PhonePe, Paytm, or BHIM
+                        </div>
+                        <div className="text-lg font-black text-emerald-700">
+                          ₹{parseFloat(String(trip.amount_due_for_collection || "0")).toFixed(2)}
+                        </div>
+                        <div className="flex justify-center space-x-2 pt-1">
+                          {(paymentOrder?.upi_uri || trip.upi_uri) && (
+                            <a
+                              href={paymentOrder?.upi_uri || trip.upi_uri}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg flex items-center space-x-1"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Open App</span>
+                            </a>
+                          )}
+                          <button
+                            onClick={() => {
+                              const uri = paymentOrder?.upi_uri || trip.upi_uri;
+                              if (uri) {
+                                navigator.clipboard.writeText(uri);
+                                alert("Link copied!");
+                              }
+                            }}
+                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold rounded-lg border border-slate-300 flex items-center space-x-1"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Link</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-center text-xs text-emerald-300 font-bold flex items-center justify-center space-x-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <span>Payment Received in Full. Trip completes on delivery.</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* GPS Telemetry Log Widget */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-3 text-xs space-y-1">

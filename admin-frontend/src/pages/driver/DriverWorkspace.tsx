@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User } from "lucide-react";
+import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink } from "lucide-react";
 import { useAuth, UserButton, useUser } from "@clerk/react";
 import { api } from "../../services/api";
 import NotificationDropdown from "../../components/NotificationDropdown";
@@ -69,6 +69,55 @@ export default function DriverWorkspace() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const [profile, setProfile] = useState<any>(null);
+  const [paymentOrder, setPaymentOrder] = useState<any>(null);
+  const [paymentState, setPaymentState] = useState<string>("Payment Due");
+  const [initiatingPayment, setInitiatingPayment] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+
+  const handlePayCargoXNow = async () => {
+    if (!activeTrip) return;
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    setInitiatingPayment(true);
+    try {
+      const order = await api.driverPayCargoXNow(targetTripId);
+      setPaymentOrder(order);
+      setPaymentState(order.payment_status_display || "Waiting for Payment");
+      await loadDriverData();
+    } catch (err: any) {
+      alert(`Payment initiation failed: ${err.message}`);
+      setPaymentState("Payment Failed");
+    } finally {
+      setInitiatingPayment(false);
+    }
+  };
+
+  const handleCheckPaymentStatus = async () => {
+    if (!activeTrip) return;
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    setCheckingStatus(true);
+    try {
+      const res = await api.getDriverPaymentStatus(targetTripId);
+      setPaymentState(res.status);
+      if (res.is_fully_paid) {
+        alert("Payment Confirmed! Outstanding balance settled.");
+      }
+      await loadDriverData();
+    } catch (err: any) {
+      alert(`Could not verify payment status: ${err.message}`);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
+
+  const handleCopyPaymentLink = () => {
+    const link = paymentOrder?.payment_link || activeTrip?.upi_uri;
+    if (link) {
+      navigator.clipboard.writeText(link);
+      alert("Payment link copied to clipboard!");
+    } else {
+      alert("No active payment link available.");
+    }
+  };
 
   const loadDriverData = async () => {
     setLoading(true);
@@ -83,6 +132,15 @@ export default function DriverWorkspace() {
 
       setActiveTrip(activeRes);
       setHistory(Array.isArray(historyRes) ? historyRes : []);
+      if (activeRes) {
+        if (activeRes.payment_status_display === "Paid" || parseFloat(activeRes.amount_due_for_collection || "0") <= 0) {
+          setPaymentState("Payment Successful");
+        } else if (activeRes.payment_status_display) {
+          setPaymentState(activeRes.payment_status_display);
+        } else {
+          setPaymentState("Payment Due");
+        }
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load driver workspace");
     } finally {
@@ -300,11 +358,177 @@ export default function DriverWorkspace() {
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "POD_SUBMITTED" && (
-                    <button disabled className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-400 bg-slate-800 transition flex items-center gap-2 cursor-not-allowed">
-                       <CheckCircle2 size={14}/> Complete Delivery
-                    </button>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-semibold">
+                      <Clock size={14} className="animate-spin text-amber-400" />
+                      POD Submitted — Awaiting Admin Verification
+                    </div>
+                  )}
+                  {normalizeStatus(activeTrip.status) === "DELIVERED" && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
+                      <CheckCircle2 size={14} className="text-emerald-400" />
+                      POD Verified & Delivered
+                    </div>
                   )}
                 </div>
+
+                {/* RAPIDO / UBER-STYLE ARRIVAL COLLECT CUSTOMER PAYMENT SECTION */}
+                {["ARRIVED", "POD_SUBMITTED", "DELIVERED"].includes(normalizeStatus(activeTrip.status)) && (
+                  <div className="mt-8 rounded-xl border-2 border-emerald-500/30 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-2xl relative overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                            <IndianRupee size={18} />
+                          </span>
+                          <h3 className="text-base font-bold text-white tracking-wide uppercase">
+                            Collect Customer Payment
+                          </h3>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Direct merchant settlement to CargoX Logistics corporate current account.
+                        </p>
+                      </div>
+
+                      {/* State Badge */}
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold border ${
+                          paymentState === "Payment Successful"
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                            : paymentState === "Waiting for Payment"
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/30 animate-pulse"
+                            : paymentState === "Payment Failed"
+                            ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                            : paymentState === "Payment Partially Completed"
+                            ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                            : "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                        }`}>
+                          ● {paymentState}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Financial Summary Ledger Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 my-5 p-4 rounded-lg bg-slate-900/90 border border-slate-800/80">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Customer</span>
+                        <span className="text-xs font-bold text-slate-200 truncate block mt-0.5">
+                          {activeTrip.customer_name || activeTrip.pickup_company_name || activeTrip.request?.pickup_company_name || "Valued Client"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Invoice Total</span>
+                        <span className="text-xs font-bold text-slate-200 block mt-0.5">
+                          ₹{activeTrip.invoice_total_amount ? parseFloat(activeTrip.invoice_total_amount).toFixed(2) : (activeTrip.amount_due_for_collection ? parseFloat(activeTrip.amount_due_for_collection).toFixed(2) : "0.00")}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Amount Paid</span>
+                        <span className="text-xs font-bold text-emerald-400 block mt-0.5">
+                          ₹{activeTrip.invoice_paid_amount ? parseFloat(activeTrip.invoice_paid_amount).toFixed(2) : "0.00"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Balance Due</span>
+                        <span className="text-base font-extrabold text-white block mt-0.5">
+                          ₹{activeTrip.amount_due_for_collection ? parseFloat(activeTrip.amount_due_for_collection).toFixed(2) : "0.00"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Destination Payment Trigger Button & Actions */}
+                    {parseFloat(activeTrip.amount_due_for_collection || "0") > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            disabled={initiatingPayment}
+                            onClick={handlePayCargoXNow}
+                            className="flex-1 min-w-[200px] py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
+                          >
+                            <QrCode size={18} />
+                            {initiatingPayment ? "Generating CargoX Payment..." : "Pay CargoX Now"}
+                          </button>
+
+                          <button
+                            disabled={checkingStatus}
+                            onClick={handleCheckPaymentStatus}
+                            className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-2 transition cursor-pointer"
+                          >
+                            <RotateCw size={14} className={checkingStatus ? "animate-spin text-emerald-400" : ""} />
+                            Check Status
+                          </button>
+                        </div>
+
+                        {/* Customer Dynamic Payment Display */}
+                        {(paymentState === "QR Ready" || paymentState === "Waiting for Payment") && (paymentOrder || activeTrip.qr_image_url) && (
+                          <div className="p-5 rounded-xl bg-white text-slate-900 shadow-2xl flex flex-col md:flex-row items-center gap-6 mt-4">
+                            <div className="p-3 bg-slate-50 rounded-xl border-2 border-slate-200 shrink-0 text-center">
+                              <img
+                                src={paymentOrder?.qr_image_url || activeTrip.qr_image_url}
+                                alt="CargoX Corporate UPI QR"
+                                className="w-48 h-48 mx-auto object-contain"
+                              />
+                              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 block mt-2">
+                                Scan with any UPI app
+                              </span>
+                            </div>
+
+                            <div className="flex-1 space-y-2 text-center md:text-left">
+                              <div className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded uppercase tracking-wider">
+                                Official CargoX Beneficiary
+                              </div>
+                              <h4 className="text-lg font-black text-slate-950">
+                                {paymentOrder?.business_name || activeTrip.business_name || "CargoX Logistics"}
+                              </h4>
+                              <p className="text-xs text-slate-600 font-mono">
+                                UPI: <span className="font-bold text-slate-900">{paymentOrder?.cargox_upi_id || activeTrip.cargox_upi_id || "CargoX Current Account"}</span>
+                              </p>
+                              <p className="text-xs text-slate-600">
+                                Invoice: <span className="font-bold text-slate-900">{activeTrip.invoice_number || "CX-INV"}</span>
+                              </p>
+                              <div className="text-2xl font-black text-emerald-700 py-1">
+                                ₹{parseFloat(activeTrip.amount_due_for_collection || "0").toFixed(2)}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2 pt-2">
+                                {(paymentOrder?.upi_uri || activeTrip.upi_uri) && (
+                                  <a
+                                    href={paymentOrder?.upi_uri || activeTrip.upi_uri}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition"
+                                  >
+                                    <ExternalLink size={12} /> Open UPI App
+                                  </a>
+                                )}
+                                <button
+                                  onClick={handleCopyPaymentLink}
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg flex items-center gap-1.5 border border-slate-300 transition cursor-pointer"
+                                >
+                                  <Copy size={12} /> Copy Payment Link
+                                </button>
+                                <button
+                                  onClick={handleCheckPaymentStatus}
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+                                >
+                                  <RotateCw size={12} /> Verify Payment
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-center space-y-2">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                          <CheckCircle2 size={24} />
+                        </div>
+                        <h4 className="text-sm font-bold text-emerald-200">Payment Fully Completed</h4>
+                        <p className="text-xs text-emerald-400/80">
+                          Invoice #{activeTrip.invoice_number || "CX-INV"} is settled in full. Trip completes automatically once delivery is confirmed.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </>
             ) : (
               <div className="py-12 text-center">

@@ -46,10 +46,13 @@ class DriverTripRead(BaseModel):
     current_lng: Optional[float] = None
 
     # Pay on Delivery & Payment Info (strictly isolated from internal fees/margins)
+    customer_name: Optional[str] = None
     payment_method: Optional[str] = None
     collection_status: Optional[str] = None # "DUE", "COLLECTED", "PENDING_VERIFICATION", "NOT_REQUIRED"
     amount_due_for_collection: Optional[Decimal] = None
     invoice_number: Optional[str] = None
+    invoice_total_amount: Optional[Decimal] = None
+    invoice_paid_amount: Optional[Decimal] = None
 
     # CargoX Business Payment & Customer Delivery QR (Securely scoped to active invoice)
     business_name: Optional[str] = "CargoX Logistics"
@@ -83,3 +86,35 @@ class DriverCollectionRead(BaseModel):
     remaining_balance: Decimal
     invoice_status: str
     message: str
+
+
+class DriverPaymentOrderResponse(BaseModel):
+    invoice_id: uuid.UUID
+    invoice_number: str
+    amount_due: Decimal
+    gateway_order_id: Optional[str] = None
+    gateway_key_id: Optional[str] = None
+    gateway_available: bool
+    qr_image_url: Optional[str] = None
+    upi_uri: Optional[str] = None
+    business_name: str
+    cargox_upi_id: Optional[str] = None
+    payment_link: Optional[str] = None
+    payment_status_display: str
+    message: str
+
+
+class DriverPaymentStatusResponse(BaseModel):
+    trip_id: uuid.UUID
+    invoice_id: Optional[uuid.UUID] = None
+    invoice_number: Optional[str] = None
+    total_amount: Decimal
+    amount_paid: Decimal
+    amount_due: Decimal
+    status: str # "Payment Due", "Waiting for Payment", "Payment Successful", "Payment Failed", "Payment Partially Completed"
+    is_fully_paid: bool
+    trip_status: str
+    trip_completed: bool
+    last_payment_method: Optional[str] = None
+    message: str
+

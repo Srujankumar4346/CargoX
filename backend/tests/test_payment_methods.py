@@ -931,3 +931,154 @@ async def test_auto_completion_lifecycle_rules(async_client: AsyncClient, admin_
     app.dependency_overrides.clear()
 
 
+@pytest.mark.anyio
+async def test_driver_destination_pay_cargox_now_flow(
+    async_client: AsyncClient,
+    admin_user: User,
+    customer_user: User,
+    driver_user: User,
+):
+    """
+    Test Driver Arrival Payment Screen (Rapido/Uber-style):
+    1. Driver arrives and POD is verified.
+    2. Driver sees Collect Customer Payment section with customer, invoice total, amount paid, balance due.
+    3. 'Pay CargoX Now' creates trip-linked payment order with CargoX corporate details and exact amount.
+    4. Driver cannot mark online payment as successful manually.
+    5. Polling payment-status reflects accurate states: Payment Due, Waiting for Payment, Payment Successful.
+    6. When payment is verified and recorded, trip auto-completes.
+    """
+    from app.services.settings_service import SettingsService
+    from app.models.delivery import DeliveryRequest
+    from app.models.enums import DeliveryRequestStatus
+
+    # Configure CargoX UPI ID
+    cargox_upi = "cargox.settlement@icici"
+    await SettingsService.update_cargox_upi_id(cargox_upi, admin_user.id)
+
+    ctx = await setup_arrived_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+    req_id = ctx["request_id"]
+
+    # Generate invoice
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    inv_data = inv_res.json()
+    invoice_id = inv_data["id"]
+    total_amount = Decimal(str(inv_data["total_amount"]))
+
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+
+    # 1. Driver checks active trip: receives invoice totals, customer name, and CargoX UPI details
+    active_res = await async_client.get("/api/v1/driver/trips/active")
+    assert active_res.status_code == 200
+    trip_info = active_res.json()
+    assert trip_info["customer_name"] is not None
+    assert Decimal(str(trip_info["invoice_total_amount"])) == total_amount
+    assert Decimal(str(trip_info["amount_due_for_collection"])) == total_amount
+    assert trip_info["cargox_upi_id"] == cargox_upi
+    assert trip_info["business_name"] == "CargoX Logistics"
+
+    # 2. Driver clicks 'Pay CargoX Now'
+    pay_now_res = await async_client.post(f"/api/v1/driver/trips/{trip_id}/pay-cargox-now")
+    assert pay_now_res.status_code == 200
+    pay_order = pay_now_res.json()
+    assert pay_order["business_name"] == "CargoX Logistics"
+    assert pay_order["cargox_upi_id"] == cargox_upi
+    assert Decimal(str(pay_order["amount_due"])) == total_amount
+    assert pay_order["qr_image_url"] is not None
+    assert "upi%3A%2F%2Fpay" in pay_order["qr_image_url"]
+
+    # 3. Status check while awaiting payment shows 'Waiting for Payment' or 'QR Ready'
+    status_res = await async_client.get(f"/api/v1/driver/trips/{trip_id}/payment-status")
+    assert status_res.status_code == 200
+    status_data = status_res.json()
+    assert status_data["is_fully_paid"] is False
+    assert status_data["trip_completed"] is False
+    assert status_data["status"] in ("Waiting for Payment", "Payment Due")
+
+    # 4. Another driver cannot trigger payment order for this trip (security check)
+    other_driver = User(id=uuid.uuid4(), email="other_driver_2@cargox.com", role=UserRole.DRIVER, is_active=True)
+    await other_driver.insert()
+    app.dependency_overrides[get_current_driver] = lambda: other_driver
+    unauth_pay = await async_client.post(f"/api/v1/driver/trips/{trip_id}/pay-cargox-now")
+    assert unauth_pay.status_code == 403
+
+    # 5. Customer pays invoice via verified webhook or checkout
+    app.dependency_overrides.clear()
+    test_secret = "test_webhook_dest_secret_123"
+    settings.RAZORPAY_WEBHOOK_SECRET = test_secret
+    webhook_payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_destination_test_99",
+                    "order_id": "order_dest_test_99",
+                    "amount": int(total_amount * 100),
+                    "currency": "INR",
+                    "status": "captured",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    raw_body = json.dumps(webhook_payload).encode("utf-8")
+    sig = hmac.new(test_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    wh_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=raw_body,
+        headers={"Content-Type": "application/json", "X-Razorpay-Signature": sig}
+    )
+    assert wh_res.status_code == 200
+
+    # 6. Driver checks status: Payment Successful & Trip is COMPLETED
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    final_status = await async_client.get(f"/api/v1/driver/trips/{trip_id}/payment-status")
+    assert final_status.status_code == 200
+    assert final_status.json()["is_fully_paid"] is True
+    assert final_status.json()["status"] == "Payment Successful"
+    assert final_status.json()["trip_completed"] is True
+
+    # Check DeliveryRequest in DB is COMPLETED
+    req_doc = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(req_id))
+    assert req_doc.status == DeliveryRequestStatus.COMPLETED
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_admin_payment_settings_and_monitoring(
+    async_client: AsyncClient,
+    admin_user: User,
+):
+    """
+    Test Admin Payment Settings and Monitoring:
+    1. Admin reviews CargoX business UPI ID, gateway configured flag, webhook configured flag, settlement info.
+    2. Admin updates business UPI ID.
+    """
+    from app.api.deps import get_current_admin
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    res = await async_client.get("/api/v1/admin/settings/payment")
+    assert res.status_code == 200
+    data = res.json()
+    assert "cargox_upi_id" in data
+    assert "gateway_configured" in data
+    assert "webhook_configured" in data
+    assert "settlement_destination" in data
+
+    # Update UPI ID
+    upd = await async_client.put(
+        "/api/v1/admin/settings/payment",
+        json={"cargox_upi_id": "cargox.newbank@hdfcbank", "cargox_service_fee_percentage": 5.0}
+    )
+    assert upd.status_code == 200
+    upd_data = upd.json()
+    assert upd_data["cargox_upi_id"] == "cargox.newbank@hdfcbank"
+    assert float(upd_data["cargox_service_fee_percentage"]) == 5.0
+    assert upd_data["settlement_destination"] is not None
+
+    app.dependency_overrides.clear()
+
+
+

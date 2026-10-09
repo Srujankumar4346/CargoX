@@ -275,6 +275,28 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  driverPayCargoXNow: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/pay-cargox-now`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  getDriverPaymentStatus: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/payment-status`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  driverRecordCollection: async (tripId: string, data: any) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/record-collection`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
 
 
 

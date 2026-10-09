@@ -117,10 +117,13 @@ class DriverService:
             "current_lat": trip.current_lat,
             "current_lng": trip.current_lng,
             # Strictly confidential fields (customer charges & internal margins) are NEVER exposed
+            "customer_name": request.pickup_company_name or getattr(request, "customer_name", None),
             "payment_method": payment_method_val,
             "collection_status": collection_status,
             "amount_due_for_collection": amount_due_col,
             "invoice_number": inv_num,
+            "invoice_total_amount": Decimal(str(invoice.total_amount)) if invoice else None,
+            "invoice_paid_amount": Decimal(str(invoice.amount_paid)) if invoice else None,
             # CargoX Business Payment Details
             "business_name": "CargoX Logistics",
             "cargox_upi_id": cargox_upi,
@@ -588,3 +591,194 @@ class DriverService:
             invoice_status=invoice.status.value,
             message="Payment collection recorded successfully and applied to invoice balance."
         )
+
+    @staticmethod
+    async def initiate_destination_payment(trip_id: uuid.UUID, driver_user: User) -> Dict[str, Any]:
+        """
+        'Pay CargoX Now' workflow at destination:
+        1. Confirms authenticated driver is assigned to trip.
+        2. Retrieves active invoice and exact outstanding balance.
+        3. If gateway is configured, creates a server-side authenticated Razorpay order
+           for the exact balance due.
+        4. Returns dynamic QR code, UPI URI, and gateway order details for customer scanning.
+        """
+        from app.services.settings_service import SettingsService
+        from app.services.payment_gateway_service import PaymentGatewayService
+        from urllib.parse import urlencode
+
+        driver = await Driver.find_one(Driver.user_id == driver_user.id)
+        if not driver:
+            driver = await Driver.find_one(Driver.email == driver_user.email)
+        if not driver:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Driver profile not found.")
+
+        assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.trip_id == trip_id,
+            VehicleAssignment.driver_id == driver.id,
+        )
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Security violation: You can only initiate payment collection for your assigned trip."
+            )
+
+        trip = await Trip.find_one(Trip.id == trip_id)
+        if not trip:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found.")
+
+        invoice = await Invoice.find_one(Invoice.request_id == trip.request_id)
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice has not been generated for this trip.")
+
+        if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This invoice is already fully paid. No further payment collection required."
+            )
+
+        exact_due = Decimal(str(invoice.amount_due))
+        settings = await SettingsService.get_settings()
+        cargox_upi = (settings.cargox_upi_id or "").strip() or None
+        business_name = "CargoX Logistics"
+
+        gateway_order_id = None
+        gateway_key_id = None
+        gateway_available = PaymentGatewayService.is_configured()
+
+        if gateway_available:
+            try:
+                order_info = await PaymentGatewayService.create_order(
+                    invoice=invoice,
+                    payment_method=PaymentMethod.UPI,
+                    notes={
+                        "trip_id": str(trip.id),
+                        "driver_id": str(driver.id),
+                        "channel": "driver_destination_checkout"
+                    }
+                )
+                gateway_order_id = order_info["order_id"]
+                gateway_key_id = order_info["key_id"]
+                invoice.payment_intent_status = "WAITING_FOR_PAYMENT"
+                await invoice.save()
+            except Exception as e:
+                logger.warning(f"Failed to create gateway order for driver destination payment: {e}")
+
+        # Build dynamic UPI intent URI
+        upi_uri = None
+        qr_image_url = None
+        if cargox_upi:
+            params = {
+                "pa": cargox_upi,
+                "pn": business_name,
+                "am": f"{exact_due:.2f}",
+                "tr": invoice.invoice_number,
+                "tn": f"CargoX Delivery {invoice.invoice_number}",
+                "cu": "INR",
+            }
+            upi_uri = "upi://pay?" + urlencode(params)
+            qr_image_url = "https://api.qrserver.com/v1/create-qr-code/?" + urlencode({
+                "size": "280x280",
+                "data": upi_uri,
+                "color": "0f172a",
+                "bgcolor": "ffffff",
+            })
+
+        payment_link = upi_uri
+
+        return {
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "amount_due": exact_due,
+            "gateway_order_id": gateway_order_id,
+            "gateway_key_id": gateway_key_id,
+            "gateway_available": gateway_available,
+            "qr_image_url": qr_image_url,
+            "upi_uri": upi_uri,
+            "business_name": business_name,
+            "cargox_upi_id": cargox_upi,
+            "payment_link": payment_link,
+            "payment_status_display": "Waiting for Payment" if gateway_order_id else "QR Ready",
+            "message": "Payment QR ready. Customer can scan using any UPI application (GPay, PhonePe, Paytm, BHIM)."
+        }
+
+    @staticmethod
+    async def get_payment_status(trip_id: uuid.UUID, driver_user: User) -> Dict[str, Any]:
+        """
+        Polls or verifies payment status for the trip's invoice:
+        - If invoice is fully settled and trip is delivered, ensures auto-completion.
+        - Returns precise state: 'Payment Due', 'Waiting for Payment', 'Payment Successful',
+          'Payment Partially Completed', or 'Payment Failed'.
+        """
+        driver = await Driver.find_one(Driver.user_id == driver_user.id)
+        if not driver:
+            driver = await Driver.find_one(Driver.email == driver_user.email)
+        if not driver:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Driver profile not found.")
+
+        trip = await Trip.find_one(Trip.id == trip_id)
+        if not trip:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found.")
+
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+        invoice = await Invoice.find_one(Invoice.request_id == trip.request_id)
+
+        if not invoice:
+            return {
+                "trip_id": trip.id,
+                "invoice_id": None,
+                "invoice_number": None,
+                "total_amount": Decimal("0.00"),
+                "amount_paid": Decimal("0.00"),
+                "amount_due": Decimal("0.00"),
+                "status": "Payment Due",
+                "is_fully_paid": False,
+                "trip_status": request.status.value if request else "UNKNOWN",
+                "trip_completed": False,
+                "last_payment_method": None,
+                "message": "No invoice generated yet."
+            }
+
+        is_fully_paid = (invoice.status == InvoiceStatus.PAID) or (Decimal(str(invoice.amount_due)) <= Decimal("0.00"))
+        
+        # Determine status string
+        if is_fully_paid:
+            status_str = "Payment Successful"
+        elif invoice.status == InvoiceStatus.PARTIALLY_PAID or (Decimal(str(invoice.amount_paid)) > Decimal("0.00")):
+            status_str = "Payment Partially Completed"
+        elif invoice.payment_intent_status in ("WAITING_FOR_PAYMENT", "PROCESSING", "PENDING_CONFIRMATION"):
+            status_str = "Waiting for Payment"
+        elif invoice.payment_intent_status == "FAILED":
+            status_str = "Payment Failed"
+        else:
+            status_str = "Payment Due"
+
+        trip_completed = (request.status == DeliveryRequestStatus.COMPLETED) if request else False
+
+        # If fully paid and delivered, trigger auto-completion if not already completed
+        if is_fully_paid and request and request.status == DeliveryRequestStatus.DELIVERED and not trip_completed:
+            from app.services.tracking_delivery_service import TrackingDeliveryService
+            try:
+                await TrackingDeliveryService.complete_trip(trip.id, driver_user)
+                trip_completed = True
+            except Exception as e:
+                logger.warning(f"Auto-completion check during status check encountered: {e}")
+
+        # Check latest payment method
+        latest_payment = await Payment.find_one(Payment.invoice_id == invoice.id, sort=[("paid_at", -1)])
+        last_method = latest_payment.method.value if latest_payment else (invoice.payment_method.value if invoice.payment_method else None)
+
+        return {
+            "trip_id": trip.id,
+            "invoice_id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "total_amount": Decimal(str(invoice.total_amount)),
+            "amount_paid": Decimal(str(invoice.amount_paid)),
+            "amount_due": Decimal(str(invoice.amount_due)),
+            "status": status_str,
+            "is_fully_paid": is_fully_paid,
+            "trip_status": request.status.value if request else "UNKNOWN",
+            "trip_completed": trip_completed,
+            "last_payment_method": last_method,
+            "message": "Trip completed successfully!" if trip_completed else ("Payment received in full." if is_fully_paid else f"Outstanding balance: ₹{invoice.amount_due}")
+        }
+

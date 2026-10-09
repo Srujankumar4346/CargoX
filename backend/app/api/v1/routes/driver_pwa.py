@@ -9,6 +9,8 @@ from app.schemas.driver_pwa import (
     DriverTripRead,
     DriverCollectionCreate,
     DriverCollectionRead,
+    DriverPaymentOrderResponse,
+    DriverPaymentStatusResponse,
 )
 from app.schemas.tracking_delivery import PODSubmission, PODRead
 from app.schemas.settlement import DriverSettlementSummaryRead
@@ -104,6 +106,31 @@ async def record_collection(
     - Does NOT expose CargoX service fees or driver margins.
     """
     return await DriverService.record_trip_collection(trip_id, collection_in, current_driver)
+
+
+@router.post("/trips/{trip_id}/pay-cargox-now", response_model=DriverPaymentOrderResponse)
+async def pay_cargox_now(
+    trip_id: uuid.UUID,
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Rapido/Uber-style driver destination payment:
+    - Driver taps 'Pay CargoX Now' to request immediate payment from customer.
+    - Generates dynamic Razorpay order / UPI intent for exact remaining invoice balance.
+    - Destination is strictly CargoX corporate merchant account.
+    """
+    return await DriverService.initiate_destination_payment(trip_id, current_driver)
+
+
+@router.get("/trips/{trip_id}/payment-status", response_model=DriverPaymentStatusResponse)
+async def check_payment_status(
+    trip_id: uuid.UUID,
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Checks real-time payment status and completes trip automatically if delivery is verified and payment is settled.
+    """
+    return await DriverService.get_payment_status(trip_id, current_driver)
 
 
 @router.get("/settlements", response_model=List[DriverSettlementSummaryRead])

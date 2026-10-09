@@ -33,8 +33,9 @@ class TripExpense(Document):
         name = "trip_expenses"
 
         indexes = [
+            pymongo.IndexModel("trip_id"),
             pymongo.IndexModel("status"),
-            pymongo.IndexModel("status")
+            pymongo.IndexModel([("trip_id", pymongo.ASCENDING), ("status", pymongo.ASCENDING)]),
         ]
 class VehicleMaintenance(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -54,6 +55,6 @@ class VehicleMaintenance(Document):
     class Settings:
         name = "vehicle_maintenance"
         indexes = [
+            pymongo.IndexModel("vehicle_id"),
             pymongo.IndexModel("status"),
-            pymongo.IndexModel("status")
         ]

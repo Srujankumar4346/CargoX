@@ -44,9 +44,11 @@ class DeliveryRequest(Document):
     
     class Settings:
         name = "delivery_requests"
-
         indexes = [
-            pymongo.IndexModel("settlement_id")
+            pymongo.IndexModel([("customer_company_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)]),
+            pymongo.IndexModel([("created_at", pymongo.DESCENDING)]),
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("request_number", unique=True),
         ]
 class Trip(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -70,9 +72,9 @@ class Trip(Document):
 
     class Settings:
         name = "trips"
-
         indexes = [
-            pymongo.IndexModel("settlement_id")
+            pymongo.IndexModel("request_id"),
+            pymongo.IndexModel("settlement_id", sparse=True),
         ]
 class ProofOfDelivery(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -86,9 +88,8 @@ class ProofOfDelivery(Document):
     
     class Settings:
         name = "proof_of_deliveries"
-
         indexes = [
-            pymongo.IndexModel("settlement_id")
+            pymongo.IndexModel("trip_id"),
         ]
 class LocationHistory(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -100,5 +101,5 @@ class LocationHistory(Document):
     class Settings:
         name = "location_histories"
         indexes = [
-            pymongo.IndexModel("settlement_id")
+            pymongo.IndexModel([("trip_id", pymongo.ASCENDING), ("recorded_at", pymongo.DESCENDING)]),
         ]

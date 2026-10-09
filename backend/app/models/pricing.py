@@ -51,5 +51,6 @@ class Quotation(Document):
     class Settings:
         name = "quotations"
         indexes = [
-            pymongo.IndexModel("status")
+            pymongo.IndexModel("request_id"),
+            pymongo.IndexModel("status"),
         ]

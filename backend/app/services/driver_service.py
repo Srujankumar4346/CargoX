@@ -109,14 +109,86 @@ class DriverService:
             VehicleAssignment.released_at != None
         ).to_list()
 
+        if not past_assignments:
+            return []
+
+        trip_ids = [a.trip_id for a in past_assignments]
+        trips = await Trip.find({"_id": {"$in": trip_ids}}).to_list() if trip_ids else []
+        trip_by_id = {t.id: t for t in trips}
+
+        request_ids = [t.request_id for t in trips]
+        requests = await DeliveryRequest.find({"_id": {"$in": request_ids}}).to_list() if request_ids else []
+        request_by_id = {r.id: r for r in requests}
+
+        vehicle_ids = [a.vehicle_id for a in past_assignments]
+        vehicles = await Vehicle.find({"_id": {"$in": vehicle_ids}}).to_list() if vehicle_ids else []
+        vehicle_by_id = {v.id: v for v in vehicles}
+
+        invoices = await Invoice.find({"request_id": {"$in": request_ids}}).to_list() if request_ids else []
+        invoice_by_req = {inv.request_id: inv for inv in invoices}
+
         history = []
         for assignment in past_assignments:
-            trip = await Trip.find_one(Trip.id == assignment.trip_id)
+            trip = trip_by_id.get(assignment.trip_id)
             if trip:
-                request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
-                vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
+                request = request_by_id.get(trip.request_id)
+                vehicle = vehicle_by_id.get(assignment.vehicle_id)
                 if request and vehicle:
-                    history.append(await DriverService._build_driver_trip_read(trip, request, vehicle, assignment))
+                    # Direct assembly with in-memory invoice lookup
+                    invoice = invoice_by_req.get(request.id)
+                    pm = getattr(invoice, "payment_method", None)
+                    payment_method_val = pm.value if pm else None
+                    collection_status = "NOT_REQUIRED"
+                    amount_due_col = None
+                    inv_num = None
+
+                    if invoice:
+                        inv_num = invoice.invoice_number
+                        if invoice.status == InvoiceStatus.PAID:
+                            collection_status = "COLLECTED"
+                            amount_due_col = Decimal("0.00")
+                        elif payment_method_val == "PAY_ON_DELIVERY" or (not invoice.payment_method and invoice.amount_due > Decimal("0")):
+                            collection_status = "DUE"
+                            amount_due_col = Decimal(str(invoice.amount_due))
+                        else:
+                            collection_status = "PENDING_VERIFICATION" if invoice.payment_intent_status == "PENDING_CONFIRMATION" else "NOT_REQUIRED"
+                            amount_due_col = Decimal(str(invoice.amount_due))
+
+                    history.append({
+                        "trip_id": trip.id,
+                        "request_id": request.id,
+                        "request_number": request.request_number,
+                        "status": request.status,
+                        "goods_type": request.goods_type,
+                        "goods_description": request.goods_description,
+                        "weight_tons": Decimal(str(request.weight_tons)),
+                        "distance_km": Decimal(str(request.distance_km)) if request.distance_km is not None else None,
+                        "special_instructions": request.special_instructions,
+                        "pickup_company_name": request.pickup_company_name,
+                        "pickup_address": request.pickup_address,
+                        "pickup_contact_person": request.pickup_contact_person,
+                        "pickup_phone": request.pickup_phone,
+                        "pickup_lat": request.pickup_lat,
+                        "pickup_lng": request.pickup_lng,
+                        "destination_company_name": request.destination_company_name,
+                        "destination_address": request.destination_address,
+                        "destination_contact_person": request.destination_contact_person,
+                        "destination_phone": request.destination_phone,
+                        "destination_lat": request.destination_lat,
+                        "destination_lng": request.destination_lng,
+                        "vehicle_registration": vehicle.registration_number,
+                        "vehicle_type": vehicle.type,
+                        "assigned_at": assignment.assigned_at,
+                        "pickup_started_at": trip.pickup_started_at,
+                        "started_at": trip.started_at,
+                        "arrived_at": trip.arrived_at,
+                        "current_lat": trip.current_lat,
+                        "current_lng": trip.current_lng,
+                        "payment_method": payment_method_val,
+                        "collection_status": collection_status,
+                        "amount_due_for_collection": amount_due_col,
+                        "invoice_number": inv_num
+                    })
         return history
 
     @staticmethod

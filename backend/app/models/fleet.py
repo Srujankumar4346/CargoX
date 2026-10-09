@@ -15,6 +15,10 @@ class Vehicle(Document):
     
     class Settings:
         name = "vehicles"
+        indexes = [
+            pymongo.IndexModel("registration_number", unique=True),
+            pymongo.IndexModel("status"),
+        ]
 
 class Driver(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -31,6 +35,12 @@ class Driver(Document):
     
     class Settings:
         name = "drivers"
+        indexes = [
+            pymongo.IndexModel("user_id", sparse=True),
+            pymongo.IndexModel("status"),
+            pymongo.IndexModel("phone"),
+            pymongo.IndexModel("email", unique=True),
+        ]
 
 class VehicleAssignment(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
@@ -42,3 +52,8 @@ class VehicleAssignment(Document):
     
     class Settings:
         name = "vehicle_assignments"
+        indexes = [
+            pymongo.IndexModel([("trip_id", pymongo.ASCENDING), ("assigned_at", pymongo.DESCENDING)]),
+            pymongo.IndexModel([("driver_id", pymongo.ASCENDING), ("released_at", pymongo.ASCENDING)]),
+            pymongo.IndexModel("vehicle_id"),
+        ]

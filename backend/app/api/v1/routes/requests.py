@@ -11,30 +11,58 @@ from app.services.customer_portal import CustomerPortalService
 
 router = APIRouter()
 
+async def _batch_customer_request_responses(requests: List[DeliveryRequest]) -> List[dict]:
+    """Batch populate customer operational assignment details in O(1) database queries."""
+    if not requests:
+        return []
+    
+    req_ids = [r.id for r in requests]
+    trips = await Trip.find({"request_id": {"$in": req_ids}}).to_list()
+    trip_by_req = {t.request_id: t for t in trips}
+    
+    trip_ids = [t.id for t in trips]
+    assignments = await VehicleAssignment.find(
+        {"trip_id": {"$in": trip_ids}}
+    ).sort("-assigned_at").to_list() if trip_ids else []
+    
+    # Keep latest assignment per trip_id
+    latest_assignment_by_trip = {}
+    for a in assignments:
+        if a.trip_id not in latest_assignment_by_trip:
+            latest_assignment_by_trip[a.trip_id] = a
+            
+    driver_ids = list({a.driver_id for a in latest_assignment_by_trip.values()})
+    vehicle_ids = list({a.vehicle_id for a in latest_assignment_by_trip.values()})
+    
+    drivers = await Driver.find({"_id": {"$in": driver_ids}}).to_list() if driver_ids else []
+    vehicles = await Vehicle.find({"_id": {"$in": vehicle_ids}}).to_list() if vehicle_ids else []
+    
+    driver_by_id = {d.id: d for d in drivers}
+    vehicle_by_id = {v.id: v for v in vehicles}
+    
+    results = []
+    for req in requests:
+        res = req.model_dump()
+        trip = trip_by_req.get(req.id)
+        if trip:
+            assignment = latest_assignment_by_trip.get(trip.id)
+            if assignment:
+                driver = driver_by_id.get(assignment.driver_id)
+                vehicle = vehicle_by_id.get(assignment.vehicle_id)
+                res.update({
+                    "assigned_driver_name": driver.name if driver else None,
+                    "assigned_driver_phone": driver.phone if driver else None,
+                    "assigned_vehicle_registration": vehicle.registration_number if vehicle else None,
+                    "assigned_vehicle_type": vehicle.type.value if vehicle and hasattr(vehicle.type, "value") else (str(vehicle.type) if vehicle else None),
+                    "assigned_vehicle_capacity_tons": vehicle.capacity_tons if vehicle else None,
+                })
+        results.append(res)
+    return results
+
 async def _customer_request_response(request: DeliveryRequest) -> dict:
     """Return request data plus the minimum operational assignment details customers need."""
-    response = request.model_dump()
-    trip = await Trip.find_one(Trip.request_id == request.id)
-    if not trip:
-        return response
-
-    assignment = await VehicleAssignment.find_one(
-        VehicleAssignment.trip_id == trip.id,
-        sort=[("assigned_at", -1)],
-    )
-    if not assignment:
-        return response
-
-    driver = await Driver.find_one(Driver.id == assignment.driver_id)
-    vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
-    response.update({
-        "assigned_driver_name": driver.name if driver else None,
-        "assigned_driver_phone": driver.phone if driver else None,
-        "assigned_vehicle_registration": vehicle.registration_number if vehicle else None,
-        "assigned_vehicle_type": vehicle.type.value if vehicle and hasattr(vehicle.type, "value") else (str(vehicle.type) if vehicle else None),
-        "assigned_vehicle_capacity_tons": vehicle.capacity_tons if vehicle else None,
-    })
-    return response
+    batch_res = await _batch_customer_request_responses([request])
+    return batch_res[0]
 
 from pydantic import BaseModel, Field
 import math
@@ -134,7 +162,7 @@ async def list_requests(
     requests = await DeliveryRequest.find(
         DeliveryRequest.customer_company_id == current_user.customer_company_id
     ).sort("-created_at").to_list()
-    return [await _customer_request_response(request) for request in requests]
+    return await _batch_customer_request_responses(requests)
 
 @router.post("", response_model=DeliveryRequestRead, status_code=status.HTTP_201_CREATED)
 async def create_request(

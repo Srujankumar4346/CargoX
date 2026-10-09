@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 import random
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from app.models.user import User
 from app.models.delivery import DeliveryRequest, Trip
@@ -247,11 +247,25 @@ class InvoiceService:
         else:
             invoices = await Invoice.find_all().to_list()
             
+        if not invoices:
+            return []
+
+        quotation_ids = list({inv.quotation_id for inv in invoices if inv.quotation_id})
+        invoice_ids = [inv.id for inv in invoices]
+
+        quotations = await Quotation.find({"_id": {"$in": quotation_ids}}).to_list() if quotation_ids else []
+        payments = await Payment.find({"invoice_id": {"$in": invoice_ids}}).to_list() if invoice_ids else []
+
+        quotation_by_id = {q.id: q for q in quotations}
+        payments_by_invoice: Dict[uuid.UUID, List[Payment]] = {}
+        for p in payments:
+            payments_by_invoice.setdefault(p.invoice_id, []).append(p)
+
         result = []
         for inv in invoices:
-            quotation = await Quotation.find_one(Quotation.id == inv.quotation_id)
-            payments = await Payment.find(Payment.invoice_id == inv.id).to_list()
-            result.append(InvoiceService._build_admin_read(inv, quotation, payments))
+            quotation = quotation_by_id.get(inv.quotation_id)
+            inv_payments = payments_by_invoice.get(inv.id, [])
+            result.append(InvoiceService._build_admin_read(inv, quotation, inv_payments))
         return result
 
     @staticmethod

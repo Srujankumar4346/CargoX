@@ -58,6 +58,8 @@ class PaymentMethod(str, enum.Enum):
     BANK_TRANSFER = "BANK_TRANSFER"
     CASH = "CASH"
     UPI = "UPI"
+    NET_BANKING = "NET_BANKING"
+    PAY_ON_DELIVERY = "PAY_ON_DELIVERY"
     OTHER = "OTHER"
 
 class ExpenseCategory(str, enum.Enum):

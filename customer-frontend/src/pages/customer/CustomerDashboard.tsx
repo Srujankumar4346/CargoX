@@ -8,7 +8,7 @@ import NotificationDropdown from "../../components/NotificationDropdown";
 import StructuredAddressForm, { type AddressData } from "../../components/StructuredAddressForm";
 import BookingFlow from "../../components/BookingFlow";
 import AssignedOperationsSection from "../../components/AssignedOperationsSection";
-import UpiPaymentModal from "../../components/UpiPaymentModal";
+import PaymentModal from "../../components/PaymentModal";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
 
 const activeStatuses = ["ACCEPTED", "VEHICLE_ASSIGNED", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS", "IN_TRANSIT", "ARRIVED", "POD_SUBMITTED", "DELIVERED"];
@@ -133,7 +133,16 @@ export default function CustomerDashboard() {
   if (!isSignedIn) return <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-white"><div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center"><Truck className="mx-auto mb-4 text-blue-400" size={44} /><h2 className="text-2xl font-bold">Authentication Required</h2><p className="my-6 text-sm text-slate-400">Sign in to submit bookings and view invoices.</p><SignInButton mode="modal"><button className="rounded-lg bg-blue-600 px-6 py-2.5 font-bold">Sign in</button></SignInButton></div></div>;
 
   return <div className="min-h-screen bg-slate-950 text-slate-100">
-    {paymentInvoice && <UpiPaymentModal invoice={paymentInvoice} onClose={() => setPaymentInvoice(null)} />}
+    {paymentInvoice && (
+      <PaymentModal
+        invoice={paymentInvoice}
+        onClose={() => setPaymentInvoice(null)}
+        onSuccess={() => {
+          loadData();
+          setPaymentInvoice(null);
+        }}
+      />
+    )}
     {cancelBookingId && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"><div className="flex items-center justify-between"><h3 className="text-lg font-bold">Cancel booking</h3><button onClick={() => setCancelBookingId(null)}><X size={18} /></button></div><p className="mt-2 text-sm text-slate-400">This booking has already been processed. Please provide a reason.</p><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} className="mt-4 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm outline-none" rows={3} placeholder="Cancellation reason" /><div className="mt-4 flex justify-end gap-2"><button onClick={() => setCancelBookingId(null)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm">Close</button><button onClick={cancelBooking} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold">Confirm cancel</button></div></div></div>}
     {trackingTrip && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-bold"><MapIcon size={18} className="text-blue-400" />Live tracking</h3><button onClick={() => setTrackingTrip(null)}><X size={18} /></button></div><TrackingMap trip={{ ...trackingTrip, request: trackingTrip }} locations={trackingLocations} /></div></div>}
 

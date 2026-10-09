@@ -45,4 +45,31 @@ class DriverTripRead(BaseModel):
     current_lat: Optional[float] = None
     current_lng: Optional[float] = None
 
+    # Pay on Delivery & Payment Info (strictly isolated from internal fees/margins)
+    payment_method: Optional[str] = None
+    collection_status: Optional[str] = None # "DUE", "COLLECTED", "PENDING_VERIFICATION", "NOT_REQUIRED"
+    amount_due_for_collection: Optional[Decimal] = None
+    invoice_number: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class DriverCollectionCreate(BaseModel):
+    collection_method: str = Field(..., description="CASH or UPI collected at delivery")
+    amount: Decimal = Field(..., gt=Decimal("0.00"), description="Actual amount collected")
+    reference_number: Optional[str] = Field(None, description="UPI reference/UTR or cash receipt number")
+    notes: Optional[str] = Field(None, description="Driver collection remarks")
+
+
+class DriverCollectionRead(BaseModel):
+    payment_id: uuid.UUID
+    invoice_id: uuid.UUID
+    invoice_number: str
+    trip_id: uuid.UUID
+    amount_collected: Decimal
+    collection_method: str
+    reference_number: Optional[str] = None
+    collected_at: datetime
+    remaining_balance: Decimal
+    invoice_status: str
+    message: str

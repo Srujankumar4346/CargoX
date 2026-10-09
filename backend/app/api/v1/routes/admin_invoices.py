@@ -45,13 +45,14 @@ async def get_invoice(
 @router.get("/invoices", response_model=List[InvoiceAdminRead])
 async def list_invoices(
     status: Optional[str] = Query(None, description="Filter by invoice status: UNPAID, PARTIALLY_PAID, PAID"),
+    payment_method: Optional[str] = Query(None, description="Filter by payment method: UPI, NET_BANKING, PAY_ON_DELIVERY, CASH, BANK_TRANSFER"),
     current_admin: User = Depends(get_current_admin),
     ):
     """
     Lists all invoices across all customer companies.
-    Optionally filter by status. Requires Admin privileges.
+    Optionally filter by status and payment method. Requires Admin privileges.
     """
-    return await InvoiceService.list_invoices_admin(status)
+    return await InvoiceService.list_invoices_admin(status_filter=status, payment_method_filter=payment_method)
 
 
 @router.patch("/invoices/{invoice_id}/due-date", response_model=InvoiceAdminRead)

@@ -32,8 +32,16 @@ class FinancialSummaryCards(BaseModel):
     payments_collected: Decimal = Decimal("0.00")  # Payments recorded in period
     payment_transactions_count: int = 0
     
+    # Collections breakdown by payment method in period
+    upi_collections: Decimal = Decimal("0.00")
+    net_banking_collections: Decimal = Decimal("0.00")
+    pay_on_delivery_collections: Decimal = Decimal("0.00")
+    bank_transfer_collections: Decimal = Decimal("0.00")
+    
     # Cumulative balance sheet as of period end
     outstanding_receivables: Decimal = Decimal("0.00")  # Cumulative unpaid invoice balance up to period end
+    pod_awaiting_collection: Decimal = Decimal("0.00")   # Unsettled POD invoices awaiting collection
+    pending_confirmations_count: int = 0                # Invoices with PENDING_CONFIRMATION intent
     unpaid_invoices_count: int = 0
     partially_paid_invoices_count: int = 0
     

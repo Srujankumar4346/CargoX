@@ -9,7 +9,7 @@ from app.models.user import User
 from app.models.delivery import DeliveryRequest, Trip
 from app.models.finance import Invoice, Payment
 from app.models.pricing import Quotation
-from app.models.enums import DeliveryRequestStatus, QuotationStatus, InvoiceStatus
+from app.models.enums import DeliveryRequestStatus, QuotationStatus, InvoiceStatus, PaymentMethod
 from app.schemas.invoice import InvoiceCreate, InvoiceAdminRead, CustomerInvoiceRead, PaymentCreate, PaymentRead
 from app.services.authorization import AuthorizationService
 
@@ -32,6 +32,9 @@ class InvoiceService:
             "amount_paid": invoice.amount_paid,
             "amount_due": invoice.amount_due,
             "status": invoice.status,
+            "payment_method": getattr(invoice, "payment_method", None),
+            "payment_notes": getattr(invoice, "payment_notes", None),
+            "payment_intent_status": getattr(invoice, "payment_intent_status", None),
             "issued_at": invoice.issued_at,
             "due_at": invoice.due_at,
             # Immutable Quotation fields — single authoritative source
@@ -213,18 +216,32 @@ class InvoiceService:
         return InvoiceService._build_admin_read(invoice, quotation, payments)
 
     @staticmethod
-    async def list_invoices_admin(status_filter: Optional[str] = None) -> List[dict]:
-        """Lists all invoices. Optionally filters by status."""
+    async def list_invoices_admin(status_filter: Optional[str] = None, payment_method_filter: Optional[str] = None) -> List[dict]:
+        """Lists all invoices. Optionally filters by status and payment method."""
+        query = {}
         if status_filter:
             try:
                 status_enum = InvoiceStatus(status_filter)
-                invoices = await Invoice.find(Invoice.status == status_enum).to_list()
+                query["status"] = status_enum.value
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid status filter '{status_filter}'. "
                            f"Valid values: {[s.value for s in InvoiceStatus]}"
                 )
+        if payment_method_filter:
+            try:
+                method_enum = PaymentMethod(payment_method_filter)
+                query["payment_method"] = method_enum.value
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid payment method filter '{payment_method_filter}'. "
+                           f"Valid values: {[m.value for m in PaymentMethod]}"
+                )
+
+        if query:
+            invoices = await Invoice.find(query).to_list()
         else:
             invoices = await Invoice.find_all().to_list()
             

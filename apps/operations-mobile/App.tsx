@@ -41,6 +41,13 @@ export default function App() {
   const [receiverName, setReceiverName] = useState<string>('Warehouse Manager');
   const [podModalVisible, setPodModalVisible] = useState<boolean>(false);
 
+  // Driver Pay on Delivery collection state
+  const [collectModalVisible, setCollectModalVisible] = useState<boolean>(false);
+  const [collectAmount, setCollectAmount] = useState<string>('');
+  const [collectMethod, setCollectMethod] = useState<'CASH' | 'UPI'>('CASH');
+  const [collectRef, setCollectRef] = useState<string>('');
+  const [collectNotes, setCollectNotes] = useState<string>('');
+
   // Admin state
   const [adminRequests, setAdminRequests] = useState<any[]>([]);
   const [adminTrips, setAdminTrips] = useState<any[]>([]);
@@ -170,6 +177,37 @@ export default function App() {
       loadDriverData();
     } catch (err: any) {
       Alert.alert('POD Error', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRecordCollection = async () => {
+    if (!activeTrip) return;
+    const amountVal = parseFloat(collectAmount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid collection amount.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiRequest<any>(`/driver/trips/${activeTrip.id}/record-collection`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: amountVal,
+          collection_method: collectMethod,
+          reference_number: collectRef.trim() || undefined,
+          notes: collectNotes.trim() || undefined
+        })
+      });
+      Alert.alert('Collection Recorded', `₹${amountVal} collected via ${collectMethod}. ${res.message}`);
+      setCollectModalVisible(false);
+      setCollectAmount('');
+      setCollectRef('');
+      setCollectNotes('');
+      loadDriverData();
+    } catch (err: any) {
+      Alert.alert('Collection Failed', err.message);
     } finally {
       setLoading(false);
     }
@@ -440,6 +478,27 @@ export default function App() {
                   <Text style={styles.routeText}>Pickup: {activeTrip.pickup_address}</Text>
                   <Text style={styles.routeText}>Destination: {activeTrip.destination_address}</Text>
 
+                  {/* Pay on Delivery Information Block */}
+                  {activeTrip.collection_status && activeTrip.collection_status !== 'NOT_REQUIRED' && (
+                    <View style={{ backgroundColor: Colors.surface, borderRadius: 8, padding: 12, marginTop: 12, borderWidth: 1, borderColor: Colors.border }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ color: Colors.textSecondary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>
+                          Payment Method: {activeTrip.payment_method || 'Pay on Delivery'}
+                        </Text>
+                        <View style={{ backgroundColor: activeTrip.collection_status === 'COLLECTED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ color: activeTrip.collection_status === 'COLLECTED' ? Colors.success : Colors.warning, fontSize: 10, fontWeight: '800' }}>
+                            {activeTrip.collection_status}
+                          </Text>
+                        </View>
+                      </View>
+                      {activeTrip.amount_due_for_collection && (
+                        <Text style={{ color: Colors.textPrimary, fontSize: 16, fontWeight: '800', marginTop: 4 }}>
+                          Due for Collection: ₹{parseFloat(activeTrip.amount_due_for_collection).toFixed(2)}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+
                   {/* Step-by-Step Execution Workflow */}
                   <View style={styles.actionBlock}>
                     {activeTrip.status === 'DRIVER_ASSIGNED' && (
@@ -464,6 +523,21 @@ export default function App() {
                     )}
                     {activeTrip.status === 'POD_SUBMITTED' && (
                       <Text style={styles.podWaitNotice}>POD Submitted. Waiting for Admin verification.</Text>
+                    )}
+
+                    {/* Driver Collection Button if Payment is Due */}
+                    {['ARRIVED', 'POD_SUBMITTED', 'DELIVERED', 'COMPLETED'].includes(activeTrip.status) && activeTrip.collection_status === 'DUE' && (
+                      <TouchableOpacity
+                        style={[styles.workflowBtn, { backgroundColor: Colors.warning, marginTop: 10 }]}
+                        onPress={() => {
+                          if (activeTrip.amount_due_for_collection) {
+                            setCollectAmount(String(activeTrip.amount_due_for_collection));
+                          }
+                          setCollectModalVisible(true);
+                        }}
+                      >
+                        <Text style={[styles.workflowBtnText, { color: '#000' }]}>💰 RECORD COLLECTION</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 </View>
@@ -529,6 +603,91 @@ export default function App() {
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.confirmBtn} onPress={handleSubmitPod} disabled={loading}>
                   <Text style={styles.confirmBtnText}>Submit POD</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Pay on Delivery Collection Modal */}
+        <Modal visible={collectModalVisible} animationType="slide" transparent>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Record Customer Collection</Text>
+              <Text style={{ color: Colors.textSecondary, fontSize: 12, marginBottom: 16 }}>
+                Record payment received at delivery destination. This will settle the invoice balance.
+              </Text>
+
+              <Text style={styles.label}>Collection Method</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: collectMethod === 'CASH' ? Colors.primary : Colors.border,
+                    backgroundColor: collectMethod === 'CASH' ? 'rgba(59,130,246,0.15)' : Colors.surface,
+                    alignItems: 'center'
+                  }}
+                  onPress={() => setCollectMethod('CASH')}
+                >
+                  <Text style={{ color: collectMethod === 'CASH' ? Colors.primary : Colors.textSecondary, fontWeight: '700' }}>💵 Cash</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    padding: 10,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: collectMethod === 'UPI' ? Colors.primary : Colors.border,
+                    backgroundColor: collectMethod === 'UPI' ? 'rgba(59,130,246,0.15)' : Colors.surface,
+                    alignItems: 'center'
+                  }}
+                  onPress={() => setCollectMethod('UPI')}
+                >
+                  <Text style={{ color: collectMethod === 'UPI' ? Colors.primary : Colors.textSecondary, fontWeight: '700' }}>📱 UPI</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>Amount Collected (₹)</Text>
+              <TextInput
+                style={styles.input}
+                value={collectAmount}
+                onChangeText={setCollectAmount}
+                keyboardType="numeric"
+                placeholder="0.00"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={styles.label}>Receipt / UTR Reference (Optional)</Text>
+              <TextInput
+                style={styles.input}
+                value={collectRef}
+                onChangeText={setCollectRef}
+                placeholder="e.g. UTR-982137492 or Cash Slip #104"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <Text style={styles.label}>Notes</Text>
+              <TextInput
+                style={styles.input}
+                value={collectNotes}
+                onChangeText={setCollectNotes}
+                placeholder="Remarks regarding collection"
+                placeholderTextColor={Colors.textMuted}
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setCollectModalVisible(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.confirmBtn, { backgroundColor: Colors.success }]}
+                  onPress={handleRecordCollection}
+                  disabled={loading}
+                >
+                  <Text style={styles.confirmBtnText}>Save Collection</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -4,7 +4,12 @@ from typing import List
 
 from app.api.deps import get_current_driver
 from app.models.user import User
-from app.schemas.driver_pwa import LocationUpdate, DriverTripRead
+from app.schemas.driver_pwa import (
+    LocationUpdate,
+    DriverTripRead,
+    DriverCollectionCreate,
+    DriverCollectionRead,
+)
 from app.schemas.tracking_delivery import PODSubmission, PODRead
 from app.schemas.settlement import DriverSettlementSummaryRead
 from app.services.driver_service import DriverService
@@ -81,6 +86,24 @@ async def submit_pod(
     Submits Proof of Delivery for an ARRIVED trip, transitioning status to POD_SUBMITTED.
     """
     return await TrackingDeliveryService.submit_pod(trip_id, pod_in, current_driver)
+
+
+@router.post("/trips/{trip_id}/record-collection", response_model=DriverCollectionRead, status_code=status.HTTP_201_CREATED)
+async def record_collection(
+    trip_id: uuid.UUID,
+    collection_in: DriverCollectionCreate,
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Enables authorized assigned driver to record payment collection (Cash or UPI)
+    for trips using Pay on Delivery upon delivery arrival.
+    Strictly enforces:
+    - Driver must be assigned to this trip.
+    - Amount cannot exceed outstanding balance.
+    - Duplicate reference checks.
+    - Does NOT expose CargoX service fees or driver margins.
+    """
+    return await DriverService.record_trip_collection(trip_id, collection_in, current_driver)
 
 
 @router.get("/settlements", response_model=List[DriverSettlementSummaryRead])

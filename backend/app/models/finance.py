@@ -33,6 +33,11 @@ class Invoice(Document):
     # Status
     status: InvoiceStatus = InvoiceStatus.UNPAID # type: ignore
     
+    # Selected Payment Method & Intent
+    payment_method: Optional[PaymentMethod] = None # type: ignore
+    payment_notes: Optional[str] = None
+    payment_intent_status: Optional[str] = None # e.g. "PENDING_CONFIRMATION", "AWAITING_DELIVERY", "CONFIRMED"
+    
     # Timestamps
     issued_at: datetime
     due_at: Optional[datetime] = None

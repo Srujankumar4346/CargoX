@@ -13,6 +13,7 @@ from app.models.pricing import Quotation
 from app.models.enums import (
     DeliveryRequestStatus,
     InvoiceStatus,
+    PaymentMethod,
     SettlementStatus,
     ExpenseCategory,
     ExpenseStatus,
@@ -215,6 +216,20 @@ class FinancialReportingService:
         )
         payment_transactions_count = await Payment.find(payment_period_filter).count()
 
+        # Method-specific collections breakdown during period
+        upi_collections = await FinancialReportingService._sum_field(
+            Payment, {**payment_period_filter, "method": PaymentMethod.UPI.value}, "amount"
+        )
+        net_banking_collections = await FinancialReportingService._sum_field(
+            Payment, {**payment_period_filter, "method": PaymentMethod.NET_BANKING.value}, "amount"
+        )
+        pay_on_delivery_collections = await FinancialReportingService._sum_field(
+            Payment, {**payment_period_filter, "method": {"$in": [PaymentMethod.PAY_ON_DELIVERY.value, PaymentMethod.CASH.value]}}, "amount"
+        )
+        bank_transfer_collections = await FinancialReportingService._sum_field(
+            Payment, {**payment_period_filter, "method": PaymentMethod.BANK_TRANSFER.value}, "amount"
+        )
+
         # 4. Cumulative Outstanding Receivables as of period end:
         # Crucial Invariant: All invoices issued up to end_utc that have an outstanding balance (status != PAID)
         # Note: We compute outstanding debt at period end.
@@ -225,6 +240,16 @@ class FinancialReportingService:
         outstanding_receivables = await FinancialReportingService._sum_field(
             Invoice, receivables_filter, "amount_due"
         )
+        # Pay on Delivery awaiting collection at delivery point
+        pod_awaiting_collection = await FinancialReportingService._sum_field(
+            Invoice, {**receivables_filter, "payment_method": PaymentMethod.PAY_ON_DELIVERY.value}, "amount_due"
+        )
+        # Invoices with pending confirmation intent
+        pending_confirmations_count = await Invoice.find({
+            "issued_at": {"$lt": end_utc},
+            "status": {"$in": [InvoiceStatus.UNPAID.value, InvoiceStatus.PARTIALLY_PAID.value]},
+            "payment_intent_status": "PENDING_CONFIRMATION"
+        }).count()
         unpaid_invoices_count = await Invoice.find({
             "issued_at": {"$lt": end_utc},
             "status": InvoiceStatus.UNPAID.value
@@ -315,7 +340,13 @@ class FinancialReportingService:
             accepted_quotations_value=accepted_quotations_value,
             payments_collected=payments_collected,
             payment_transactions_count=payment_transactions_count,
+            upi_collections=upi_collections,
+            net_banking_collections=net_banking_collections,
+            pay_on_delivery_collections=pay_on_delivery_collections,
+            bank_transfer_collections=bank_transfer_collections,
             outstanding_receivables=outstanding_receivables,
+            pod_awaiting_collection=pod_awaiting_collection,
+            pending_confirmations_count=pending_confirmations_count,
             unpaid_invoices_count=unpaid_invoices_count,
             partially_paid_invoices_count=partially_paid_invoices_count,
             approved_operating_expenses=approved_operating_expenses,

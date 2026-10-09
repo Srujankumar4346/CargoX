@@ -60,6 +60,9 @@ class InvoiceAdminRead(BaseModel):
     amount_paid: Decimal
     amount_due: Decimal
     status: InvoiceStatus
+    payment_method: Optional[PaymentMethod] = None
+    payment_notes: Optional[str] = None
+    payment_intent_status: Optional[str] = None
 
     # Timestamps
     issued_at: datetime
@@ -95,8 +98,37 @@ class CustomerInvoiceRead(BaseModel):
     amount_paid: Decimal
     amount_due: Decimal
     status: InvoiceStatus
+    payment_method: Optional[PaymentMethod] = None
+    payment_notes: Optional[str] = None
+    payment_intent_status: Optional[str] = None
 
     issued_at: datetime
     due_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SelectPaymentMethodRequest(BaseModel):
+    payment_method: PaymentMethod
+    notes: Optional[str] = None
+
+
+class PaymentMethodOptionDetail(BaseModel):
+    method: PaymentMethod
+    title: str
+    description: str
+    available: bool
+    status_message: Optional[str] = None
+    action_type: str # "SCAN_AND_PAY", "HOSTED_CHECKOUT", "PAY_ON_DELIVERY"
+
+
+class PaymentMethodSelectionResponse(BaseModel):
+    invoice_id: uuid.UUID
+    invoice_number: str
+    amount_due: Decimal
+    selected_method: PaymentMethod
+    intent_status: str
+    message: str
+    qr_details: Optional[dict] = None
+    gateway_available: bool = False
+    gateway_redirect_url: Optional[str] = None

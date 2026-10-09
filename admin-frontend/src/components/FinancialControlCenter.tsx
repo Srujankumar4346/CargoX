@@ -28,7 +28,13 @@ interface FinancialSummary {
   accepted_quotations_value: number;
   payments_collected: number;
   payment_transactions_count: number;
+  upi_collections?: number;
+  net_banking_collections?: number;
+  pay_on_delivery_collections?: number;
+  bank_transfer_collections?: number;
   outstanding_receivables: number;
+  pod_awaiting_collection?: number;
+  pending_confirmations_count?: number;
   unpaid_invoices_count: number;
   partially_paid_invoices_count: number;
   approved_operating_expenses: number;
@@ -398,6 +404,50 @@ export default function FinancialControlCenter() {
             {formatINR(summary?.cash_operating_profit)}
           </p>
           <span className="text-[10px] text-slate-400">Collected − Approved Expenses</span>
+        </div>
+      </div>
+
+      {/* Payment Channel Collections & Status Breakdown Strip */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg">
+        <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+            Payment Channels & Collection Methods
+          </span>
+          <span className="text-[11px] text-slate-400">
+            Reconciled collections for period
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+            <span className="text-[10px] uppercase font-bold text-blue-400">UPI Collections</span>
+            <p className="text-base font-black text-white mt-0.5">{formatINR(summary?.upi_collections)}</p>
+            <span className="text-[10px] text-slate-500">Scan & Pay / QR</span>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+            <span className="text-[10px] uppercase font-bold text-purple-400">Net Banking</span>
+            <p className="text-base font-black text-white mt-0.5">{formatINR(summary?.net_banking_collections)}</p>
+            <span className="text-[10px] text-slate-500">Gateway direct</span>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+            <span className="text-[10px] uppercase font-bold text-emerald-400">Pay on Delivery</span>
+            <p className="text-base font-black text-white mt-0.5">{formatINR(summary?.pay_on_delivery_collections)}</p>
+            <span className="text-[10px] text-slate-500">Driver collected</span>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+            <span className="text-[10px] uppercase font-bold text-slate-400">Bank Transfer</span>
+            <p className="text-base font-black text-white mt-0.5">{formatINR(summary?.bank_transfer_collections)}</p>
+            <span className="text-[10px] text-slate-500">NEFT / RTGS</span>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+            <span className="text-[10px] uppercase font-bold text-amber-400">POD Awaiting</span>
+            <p className="text-base font-black text-amber-300 mt-0.5">{formatINR(summary?.pod_awaiting_collection)}</p>
+            <span className="text-[10px] text-slate-500">Due at delivery</span>
+          </div>
+          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
+            <span className="text-[10px] uppercase font-bold text-cyan-400">Pending Confirms</span>
+            <p className="text-base font-black text-white mt-0.5">{summary?.pending_confirmations_count || 0}</p>
+            <span className="text-[10px] text-slate-500">Verification pending</span>
+          </div>
         </div>
       </div>
 

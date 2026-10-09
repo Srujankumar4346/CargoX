@@ -169,6 +169,21 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  getPaymentOptions: async (invoiceId: string) => {
+    const res = await authFetch(`${API_URL}/customer/invoices/${invoiceId}/payment-options`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  selectPaymentMethod: async (invoiceId: string, paymentMethod: string, notes?: string) => {
+    const res = await authFetch(`${API_URL}/customer/invoices/${invoiceId}/select-payment-method`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payment_method: paymentMethod, notes }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.detail || "Unable to select payment method.");
+    return payload;
+  },
   getPaymentQr: async (invoiceId: string) => {
     const res = await authFetch(`${API_URL}/customer/invoices/${invoiceId}/payment-qr`);
     const payload = await res.json().catch(() => ({}));

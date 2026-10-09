@@ -69,6 +69,25 @@ class PaymentGatewayService:
         return hmac.compare_digest(expected_signature, signature_header.strip())
 
     @staticmethod
+    def verify_checkout_signature(order_id: str, payment_id: str, signature: str) -> bool:
+        """
+        Cryptographically verifies the client-side checkout signature
+        using HMAC-SHA256(order_id + '|' + payment_id, RAZORPAY_KEY_SECRET).
+        """
+        secret = (settings.RAZORPAY_KEY_SECRET or "").strip()
+        if not secret or not order_id or not payment_id or not signature:
+            return False
+
+        message = f"{order_id}|{payment_id}"
+        expected_signature = hmac.new(
+            key=secret.encode("utf-8"),
+            msg=message.encode("utf-8"),
+            digestmod=hashlib.sha256
+        ).hexdigest()
+
+        return hmac.compare_digest(expected_signature, signature.strip())
+
+    @staticmethod
     async def create_order(
         invoice: Invoice,
         payment_method: PaymentMethod,
@@ -246,15 +265,16 @@ class PaymentGatewayService:
                 "message": "Invoice was already settled. Payment logged for administrative audit."
             }
 
-        # Verify gateway status
+        # Verify gateway status: Strictly require final captured/success status.
+        # Requirement: "payment.authorized alone must never mark an invoice paid."
         normalized_status = status_str.lower().strip()
-        if normalized_status not in ("captured", "authorized", "success", "paid"):
-            logger.warning(f"Payment {gateway_payment_id} has non-successful status '{status_str}'. Not settling invoice.")
+        if normalized_status not in ("captured", "success", "paid"):
+            logger.warning(f"Payment {gateway_payment_id} has non-settling status '{status_str}' (e.g. authorized/pending/failed). Not settling invoice.")
             return {
-                "status": "IGNORED_UNSUCCESSFUL",
+                "status": "IGNORED_UNSETTLED",
                 "invoice_id": str(invoice.id),
                 "payment_status": status_str,
-                "message": "Payment attempt did not succeed. Invoice remains unsettled."
+                "message": f"Payment is in '{status_str}' state. Invoice will only be settled once payment is captured and cleared."
             }
 
         amount_inr = (Decimal(str(amount_paise)) / Decimal("100")).quantize(Decimal("0.01"))

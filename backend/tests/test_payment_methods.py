@@ -588,3 +588,140 @@ async def test_real_upi_webhook_auto_detection_and_security(
 
     app.dependency_overrides.clear()
 
+
+@pytest.mark.anyio
+async def test_payment_authorized_alone_does_not_settle_invoice(
+    async_client: AsyncClient,
+    admin_user: User,
+    customer_company: CustomerCompany,
+    customer_user: User,
+    driver_user: User,
+):
+    """
+    Rule Check 1:
+    - payment.authorized alone must NEVER mark an invoice paid or change collected amounts.
+    - Only captured / success events settle the ledger.
+    """
+    ctx = await setup_completed_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    invoice_id = inv_res.json()["id"]
+    total_amount = Decimal(str(inv_res.json()["total_amount"]))
+    total_paise = int(total_amount * 100)
+
+    test_webhook_secret = "test_webhook_secret_auth_only"
+    settings.RAZORPAY_WEBHOOK_SECRET = test_webhook_secret
+
+    auth_payload = {
+        "event": "payment.authorized",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": f"pay_auth_{uuid.uuid4().hex[:6]}",
+                    "amount": total_paise,
+                    "currency": "INR",
+                    "status": "authorized", # authorized, NOT captured
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    auth_bytes = json.dumps(auth_payload).encode("utf-8")
+    auth_sig = hmac.new(test_webhook_secret.encode("utf-8"), auth_bytes, hashlib.sha256).hexdigest()
+
+    auth_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=auth_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": auth_sig
+        }
+    )
+    assert auth_res.status_code == 200
+    res_data = auth_res.json()
+    # Must report ignored/unsettled
+    assert res_data["result"]["status"] == "IGNORED_UNSETTLED"
+
+    # Confirm invoice in DB remains completely UNPAID
+    inv_check = await Invoice.find_one(Invoice.id == uuid.UUID(invoice_id))
+    assert inv_check.status == InvoiceStatus.UNPAID
+    assert inv_check.amount_paid == Decimal("0.00")
+    assert inv_check.amount_due == total_amount
+
+    # Confirm no Payment was inserted for authorized status
+    pay_count = await Payment.find(Payment.invoice_id == uuid.UUID(invoice_id)).count()
+    assert pay_count == 0
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_partial_payment_and_remaining_balance_via_gateway(
+    async_client: AsyncClient,
+    admin_user: User,
+    customer_company: CustomerCompany,
+    customer_user: User,
+    driver_user: User,
+):
+    """
+    Financial Integrity Rule:
+    - Gateway partial payment credits amount_paid accurately.
+    - Status transitions to PARTIALLY_PAID.
+    - Outstanding amount_due reflects exact remainder.
+    """
+    ctx = await setup_completed_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    invoice_id = inv_res.json()["id"]
+    total_amount = Decimal(str(inv_res.json()["total_amount"]))
+
+    test_webhook_secret = "test_webhook_secret_partial"
+    settings.RAZORPAY_WEBHOOK_SECRET = test_webhook_secret
+
+    part_amount = Decimal("500.00")
+    part_paise = int(part_amount * 100)
+
+    part_payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": f"pay_part_{uuid.uuid4().hex[:6]}",
+                    "amount": part_paise,
+                    "currency": "INR",
+                    "status": "captured",
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    part_bytes = json.dumps(part_payload).encode("utf-8")
+    part_sig = hmac.new(test_webhook_secret.encode("utf-8"), part_bytes, hashlib.sha256).hexdigest()
+
+    part_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=part_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": part_sig
+        }
+    )
+    assert part_res.status_code == 200
+    res_data = part_res.json()["result"]
+    assert res_data["status"] == "CONFIRMED"
+    assert res_data["invoice_status"] == "PARTIALLY_PAID"
+
+    inv_check = await Invoice.find_one(Invoice.id == uuid.UUID(invoice_id))
+    assert inv_check.status == InvoiceStatus.PARTIALLY_PAID
+    assert inv_check.amount_paid == part_amount
+    assert inv_check.amount_due == total_amount - part_amount
+
+    app.dependency_overrides.clear()
+
+

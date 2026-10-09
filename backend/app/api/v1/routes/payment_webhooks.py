@@ -128,7 +128,20 @@ async def verify_checkout(
             detail="Payment gateway is currently not configured."
         )
 
-    # 1. Fetch real payment from Razorpay
+    # 1. Cryptographically verify checkout signature: HMAC-SHA256(order_id|payment_id, secret)
+    sig_valid = PaymentGatewayService.verify_checkout_signature(
+        verification.razorpay_order_id,
+        verification.razorpay_payment_id,
+        verification.razorpay_signature
+    )
+    if not sig_valid:
+        logger.warning("Rejected checkout verification: Invalid cryptographic signature.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid cryptographic payment signature."
+        )
+
+    # 2. Fetch real authoritative payment from Razorpay API
     payment_data = await PaymentGatewayService.fetch_payment_status(verification.razorpay_payment_id)
     payment_order_id = payment_data.get("order_id")
 

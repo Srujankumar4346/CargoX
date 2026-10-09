@@ -1,4 +1,15 @@
-export const API_BASE_URL = "http://10.0.2.2:8000/api/v1"; // Standard Android emulator loopback or localhost
+export const DEFAULT_API_BASE_URL = "http://10.0.2.2:8000/api/v1";
+
+export async function getApiBaseUrl(): Promise<string> {
+  const custom = await storage.getItem("cargox_api_base_url");
+  return (custom && custom.trim()) ? custom.trim() : DEFAULT_API_BASE_URL;
+}
+
+export async function setApiBaseUrl(url: string): Promise<void> {
+  await storage.setItem("cargox_api_base_url", url.trim());
+}
+
+export let API_BASE_URL = DEFAULT_API_BASE_URL;
 
 export interface AuthSession {
   token: string;
@@ -56,7 +67,8 @@ export async function apiRequest<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const baseUrl = await getApiBaseUrl();
+  const url = endpoint.startsWith("http") ? endpoint : `${baseUrl}${endpoint}`;
   const response = await fetch(url, { ...options, headers });
 
   if (!response.ok) {

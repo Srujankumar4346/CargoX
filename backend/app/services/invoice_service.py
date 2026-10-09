@@ -35,6 +35,8 @@ class InvoiceService:
             "payment_method": getattr(invoice, "payment_method", None),
             "payment_notes": getattr(invoice, "payment_notes", None),
             "payment_intent_status": getattr(invoice, "payment_intent_status", None),
+            "gateway_order_id": getattr(invoice, "gateway_order_id", None),
+            "gateway_payment_id": getattr(invoice, "gateway_payment_id", None),
             "issued_at": invoice.issued_at,
             "due_at": invoice.due_at,
             # Immutable Quotation fields — single authoritative source

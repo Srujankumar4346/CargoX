@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     # Paths
     UPLOAD_DIR: str = "uploads"
     
+    # Payment Gateway — Razorpay (Indian Market UPI & Net Banking)
+    RAZORPAY_KEY_ID: str | None = None
+    RAZORPAY_KEY_SECRET: str | None = None
+    RAZORPAY_WEBHOOK_SECRET: str | None = None
+    RAZORPAY_WEBHOOK_URL: str | None = None
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

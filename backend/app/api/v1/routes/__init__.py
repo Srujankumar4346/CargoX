@@ -13,7 +13,6 @@ from app.api.v1.routes.recipients import router as recipients_router
 from app.api.v1.routes.requests import router as requests_router
 from app.api.v1.routes.customer_tracking import router as customer_tracking_router
 from app.api.v1.routes.customer_fleet import router as customer_fleet_router
-
 from app.api.v1.routes.admin_expenses import router as admin_expenses_router
 from app.api.v1.routes.driver_expenses import router as driver_expenses_router
 from app.api.v1.routes.admin_maintenance import router as admin_maintenance_router
@@ -21,6 +20,7 @@ from app.api.v1.routes.admin_settlements import router as admin_settlements_rout
 from app.api.v1.routes.admin_finance import router as admin_finance_router
 from app.api.v1.routes.admin_users import router as admin_users_router
 from app.api.v1.routes.notifications import router as notifications_router
+from app.api.v1.routes.payment_webhooks import router as payment_webhooks_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
@@ -44,4 +44,5 @@ api_router.include_router(recipients_router, prefix="/customer/recipients", tags
 api_router.include_router(requests_router, prefix="/customer/requests", tags=["Customer Requests"])
 api_router.include_router(customer_tracking_router, prefix="/customer/requests", tags=["Customer Tracking"])
 api_router.include_router(customer_fleet_router, prefix="/customer/fleet", tags=["Customer Fleet"])
+api_router.include_router(payment_webhooks_router, prefix="/payments", tags=["Payment Webhooks & Gateways"])
 

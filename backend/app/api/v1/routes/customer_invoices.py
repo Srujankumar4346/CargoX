@@ -15,8 +15,12 @@ from app.schemas.invoice import (
     PaymentMethodOptionDetail,
     PaymentMethodSelectionResponse,
 )
+import logging
 from app.services.invoice_service import InvoiceService
 from app.services.settings_service import SettingsService
+from app.services.payment_gateway_service import PaymentGatewayService
+
+logger = logging.getLogger("cargox.customer_invoices")
 
 router = APIRouter()
 
@@ -115,16 +119,15 @@ async def get_payment_options(
     settings = await SettingsService.get_settings()
 
     upi_available = bool(settings.cargox_upi_id and settings.cargox_upi_id.strip())
-    # Net Banking gateway availability check
-    gateway_available = False # Live gateway provider keys are not yet configured in environment
+    gateway_available = PaymentGatewayService.is_configured()
 
     return [
         PaymentMethodOptionDetail(
             method=PaymentMethod.UPI,
             title="UPI (Scan & Pay)",
-            description="Pay instantly using Google Pay, PhonePe, Paytm, or any UPI app.",
-            available=upi_available,
-            status_message=None if upi_available else "UPI is currently unavailable: receiving account not configured by administrator.",
+            description="Pay instantly using Google Pay, PhonePe, Paytm, or any UPI app with auto-detection.",
+            available=upi_available or gateway_available,
+            status_message=None if (upi_available or gateway_available) else "UPI is currently unavailable: receiving account not configured by administrator.",
             action_type="SCAN_AND_PAY"
         ),
         PaymentMethodOptionDetail(
@@ -155,8 +158,8 @@ async def select_payment_method(
     """
     Records customer's chosen payment method on the invoice without marking it paid.
     - Pay on Delivery: records intent; invoice remains UNPAID/PARTIALLY_PAID until driver/admin collects.
-    - UPI: records intent; provides dynamic QR details with amount due.
-    - Net Banking: validates gateway configuration. Rejects with 503 if no gateway is active.
+    - UPI: records intent; provides dynamic QR details with amount due. If gateway is configured, creates gateway order for auto-detection.
+    - Net Banking: validates gateway configuration. Creates gateway order if active; rejects with 503 otherwise.
     """
     invoice = await InvoiceService.get_invoice_customer(invoice_id, current_user)
     if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0"):
@@ -186,6 +189,30 @@ async def select_payment_method(
         )
 
     elif selection.payment_method == PaymentMethod.UPI:
+        # Check if gateway is configured for real auto-detection
+        if PaymentGatewayService.is_configured():
+            try:
+                order_info = await PaymentGatewayService.create_order(
+                    invoice=invoice,
+                    payment_method=PaymentMethod.UPI,
+                    notes={"customer_id": str(current_user.id)}
+                )
+                return PaymentMethodSelectionResponse(
+                    invoice_id=invoice.id,
+                    invoice_number=invoice.invoice_number,
+                    amount_due=amount_due,
+                    selected_method=PaymentMethod.UPI,
+                    intent_status="PENDING_CONFIRMATION",
+                    message="UPI checkout initiated with automatic payment confirmation.",
+                    qr_details=None,
+                    gateway_available=True,
+                    gateway_order_id=order_info["order_id"],
+                    gateway_key_id=order_info["key_id"]
+                )
+            except Exception as err:
+                logger.warning(f"Gateway order creation failed, falling back to static QR: {err}")
+
+        # Fallback to configured merchant UPI ID
         upi_id = settings.cargox_upi_id.strip() if settings.cargox_upi_id else ""
         if not upi_id:
             raise HTTPException(
@@ -229,11 +256,28 @@ async def select_payment_method(
         )
 
     elif selection.payment_method == PaymentMethod.NET_BANKING:
-        # Per requirement: If no gateway is configured, display "Net Banking is currently unavailable"
-        # and explain that it will be available after payment-provider setup. Do not create a fake banking screen.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Net Banking is currently unavailable. It will be enabled after payment provider setup."
+        if not PaymentGatewayService.is_configured():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Net Banking is currently unavailable. It will be enabled after payment provider setup."
+            )
+
+        order_info = await PaymentGatewayService.create_order(
+            invoice=invoice,
+            payment_method=PaymentMethod.NET_BANKING,
+            notes={"customer_id": str(current_user.id)}
+        )
+        return PaymentMethodSelectionResponse(
+            invoice_id=invoice.id,
+            invoice_number=invoice.invoice_number,
+            amount_due=amount_due,
+            selected_method=PaymentMethod.NET_BANKING,
+            intent_status="PENDING_CONFIRMATION",
+            message="Net Banking checkout initiated via secure bank gateway.",
+            qr_details=None,
+            gateway_available=True,
+            gateway_order_id=order_info["order_id"],
+            gateway_key_id=order_info["key_id"]
         )
 
     else:

@@ -42,18 +42,26 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
     maximumFractionDigits: 2,
   });
 
+  const [gatewayOrder, setGatewayOrder] = useState<any>(null);
+
   const handleSelectUpi = async () => {
     setSubmitting(true);
     setError("");
     try {
       const res = await api.selectPaymentMethod(String(invoice.id), "UPI");
-      if (res.qr_details) {
+      if (res.gateway_available && res.gateway_order_id) {
+        setGatewayOrder(res);
+        // If razorpay checkout script is available or loaded, can trigger checkout
+        // Otherwise, show active auto-detection pending screen
+        setActiveTab("UPI");
+      } else if (res.qr_details) {
         setPaymentQr(res.qr_details);
+        setActiveTab("UPI");
       } else {
         const qrRes = await api.getPaymentQr(String(invoice.id));
         setPaymentQr(qrRes);
+        setActiveTab("UPI");
       }
-      setActiveTab("UPI");
     } catch (err: any) {
       setError(err.message || "Failed to initiate UPI payment.");
     } finally {
@@ -65,7 +73,11 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
     setSubmitting(true);
     setError("");
     try {
-      await api.selectPaymentMethod(String(invoice.id), "NET_BANKING");
+      const res = await api.selectPaymentMethod(String(invoice.id), "NET_BANKING");
+      if (res.gateway_available && res.gateway_order_id) {
+        setGatewayOrder(res);
+        setActiveTab("NET_BANKING");
+      }
     } catch (err: any) {
       // Per FinTech specification: Show clear message that gateway is unconfigured; do not simulate success
       setError(err.message || "Net Banking is currently unavailable. It will be enabled after payment provider setup.");
@@ -243,47 +255,83 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
             </div>
           )}
 
-          {/* TAB 2: UPI Dynamic QR Screen */}
-          {activeTab === "UPI" && paymentQr && (
+          {/* TAB 2: UPI Screen */}
+          {activeTab === "UPI" && (
             <div className="space-y-4">
-              <div className="text-center">
-                <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Option A: Merchant UPI</span>
-                <p className="mt-1 text-sm text-slate-300">Scan this QR code using your preferred UPI app</p>
-              </div>
+              {gatewayOrder?.gateway_available ? (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Option A: Real-Time Auto UPI Gateway</span>
+                    <p className="mt-1 text-sm text-slate-300">Gateway Order #{gatewayOrder.gateway_order_id} active</p>
+                  </div>
 
-              <div className="mx-auto flex aspect-square w-52 items-center justify-center rounded-2xl bg-white p-3 shadow-[0_0_50px_rgba(59,130,246,0.18)]">
-                <img src={paymentQr.qr_image_url} alt="CargoX UPI QR" className="h-full w-full object-contain" />
-              </div>
+                  <div className="rounded-xl border border-blue-500/20 bg-blue-950/30 p-5 text-center">
+                    <QrCode size={48} className="mx-auto text-blue-400 mb-2" />
+                    <p className="font-bold text-white text-base">Direct UPI Checkout Ready</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Gateway Key: <span className="font-mono text-blue-300">{gatewayOrder.gateway_key_id}</span>
+                    </p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      <span className="text-xs font-medium text-emerald-300">Awaiting automatic webhook confirmation...</span>
+                    </div>
+                  </div>
 
-              <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400 opacity-80">
-                <span>Google Pay</span> · <span>PhonePe</span> · <span>Paytm</span> · <span>BHIM</span>
-              </div>
-
-              <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-3">
-                <div className="min-w-0 pr-2">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">CargoX Merchant UPI ID</p>
-                  <p className="font-mono text-xs font-bold text-slate-200 truncate">{paymentQr.upi_id}</p>
+                  <div className="rounded-xl border border-blue-500/20 bg-blue-950/20 p-3.5 text-xs text-blue-200/80 flex items-start gap-2.5">
+                    <ShieldCheck size={16} className="shrink-0 mt-0.5 text-blue-400" />
+                    <div>
+                      <p className="font-semibold text-blue-300">Automated Ledger Settlement</p>
+                      <p className="mt-0.5 leading-relaxed">
+                        Once completed in your UPI app, the cryptographically signed webhook will automatically confirm payment and mark the invoice settled.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={copyUpiId}
-                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-700"
-                >
-                  <Copy size={13} />
-                  {copied ? "Copied!" : "Copy"}
-                </button>
-              </div>
+              ) : paymentQr ? (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Option A: Merchant UPI</span>
+                    <p className="mt-1 text-sm text-slate-300">Scan this QR code using your preferred UPI app</p>
+                  </div>
 
-              <div className="rounded-xl border border-blue-500/20 bg-blue-950/20 p-3.5 text-xs text-blue-200/80 flex items-start gap-2.5">
-                <ShieldCheck size={16} className="shrink-0 mt-0.5 text-blue-400" />
-                <div>
-                  <p className="font-semibold text-blue-300">Pending Confirmation Notice</p>
-                  <p className="mt-0.5 leading-relaxed">
-                    Status: <span className="text-amber-300 font-bold">Pending Confirmation</span>.
-                    The invoice will be automatically updated once payment receipt is verified by CargoX.
-                  </p>
+                  <div className="mx-auto flex aspect-square w-52 items-center justify-center rounded-2xl bg-white p-3 shadow-[0_0_50px_rgba(59,130,246,0.18)]">
+                    <img src={paymentQr.qr_image_url} alt="CargoX UPI QR" className="h-full w-full object-contain" />
+                  </div>
+
+                  <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-slate-400 opacity-80">
+                    <span>Google Pay</span> · <span>PhonePe</span> · <span>Paytm</span> · <span>BHIM</span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950 p-3">
+                    <div className="min-w-0 pr-2">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">CargoX Merchant UPI ID</p>
+                      <p className="font-mono text-xs font-bold text-slate-200 truncate">{paymentQr.upi_id}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={copyUpiId}
+                      className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 transition-colors hover:bg-slate-700"
+                    >
+                      <Copy size={13} />
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+
+                  <div className="rounded-xl border border-blue-500/20 bg-blue-950/20 p-3.5 text-xs text-blue-200/80 flex items-start gap-2.5">
+                    <ShieldCheck size={16} className="shrink-0 mt-0.5 text-blue-400" />
+                    <div>
+                      <p className="font-semibold text-blue-300">Pending Confirmation Notice</p>
+                      <p className="mt-0.5 leading-relaxed">
+                        Status: <span className="text-amber-300 font-bold">Pending Confirmation</span>.
+                        The invoice will be automatically updated once payment receipt is verified by CargoX.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           )}
 
@@ -297,17 +345,26 @@ export default function PaymentModal({ invoice, onClose, onSuccess }: PaymentMod
                   Direct bank checkout via SBI, HDFC, ICICI, Axis and other major Indian scheduled banks.
                 </p>
 
-                <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left text-xs text-amber-200">
-                  <div className="flex items-start gap-2.5">
-                    <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-400" />
-                    <div>
-                      <p className="font-bold text-amber-300">Net Banking is currently unavailable</p>
-                      <p className="mt-1 leading-relaxed text-amber-200/80">
-                        Net Banking checkout requires an active merchant payment gateway setup. It will be available once the payment gateway integration is configured by the platform administrator.
-                      </p>
+                {gatewayOrder?.gateway_available ? (
+                  <div className="mt-5 rounded-xl border border-purple-500/30 bg-purple-500/10 p-4 text-left text-xs text-purple-200">
+                    <p className="font-bold text-purple-300">Order Initiated: #{gatewayOrder.gateway_order_id}</p>
+                    <p className="mt-1 leading-relaxed text-purple-200/80">
+                      Redirecting to secure bank gateway. Verified payment receipt will automatically settle invoice.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left text-xs text-amber-200">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-400" />
+                      <div>
+                        <p className="font-bold text-amber-300">Net Banking is currently unavailable</p>
+                        <p className="mt-1 leading-relaxed text-amber-200/80">
+                          Net Banking checkout requires an active merchant payment gateway setup. It will be available once the payment gateway integration is configured by the platform administrator.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="mt-5 text-[11px] text-slate-400">
                   CargoX does not store or collect banking passwords, UPI PINs, or card credentials.

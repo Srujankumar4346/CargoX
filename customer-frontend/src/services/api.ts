@@ -190,6 +190,20 @@ export const api = {
     if (!res.ok) throw new Error(payload.detail || "Unable to load payment QR.");
     return payload;
   },
+  verifyRazorpayCheckout: async (orderId: string, paymentId: string, signature: string) => {
+    const res = await authFetch(`${API_URL}/payments/razorpay/verify-checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        razorpay_order_id: orderId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: signature,
+      }),
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(payload.detail || "Payment verification failed.");
+    return payload;
+  },
   createPayment: async (data: any) => {
     const res = await authFetch(`${API_URL}/customer/invoices/${data.invoice_id}/pay`, {
       method: "POST",

@@ -77,6 +77,8 @@ class InvoiceAdminRead(BaseModel):
 
     # Payments
     payments: List[PaymentRead] = []
+    gateway_order_id: Optional[str] = None
+    gateway_payment_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -101,6 +103,7 @@ class CustomerInvoiceRead(BaseModel):
     payment_method: Optional[PaymentMethod] = None
     payment_notes: Optional[str] = None
     payment_intent_status: Optional[str] = None
+    gateway_order_id: Optional[str] = None
 
     issued_at: datetime
     due_at: Optional[datetime] = None
@@ -131,4 +134,6 @@ class PaymentMethodSelectionResponse(BaseModel):
     message: str
     qr_details: Optional[dict] = None
     gateway_available: bool = False
+    gateway_order_id: Optional[str] = None
+    gateway_key_id: Optional[str] = None
     gateway_redirect_url: Optional[str] = None

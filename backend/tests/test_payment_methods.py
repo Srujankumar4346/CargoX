@@ -11,6 +11,11 @@ from app.models.company import CustomerCompany
 from app.models.finance import Invoice
 from app.models.enums import UserRole, CompanyStatus, InvoiceStatus, PaymentMethod
 from app.services.settings_service import SettingsService
+import hmac
+import hashlib
+import json
+from app.core.config import settings
+from app.models.finance import Payment
 from tests.test_invoice import setup_completed_trip
 
 
@@ -387,3 +392,199 @@ async def test_admin_finance_reporting_and_filter(
     assert "pending_confirmations_count" in summary_data
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_real_upi_webhook_auto_detection_and_security(
+    async_client: AsyncClient,
+    admin_user: User,
+    customer_company: CustomerCompany,
+    customer_user: User,
+    driver_user: User,
+):
+    """
+    Test 7, 8, 9:
+    - Real signed webhook auto-detection.
+    - Cryptographic signature check: invalid signature rejected with 401.
+    - Idempotency: duplicate webhooks do not duplicate payments or double-settle invoices.
+    - Overpayment guard: payment amount exceeding invoice due rejected with 400.
+    - Non-successful status ("failed", "cancelled") acknowledged without marking invoice paid.
+    - Already paid invoice ignored without corruption.
+    - Correct settlement: Invoice transitions to PAID with amount_due=0.
+    """
+    # 1. Setup invoice
+    ctx = await setup_completed_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    inv_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/invoice", json={})
+    assert inv_res.status_code == 201
+    invoice_id = inv_res.json()["id"]
+    total_amount = Decimal(str(inv_res.json()["total_amount"]))
+    total_paise = int(total_amount * 100)
+
+    # Configure mock webhook secret in settings
+    test_webhook_secret = "test_webhook_secret_9988"
+    settings.RAZORPAY_WEBHOOK_SECRET = test_webhook_secret
+
+    # 2. Test Invalid Webhook Signature -> 401 Unauthorized
+    payload_obj = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_test_inv_001",
+                    "amount": total_paise,
+                    "currency": "INR",
+                    "status": "captured",
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    payload_bytes = json.dumps(payload_obj).encode("utf-8")
+
+    invalid_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=payload_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": "invalid_hex_signature"
+        }
+    )
+    assert invalid_res.status_code == 401
+    assert "Invalid cryptographic webhook signature" in invalid_res.json()["detail"]
+
+    # 3. Test Failed/Cancelled Event -> Acknowledged, invoice remains UNPAID
+    failed_payload = {
+        "event": "payment.failed",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_test_failed_001",
+                    "amount": total_paise,
+                    "currency": "INR",
+                    "status": "failed",
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    failed_bytes = json.dumps(failed_payload).encode("utf-8")
+    failed_sig = hmac.new(test_webhook_secret.encode("utf-8"), failed_bytes, hashlib.sha256).hexdigest()
+
+    fail_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=failed_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": failed_sig
+        }
+    )
+    assert fail_res.status_code == 200
+    assert fail_res.json()["status"] == "recorded_unsuccessful"
+
+    # Invoice must remain UNPAID
+    inv_check = await Invoice.find_one(Invoice.id == uuid.UUID(invoice_id))
+    assert inv_check.status == InvoiceStatus.UNPAID
+    assert inv_check.amount_paid == Decimal("0.00")
+
+    # 4. Test Overpayment Rejection
+    overpay_payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": "pay_test_overpay_001",
+                    "amount": total_paise + 100000, # ₹1,000 extra
+                    "currency": "INR",
+                    "status": "captured",
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    overpay_bytes = json.dumps(overpay_payload).encode("utf-8")
+    overpay_sig = hmac.new(test_webhook_secret.encode("utf-8"), overpay_bytes, hashlib.sha256).hexdigest()
+
+    overpay_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=overpay_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": overpay_sig
+        }
+    )
+    assert overpay_res.status_code == 400
+    assert "exceeds outstanding balance" in overpay_res.json()["detail"]
+
+    # 5. Test Successful Automatic UPI Payment Confirmation
+    success_payment_id = f"pay_upi_auto_{uuid.uuid4().hex[:6]}"
+    success_payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {
+                "entity": {
+                    "id": success_payment_id,
+                    "amount": total_paise,
+                    "currency": "INR",
+                    "status": "captured",
+                    "method": "upi",
+                    "notes": {"invoice_id": invoice_id}
+                }
+            }
+        }
+    }
+    success_bytes = json.dumps(success_payload).encode("utf-8")
+    success_sig = hmac.new(test_webhook_secret.encode("utf-8"), success_bytes, hashlib.sha256).hexdigest()
+
+    success_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=success_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": success_sig
+        }
+    )
+    assert success_res.status_code == 200, success_res.text
+    res_data = success_res.json()["result"]
+    assert res_data["status"] == "CONFIRMED"
+    assert res_data["invoice_status"] == "PAID"
+    assert Decimal(res_data["amount_paid"]) == total_amount
+
+    # Verify Invoice in Database
+    settled_inv = await Invoice.find_one(Invoice.id == uuid.UUID(invoice_id))
+    assert settled_inv.status == InvoiceStatus.PAID
+    assert settled_inv.amount_paid == total_amount
+    assert settled_inv.amount_due == Decimal("0.00")
+    assert settled_inv.payment_method == PaymentMethod.UPI
+    assert settled_inv.payment_intent_status == "CONFIRMED"
+
+    # Verify Payment Record
+    p_rec = await Payment.find_one(Payment.gateway_payment_id == success_payment_id)
+    assert p_rec is not None
+    assert p_rec.amount == total_amount
+    assert p_rec.method == PaymentMethod.UPI
+
+    # 6. Test Idempotency: Retrying exact same webhook -> ALREADY_PROCESSED without double-charging
+    dup_res = await async_client.post(
+        "/api/v1/payments/razorpay/webhook",
+        content=success_bytes,
+        headers={
+            "Content-Type": "application/json",
+            "X-Razorpay-Signature": success_sig
+        }
+    )
+    assert dup_res.status_code == 200
+    dup_data = dup_res.json()["result"]
+    assert dup_data["status"] == "ALREADY_PROCESSED"
+
+    # Verify Invoice amount_paid was not doubled
+    settled_inv_after = await Invoice.find_one(Invoice.id == uuid.UUID(invoice_id))
+    assert settled_inv_after.amount_paid == total_amount
+    assert settled_inv_after.amount_due == Decimal("0.00")
+
+    app.dependency_overrides.clear()
+

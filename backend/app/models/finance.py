@@ -37,6 +37,8 @@ class Invoice(Document):
     payment_method: Optional[PaymentMethod] = None # type: ignore
     payment_notes: Optional[str] = None
     payment_intent_status: Optional[str] = None # e.g. "PENDING_CONFIRMATION", "AWAITING_DELIVERY", "CONFIRMED"
+    gateway_order_id: Optional[str] = None # e.g. "order_xyz123" from Razorpay
+    gateway_payment_id: Optional[str] = None # e.g. "pay_abc789"
     
     # Timestamps
     issued_at: datetime
@@ -49,6 +51,7 @@ class Invoice(Document):
             pymongo.IndexModel("invoice_number", unique=True),
             pymongo.IndexModel("request_id", unique=True),
             pymongo.IndexModel("customer_company_id"),
+            pymongo.IndexModel("gateway_order_id", sparse=True),
         ]
 
 class Payment(Document):
@@ -59,6 +62,8 @@ class Payment(Document):
     amount: DecimalType
     method: PaymentMethod
     reference_number: Optional[str] = None # type: ignore
+    gateway_order_id: Optional[str] = None
+    gateway_payment_id: Optional[str] = None
     notes: Optional[str] = None
     
     # Timestamps
@@ -69,7 +74,16 @@ class Payment(Document):
         name = "payments"
         indexes = [
             pymongo.IndexModel("invoice_id"),
-            pymongo.IndexModel("reference_number", unique=True, sparse=True),
+            pymongo.IndexModel(
+                "reference_number",
+                unique=True,
+                partialFilterExpression={"reference_number": {"$type": "string"}}
+            ),
+            pymongo.IndexModel(
+                "gateway_payment_id",
+                unique=True,
+                partialFilterExpression={"gateway_payment_id": {"$type": "string"}}
+            ),
         ]
 class DriverSettlement(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")

@@ -342,8 +342,8 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
-  getLocationHistory: async (tripId: number) => {
-    const res = await authFetch(`${API_URL}/tracking/${tripId}/location`);
+  getLocationHistory: async (tripId: string | number) => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}/location`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

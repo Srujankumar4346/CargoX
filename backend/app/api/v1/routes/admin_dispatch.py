@@ -70,11 +70,21 @@ async def approve_request(
         # Direct Admin Booking Workflow: snapshot active PricingConfig at approval time
         active_config = await PricingEngineService.get_active_pricing_config()
         
+        # Ensure a valid distance exists
         if req.distance_km is None or req.distance_km <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot approve request without an actual approved distance",
-            )
+            if (
+                req.pickup_lat is not None and req.pickup_lng is not None and
+                req.destination_lat is not None and req.destination_lng is not None
+            ):
+                from app.api.v1.routes.requests import _haversine_road_distance
+                req.distance_km = _haversine_road_distance(
+                    req.pickup_lat, req.pickup_lng,
+                    req.destination_lat, req.destination_lng
+                )
+            else:
+                # Default minimum booking distance (10 km) if coordinates unavailable
+                req.distance_km = Decimal("10.00")
+            await req.save()
 
         # Calculate the snapshot from the approved request distance.
         dist = Decimal(str(req.distance_km))
@@ -246,7 +256,7 @@ async def get_trip_detail(
     current_admin: User = Depends(get_current_admin),
     ):
     """
-    Gets details of a trip and its current assignment. Requires Admin privileges.
+    Gets details of a trip and its assignment. Requires Admin privileges.
     """
     trip = await Trip.find_one(Trip.id == trip_id)
     if not trip:
@@ -255,6 +265,12 @@ async def get_trip_detail(
         VehicleAssignment.trip_id == trip.id,
         VehicleAssignment.released_at == None
     )
+    if not assignment:
+        # If trip is completed/delivered and assignment was released, get the latest assignment for this trip
+        assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.trip_id == trip.id,
+            sort=[("assigned_at", -1)]
+        )
     return {
         "id": trip.id,
         "request_id": trip.request_id,
@@ -263,6 +279,36 @@ async def get_trip_detail(
         "current_lng": trip.current_lng,
         "assignment": assignment
     }
+
+@router.get("/trips/{trip_id}/location")
+async def get_trip_location_history(
+    trip_id: uuid.UUID,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Returns GPS breadcrumb location history for an active or completed trip.
+    """
+    from app.models.delivery import LocationHistory
+    trip = await Trip.find_one(Trip.id == trip_id)
+    if not trip:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+    breadcrumbs = await LocationHistory.find(
+        LocationHistory.trip_id == trip.id
+    ).sort("-recorded_at").limit(500).to_list()
+
+    return [
+        {
+            "id": str(b.id),
+            "trip_id": str(b.trip_id),
+            "lat": b.lat,
+            "lng": b.lng,
+            "latitude": b.lat,
+            "longitude": b.lng,
+            "recorded_at": b.recorded_at.isoformat() if b.recorded_at else None
+        }
+        for b in breadcrumbs
+    ]
 
 @router.post("/trips/{trip_id}/verify-pod", response_model=PODRead)
 async def verify_pod(

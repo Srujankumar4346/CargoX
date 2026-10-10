@@ -319,3 +319,111 @@ async def test_gps_location_history_and_customer_tracking(async_client: AsyncCli
     app.dependency_overrides[get_current_customer_user] = lambda: customer2_user
     idor_resp = await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")
     assert idor_resp.status_code == 404
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_pod_recipient_details_and_admin_rejection_resubmission(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    from app.models.delivery import ProofOfDelivery
+
+    ctx = await setup_full_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    # Move to ARRIVED
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-pickup")
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-transit")
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/arrive")
+
+    # 1. Driver submits POD with recipient details
+    pod_payload = {
+        "receiver_name": "Ramesh Kumar Sharma",
+        "receiver_phone": "+91 98765 43210",
+        "delivery_confirmed": True,
+        "pod_signature_url": "https://storage.cargox.com/signatures/rec_sign_123.png",
+        "notes": "10 parcels received in sound condition"
+    }
+    pod_res = await async_client.post(f"/api/v1/driver/trips/{trip_id}/pod", json=pod_payload)
+    assert pod_res.status_code == 201
+
+    # Verify POD stored with server timestamp and authenticated driver
+    stored_pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == uuid.UUID(trip_id))
+    assert stored_pod is not None
+    assert stored_pod.receiver_name == "Ramesh Kumar Sharma"
+    assert stored_pod.receiver_phone == "+91 98765 43210"
+    assert stored_pod.delivery_confirmed is True
+    assert stored_pod.submitted_by == driver_user.id
+    assert stored_pod.submitted_at is not None
+    assert stored_pod.status == "SUBMITTED"
+
+    # 2. Admin inspects trip detail and sees POD recipient fields
+    detail_res = await async_client.get(f"/api/v1/admin/trips/{trip_id}")
+    assert detail_res.status_code == 200
+    trip_detail = detail_res.json()
+    assert trip_detail["pod"] is not None
+    assert trip_detail["pod"]["receiver_name"] == "Ramesh Kumar Sharma"
+    assert trip_detail["pod"]["receiver_phone"] == "+91 98765 43210"
+    assert trip_detail["pod"]["status"] == "SUBMITTED"
+
+    # 3. Admin rejects POD with reason
+    reject_res = await async_client.post(
+        f"/api/v1/admin/trips/{trip_id}/reject-pod",
+        json={"rejection_reason": "Recipient signature blurry; please re-capture clear signature."}
+    )
+    assert reject_res.status_code == 200
+    reject_data = reject_res.json()
+    assert reject_data["status"] == "REJECTED"
+    assert "blurry" in reject_data["rejection_reason"]
+
+    # Verify request transitioned back to ARRIVED
+    check_req = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(ctx["request_id"]))
+    assert check_req.status == DeliveryRequestStatus.ARRIVED
+
+    # 4. Driver resubmits corrected POD
+    resubmit_res = await async_client.post(f"/api/v1/driver/trips/{trip_id}/pod", json={
+        "receiver_name": "Ramesh Kumar Sharma",
+        "receiver_phone": "+91 98765 43210",
+        "delivery_confirmed": True,
+        "pod_signature_url": "https://storage.cargox.com/signatures/rec_sign_clean_456.png",
+        "notes": "Re-captured crisp recipient signature"
+    })
+    assert resubmit_res.status_code == 201
+
+    # 5. Admin verifies corrected POD
+    verify_res = await async_client.post(f"/api/v1/admin/trips/{trip_id}/verify-pod")
+    assert verify_res.status_code == 200
+
+    # 6. Verify status DELIVERED
+    check_req_final = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(ctx["request_id"]))
+    assert check_req_final.status == DeliveryRequestStatus.DELIVERED
+
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_unauthorized_driver_cannot_submit_pod(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    ctx = await setup_full_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+
+    # Move to ARRIVED
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-pickup")
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-transit")
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/arrive")
+
+    # Unauthorized driver attempts POD submission
+    rogue_driver = User(id=uuid.uuid4(), email="rogue_driver@cargox.com", role=UserRole.DRIVER, is_active=True)
+    await rogue_driver.insert()
+    app.dependency_overrides[get_current_driver] = lambda: rogue_driver
+
+    bad_pod = await async_client.post(f"/api/v1/driver/trips/{trip_id}/pod", json={
+        "receiver_name": "Malicious Submitter",
+        "delivery_confirmed": True,
+        "pod_signature_url": "https://storage.cargox.com/bad.png"
+    })
+    assert bad_pod.status_code == 403
+
+    app.dependency_overrides.clear()

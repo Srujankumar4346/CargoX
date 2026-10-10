@@ -774,6 +774,8 @@ class DriverService:
                 await invoice.save()
             except Exception as e:
                 logger.warning(f"Failed to create gateway order for driver destination payment: {e}")
+        else:
+            logger.info("Online payment gateway is not configured for destination payment order generation.")
 
         # Build dynamic UPI intent URI
         upi_uri = None
@@ -797,6 +799,17 @@ class DriverService:
 
         payment_link = upi_uri
 
+        # If gateway is unconfigured and no UPI is available, raise or indicate configuration error
+        if not gateway_available and not cargox_upi:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Online payment is not configured yet. Please record cash or contact CargoX operations."
+            )
+
+        msg = "Payment QR ready. Customer can scan using any UPI application (GPay, PhonePe, Paytm, BHIM)."
+        if not gateway_available:
+            msg = "Online gateway not configured; using configured CargoX merchant UPI QR."
+
         return {
             "invoice_id": invoice.id,
             "invoice_number": invoice.invoice_number,
@@ -810,7 +823,7 @@ class DriverService:
             "cargox_upi_id": cargox_upi,
             "payment_link": payment_link,
             "payment_status_display": "Waiting for Payment" if gateway_order_id else "QR Ready",
-            "message": "Payment QR ready. Customer can scan using any UPI application (GPay, PhonePe, Paytm, BHIM)."
+            "message": msg
         }
 
     @staticmethod

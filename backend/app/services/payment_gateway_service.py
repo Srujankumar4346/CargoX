@@ -111,6 +111,18 @@ class PaymentGatewayService:
             )
 
         amount_paise = int(amount_due * 100)
+
+        # Reuse existing order if one is already active and pending payment
+        if invoice.gateway_order_id and invoice.payment_intent_status in ("WAITING_FOR_PAYMENT", "PENDING_CONFIRMATION"):
+            return {
+                "order_id": invoice.gateway_order_id,
+                "amount_paise": amount_paise,
+                "currency": "INR",
+                "key_id": settings.RAZORPAY_KEY_ID.strip(),
+                "invoice_number": invoice.invoice_number,
+                "amount_inr": str(amount_due)
+            }
+
         receipt_id = f"{invoice.invoice_number[-30:]}_{uuid.uuid4().hex[:6]}"
 
         order_payload = {

@@ -224,6 +224,20 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  verifyPOD: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}/verify-pod`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  rejectPOD: async (tripId: string, rejectionReason: string) => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}/reject-pod`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rejection_reason: rejectionReason }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   updateTripStatus: async (tripId: number, status: string) => {
     const res = await authFetch(`${API_URL}/trips/${tripId}/status?new_status=${encodeURIComponent(status)}`, { method: "PUT" });
     if (!res.ok) throw new Error(await res.text());

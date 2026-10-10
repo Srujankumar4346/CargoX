@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink } from "lucide-react";
+import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle } from "lucide-react";
 import { useAuth, UserButton, useUser } from "@clerk/react";
 import { api } from "../../services/api";
 import NotificationDropdown from "../../components/NotificationDropdown";
@@ -78,25 +78,94 @@ export default function DriverWorkspace() {
   const [initiatingPayment, setInitiatingPayment] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
 
-  const handlePayCargoXNow = async () => {
-    if (!activeTrip) return;
+  // Dedicated Proof of Delivery Modal state
+  const [podModalOpen, setPodModalOpen] = useState(false);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [deliveryConfirmed, setDeliveryConfirmed] = useState(true);
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [submittingPod, setSubmittingPod] = useState(false);
+
+  const handlePayCargoXNow = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!activeTrip || initiatingPayment) return;
     const targetTripId = activeTrip.trip_id || activeTrip.id;
     setInitiatingPayment(true);
+    setError(null);
     try {
       const order = await api.driverPayCargoXNow(targetTripId);
       setPaymentOrder(order);
       setPaymentState(order.payment_status_display || "Waiting for Payment");
-      await loadDriverData();
+      // Background-refresh trip without setting loading=true to prevent full page re-render
+      try {
+        const refreshedTrip = await api.getDriverActiveTrip();
+        if (refreshedTrip) {
+          setActiveTrip(refreshedTrip);
+        }
+      } catch (refreshErr) {
+        console.warn("Background trip refresh failed:", refreshErr);
+      }
     } catch (err: any) {
-      alert(`Payment initiation failed: ${err.message}`);
+      const msg = err.message || "";
+      if (msg.includes("503") || msg.toLowerCase().includes("not configured")) {
+        alert("Online payment is not configured yet. Please collect Cash or contact CargoX Admin.");
+      } else {
+        alert(`Payment initiation failed: ${msg}`);
+      }
       setPaymentState("Payment Failed");
     } finally {
       setInitiatingPayment(false);
     }
   };
 
-  const handleCheckPaymentStatus = async () => {
+  const handleOpenPodModal = () => {
+    setRecipientName(activeTrip?.destination_contact_person || "");
+    setRecipientPhone(activeTrip?.destination_phone || "");
+    setDeliveryConfirmed(true);
+    setDeliveryNotes("");
+    setPodModalOpen(true);
+  };
+
+  const handleSubmitPodForm = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!activeTrip) return;
+    if (!recipientName.trim()) {
+      alert("Please enter the recipient's name who received the cargo.");
+      return;
+    }
+    if (!deliveryConfirmed) {
+      alert("Please check the delivery confirmation box to confirm handover.");
+      return;
+    }
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    setSubmittingPod(true);
+    try {
+      await api.driverSubmitPOD(targetTripId, {
+        receiver_name: recipientName.trim(),
+        receiver_phone: recipientPhone.trim() || undefined,
+        delivery_confirmed: true,
+        notes: deliveryNotes.trim() || undefined,
+        pod_signature_url: "https://storage.cargox.com/pod-signed.png"
+      });
+      setPodModalOpen(false);
+      alert("Proof of Delivery submitted successfully! Awaiting Admin verification.");
+      await loadDriverData();
+    } catch (err: any) {
+      alert(`POD submission failed: ${err.message}`);
+    } finally {
+      setSubmittingPod(false);
+    }
+  };
+
+  const handleCheckPaymentStatus = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!activeTrip || checkingStatus) return;
     const targetTripId = activeTrip.trip_id || activeTrip.id;
     setCheckingStatus(true);
     try {
@@ -105,7 +174,15 @@ export default function DriverWorkspace() {
       if (res.is_fully_paid) {
         alert("Payment Confirmed! Outstanding balance settled. Trip completed successfully.");
       }
-      await loadDriverData();
+      // Background-refresh trip without setting loading=true
+      try {
+        const refreshedTrip = await api.getDriverActiveTrip();
+        if (refreshedTrip) {
+          setActiveTrip(refreshedTrip);
+        }
+      } catch (refreshErr) {
+        console.warn("Background trip refresh failed:", refreshErr);
+      }
     } catch (err: any) {
       alert(`Could not verify payment status: ${err.message}`);
     } finally {
@@ -394,8 +471,8 @@ export default function DriverWorkspace() {
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "ARRIVED" && (
-                    <button onClick={() => handleAction("submit-pod")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2">
-                       <ClipboardList size={14}/> Submit POD
+                    <button onClick={handleOpenPodModal} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/40">
+                       <ClipboardList size={14}/> Submit Proof of Delivery (POD)
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "POD_SUBMITTED" && (
@@ -411,6 +488,18 @@ export default function DriverWorkspace() {
                     </div>
                   )}
                 </div>
+
+                {/* Show Rejection Banner if POD was rejected */}
+                {activeTrip.pod_rejection_reason && normalizeStatus(activeTrip.status) === "ARRIVED" && (
+                  <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-200 text-xs">
+                    <AlertCircle size={16} className="text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">POD Rejected by Admin: </span>
+                      {activeTrip.pod_rejection_reason}
+                      <p className="mt-1 text-slate-300">Please verify details with receiver and resubmit POD above.</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* RAPIDO / UBER-STYLE ARRIVAL COLLECT CUSTOMER PAYMENT SECTION */}
                 {["ARRIVED", "POD_SUBMITTED", "DELIVERED"].includes(normalizeStatus(activeTrip.status)) && (
@@ -510,6 +599,7 @@ export default function DriverWorkspace() {
                           <div className="space-y-3">
                             <div className="flex flex-wrap items-center gap-3">
                               <button
+                                type="button"
                                 disabled={initiatingPayment}
                                 onClick={handlePayCargoXNow}
                                 className="flex-1 min-w-[200px] py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
@@ -519,6 +609,7 @@ export default function DriverWorkspace() {
                               </button>
 
                               <button
+                                type="button"
                                 disabled={checkingStatus}
                                 onClick={handleCheckPaymentStatus}
                                 className="py-3.5 px-4 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-2 transition cursor-pointer"
@@ -621,12 +712,14 @@ export default function DriverWorkspace() {
                                   </a>
                                 )}
                                 <button
+                                  type="button"
                                   onClick={handleCopyPaymentLink}
                                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg flex items-center gap-1.5 border border-slate-300 transition cursor-pointer"
                                 >
                                   <Copy size={12} /> Copy Payment Link
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={handleCheckPaymentStatus}
                                   className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer"
                                 >
@@ -1001,6 +1094,101 @@ export default function DriverWorkspace() {
           )}
         </main>
       </div>
+
+      {/* Proof of Delivery (POD) Modal */}
+      {podModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-950 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Step 5 · Delivery Verification</p>
+                <h3 className="text-lg font-bold text-white mt-0.5">Submit Proof of Delivery (POD)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPodModalOpen(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitPodForm} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Recipient Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={recipientName}
+                  onChange={(e) => setRecipientName(e.target.value)}
+                  placeholder="Person who physically received goods (e.g. Ramesh Sharma)"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+                <span className="text-[11px] text-slate-500 mt-1 block">Full legal name of the receiver at destination.</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Recipient Phone (Optional)
+                </label>
+                <input
+                  type="tel"
+                  value={recipientPhone}
+                  onChange={(e) => setRecipientPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20">
+                <input
+                  type="checkbox"
+                  id="deliveryConfirm"
+                  checked={deliveryConfirmed}
+                  onChange={(e) => setDeliveryConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-emerald-600 focus:ring-emerald-500"
+                />
+                <label htmlFor="deliveryConfirm" className="text-xs text-slate-300 leading-relaxed cursor-pointer">
+                  <span className="font-bold text-white">Delivery Handover Confirmation:</span> I confirm that all listed freight items have been securely handed over to the authorized recipient.
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Delivery Notes / Exceptions (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={deliveryNotes}
+                  onChange={(e) => setDeliveryNotes(e.target.value)}
+                  placeholder="e.g. Received 50 pallets intact, seal #CX9931 verified"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPodModalOpen(false)}
+                  className="flex-1 py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-sm font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingPod || !recipientName.trim() || !deliveryConfirmed}
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-emerald-950/50 transition flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 size={16} />
+                  {submittingPod ? "Submitting POD..." : "Confirm & Submit POD"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

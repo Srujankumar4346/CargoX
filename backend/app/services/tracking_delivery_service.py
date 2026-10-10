@@ -35,9 +35,9 @@ class TrackingDeliveryService:
         if not trip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
-        # Check duplicate POD first — must always return 409 regardless of current state
+        # Check existing POD
         existing_pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
-        if existing_pod:
+        if existing_pod and getattr(existing_pod, "status", "SUBMITTED") != "REJECTED":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="POD has already been submitted for this trip")
 
         # Validate DeliveryRequest status
@@ -52,16 +52,46 @@ class TrackingDeliveryService:
         pod_photo = str(pod_in.pod_photo_url) if pod_in.pod_photo_url else None
         pod_sig = str(pod_in.pod_signature_url) if pod_in.pod_signature_url else None
 
-        # Create POD record
-        pod = ProofOfDelivery(
-            trip_id=trip.id,
-            file_url=pod_photo or pod_sig or "https://storage.cargox.com/default_pod.png",
-            notes=pod_in.notes,
-            submitted_at=datetime.now(timezone.utc),
-            submitted_by=driver_user.id
+        # Fallback receiver_name from input, request destination contact, or default
+        rec_name = (
+            (pod_in.receiver_name.strip() if pod_in.receiver_name else None)
+            or (request.destination_contact_person.strip() if getattr(request, "destination_contact_person", None) else None)
+            or "Recipient Representative"
+        )
+        rec_phone = (
+            (pod_in.receiver_phone.strip() if pod_in.receiver_phone else None)
+            or (request.destination_phone.strip() if getattr(request, "destination_phone", None) else None)
         )
 
-        await pod.insert()
+        # If previous POD was rejected, update it to preserve record or create new
+        now_ts = datetime.now(timezone.utc)
+        if existing_pod and getattr(existing_pod, "status", None) == "REJECTED":
+            pod = existing_pod
+            pod.file_url = pod_photo or pod_sig or "https://storage.cargox.com/default_pod.png"
+            pod.receiver_name = rec_name
+            pod.receiver_phone = rec_phone
+            pod.delivery_confirmed = bool(pod_in.delivery_confirmed)
+            pod.notes = pod_in.notes
+            pod.status = "SUBMITTED"
+            pod.rejection_reason = None
+            pod.submitted_at = now_ts
+            pod.submitted_by = driver_user.id
+            pod.verified_at = None
+            pod.verified_by = None
+            await pod.save()
+        else:
+            pod = ProofOfDelivery(
+                trip_id=trip.id,
+                file_url=pod_photo or pod_sig or "https://storage.cargox.com/default_pod.png",
+                receiver_name=rec_name,
+                receiver_phone=rec_phone,
+                delivery_confirmed=bool(pod_in.delivery_confirmed),
+                status="SUBMITTED",
+                notes=pod_in.notes,
+                submitted_at=now_ts,
+                submitted_by=driver_user.id
+            )
+            await pod.insert()
 
         # Transition request status ARRIVED -> POD_SUBMITTED
         request.status = DeliveryRequestStatus.POD_SUBMITTED
@@ -104,6 +134,11 @@ class TrackingDeliveryService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proof of Delivery record not found")
 
         now = datetime.now(timezone.utc)
+        pod.status = "VERIFIED"
+        pod.verified_at = now
+        pod.verified_by = admin_user.id
+        await pod.save()
+
         trip.delivered_at = now
         request.status = DeliveryRequestStatus.DELIVERED
 
@@ -143,6 +178,62 @@ class TrackingDeliveryService:
         except Exception as e:
             import logging
             logging.getLogger("cargox").error(f"Failed to auto-generate invoice for trip {trip.id}: {e}", exc_info=True)
+
+        return pod
+
+    @staticmethod
+    async def reject_pod(trip_id: uuid.UUID, rejection_reason: str, admin_user: User) -> ProofOfDelivery:
+        """
+        Rejects submitted POD. Transitions request back to ARRIVED so driver can correct and resubmit.
+        Records audit history of rejection on the POD record.
+        """
+        trip = await Trip.find_one(Trip.id == trip_id)
+        if not trip:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+        if not request:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
+
+        if request.status != DeliveryRequestStatus.POD_SUBMITTED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot reject POD for request in status '{request.status}'. Request must be in POD_SUBMITTED status."
+            )
+
+        pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
+        if not pod:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proof of Delivery record not found")
+
+        clean_reason = rejection_reason.strip() if rejection_reason else "Proof of delivery document rejected by admin."
+        now = datetime.now(timezone.utc)
+        pod.status = "REJECTED"
+        pod.rejection_reason = clean_reason
+        pod.verified_by = admin_user.id
+        pod.verified_at = now
+        await pod.save()
+
+        # Transition request back to ARRIVED
+        request.status = DeliveryRequestStatus.ARRIVED
+        await request.save()
+
+        # Notify driver
+        assignment = await VehicleAssignment.find_one(
+            VehicleAssignment.trip_id == trip.id,
+            VehicleAssignment.released_at == None
+        )
+        if assignment:
+            driver = await Driver.find_one(Driver.id == assignment.driver_id)
+            if driver and driver.user_id:
+                await NotificationService.create_notification(
+                    event_id=f"POD_REJECTED:{trip.id}:DRIVER:{driver.user_id}",
+                    event_type="POD_REJECTED",
+                    recipient_user_id=driver.user_id,
+                    channel=NotificationChannel.IN_APP,
+                    title="POD Resubmission Required",
+                    message=f"POD for request {request.request_number} was rejected: {clean_reason}. Please correct and resubmit."
+                )
+                await NotificationService.process_pending_notifications()
 
         return pod
 

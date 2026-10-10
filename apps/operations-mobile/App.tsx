@@ -40,7 +40,11 @@ export default function App() {
   const [driverSettlements, setDriverSettlements] = useState<any[]>([]);
   const [podNotes, setPodNotes] = useState<string>('');
   const [receiverName, setReceiverName] = useState<string>('Warehouse Manager');
+  const [receiverPhone, setReceiverPhone] = useState<string>('');
+  const [deliveryConfirmed, setDeliveryConfirmed] = useState<boolean>(true);
   const [podModalVisible, setPodModalVisible] = useState<boolean>(false);
+  const [generatingQr, setGeneratingQr] = useState<boolean>(false);
+  const [checkingPaymentStatus, setCheckingPaymentStatus] = useState<boolean>(false);
 
   // Driver Pay on Delivery collection state
   const [collectModalVisible, setCollectModalVisible] = useState<boolean>(false);
@@ -163,14 +167,24 @@ export default function App() {
 
   const handleSubmitPod = async () => {
     if (!activeTrip) return;
+    if (!receiverName.trim()) {
+      Alert.alert('Recipient Name Required', 'Please enter the name of the person receiving the cargo.');
+      return;
+    }
+    if (!deliveryConfirmed) {
+      Alert.alert('Handover Unconfirmed', 'Please confirm that the cargo was handed over.');
+      return;
+    }
     setLoading(true);
     try {
       await apiRequest<any>(`/driver/trips/${activeTrip.id}/pod`, {
         method: 'POST',
         body: JSON.stringify({
-          receiver_name: receiverName,
-          file_url: 'https://cargox.internal/pod/' + Date.now() + '.jpg',
-          notes: podNotes
+          receiver_name: receiverName.trim(),
+          receiver_phone: receiverPhone.trim() || undefined,
+          delivery_confirmed: true,
+          pod_signature_url: 'https://storage.cargox.com/pod-signed.png',
+          notes: podNotes.trim() || undefined
         })
       });
       Alert.alert('POD Submitted', 'Proof of delivery uploaded successfully. Awaiting Admin verification.');
@@ -180,6 +194,45 @@ export default function App() {
       Alert.alert('POD Error', err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePayCargoXNow = async () => {
+    if (!activeTrip) return;
+    setGeneratingQr(true);
+    try {
+      const order = await apiRequest<any>(`/driver/trips/${activeTrip.id}/pay-cargox-now`, {
+        method: 'POST'
+      });
+      Alert.alert('Payment Order Ready', order.message || 'Payment QR generated successfully. Customer can scan with GPay, PhonePe, Paytm or BHIM.');
+      loadDriverData();
+    } catch (err: any) {
+      const msg = err.message || '';
+      if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
+        Alert.alert('Payment Gateway Notice', 'Online payment is not configured yet. Please record cash or contact CargoX Admin.');
+      } else {
+        Alert.alert('Payment Order Error', msg);
+      }
+    } finally {
+      setGeneratingQr(false);
+    }
+  };
+
+  const handleCheckPaymentStatus = async () => {
+    if (!activeTrip) return;
+    setCheckingPaymentStatus(true);
+    try {
+      const res = await apiRequest<any>(`/driver/trips/${activeTrip.id}/payment-status`);
+      if (res.is_fully_paid) {
+        Alert.alert('Payment Confirmed', 'Payment has been settled in full. Trip completed successfully.');
+      } else {
+        Alert.alert('Payment Status', `${res.status}: ${res.message}`);
+      }
+      loadDriverData();
+    } catch (err: any) {
+      Alert.alert('Status Check Failed', err.message);
+    } finally {
+      setCheckingPaymentStatus(false);
     }
   };
 
@@ -552,6 +605,46 @@ export default function App() {
                       </View>
                     )}
 
+                    {/* Generate Payment QR / Check Status Actions */}
+                    {activeTrip.amount_due_for_collection && parseFloat(activeTrip.amount_due_for_collection) > 0 && activeTrip.payment_status_display !== 'Paid' && (
+                      <View style={{ marginTop: 12, gap: 8 }}>
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: Colors.primary,
+                            paddingVertical: 12,
+                            paddingHorizontal: 16,
+                            borderRadius: 8,
+                            alignItems: 'center',
+                            opacity: generatingQr ? 0.7 : 1
+                          }}
+                          onPress={handlePayCargoXNow}
+                          disabled={generatingQr}
+                        >
+                          <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 }}>
+                            {generatingQr ? 'GENERATING PAYMENT QR...' : '⚡ GENERATE PAYMENT QR / PAY CARGOX NOW'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: 'rgba(255,255,255,0.08)',
+                            paddingVertical: 10,
+                            paddingHorizontal: 14,
+                            borderRadius: 8,
+                            alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.15)'
+                          }}
+                          onPress={handleCheckPaymentStatus}
+                          disabled={checkingPaymentStatus}
+                        >
+                          <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 12 }}>
+                            {checkingPaymentStatus ? 'CHECKING STATUS...' : '🔄 CHECK PAYMENT STATUS'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
                     {/* Instructions for Driver & Customer */}
                     <Text style={{ color: Colors.textMuted, fontSize: 10, lineHeight: 14, marginTop: 10 }}>
                       ℹ️ {activeTrip.payment_instructions || 'Customer must pay using the official CargoX corporate QR or link. If collecting cash at delivery, tap "Record Collection".'}
@@ -644,11 +737,35 @@ export default function App() {
         <Modal visible={podModalVisible} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Capture Proof of Delivery</Text>
-              <Text style={styles.label}>Receiver Contact Name</Text>
-              <TextInput style={styles.input} value={receiverName} onChangeText={setReceiverName} />
+              <Text style={styles.label}>Recipient Contact Person *</Text>
+              <TextInput style={styles.input} value={receiverName} onChangeText={setReceiverName} placeholder="Name of person receiving goods" placeholderTextColor={Colors.textMuted} />
 
-              <Text style={styles.label}>Delivery Notes / Sign-off</Text>
+              <Text style={styles.label}>Recipient Contact Phone (Optional)</Text>
+              <TextInput style={styles.input} value={receiverPhone} onChangeText={setReceiverPhone} placeholder="+91 XXXXX XXXXX" placeholderTextColor={Colors.textMuted} keyboardType="phone-pad" />
+
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8 }}
+                onPress={() => setDeliveryConfirmed(!deliveryConfirmed)}
+              >
+                <View style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 4,
+                  borderWidth: 2,
+                  borderColor: deliveryConfirmed ? Colors.success : Colors.border,
+                  backgroundColor: deliveryConfirmed ? Colors.success : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10
+                }}>
+                  {deliveryConfirmed && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+                </View>
+                <Text style={{ color: Colors.textPrimary, fontSize: 12, flex: 1 }}>
+                  I confirm that freight was physically inspected and handed over to recipient.
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.label}>Delivery Notes / Sign-off (Optional)</Text>
               <TextInput style={styles.input} value={podNotes} onChangeText={setPodNotes} placeholder="e.g. Received 12 boxes undamaged" placeholderTextColor={Colors.textMuted} />
 
               <View style={styles.cameraPlaceholder}>

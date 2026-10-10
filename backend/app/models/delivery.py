@@ -83,6 +83,11 @@ class ProofOfDelivery(Document):
     receiver_name: Optional[str] = None
     receiver_phone: Optional[str] = None
     notes: Optional[str] = None
+    delivery_confirmed: bool = True
+    status: str = "SUBMITTED" # "SUBMITTED", "VERIFIED", "REJECTED"
+    rejection_reason: Optional[str] = None
+    verified_by: Optional[uuid.UUID] = None
+    verified_at: Optional[datetime] = None
     submitted_at: datetime
     submitted_by: uuid.UUID
     

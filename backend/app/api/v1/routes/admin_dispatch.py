@@ -309,6 +309,39 @@ async def get_trip_detail(
     vehicle_obj = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id) if assignment else None
     driver_obj = await Driver.find_one(Driver.id == assignment.driver_id) if assignment else None
 
+    # Load Proof of Delivery details
+    from app.models.delivery import ProofOfDelivery
+    pod_obj = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
+    pod_data = None
+    if pod_obj:
+        sub_driver = await Driver.find_one(Driver.user_id == pod_obj.submitted_by) if pod_obj.submitted_by else None
+        if not sub_driver and pod_obj.submitted_by:
+            sub_driver = await Driver.find_one(Driver.id == pod_obj.submitted_by)
+        sub_user = await User.find_one(User.id == pod_obj.submitted_by) if pod_obj.submitted_by else None
+        sub_name = sub_driver.name if sub_driver else (sub_user.email if sub_user else "Driver")
+
+        ver_user = await User.find_one(User.id == pod_obj.verified_by) if pod_obj.verified_by else None
+
+        pod_data = {
+            "id": str(pod_obj.id),
+            "trip_id": str(pod_obj.trip_id),
+            "receiver_name": pod_obj.receiver_name,
+            "receiver_phone": pod_obj.receiver_phone,
+            "delivery_confirmed": getattr(pod_obj, "delivery_confirmed", True),
+            "status": getattr(pod_obj, "status", "SUBMITTED"),
+            "rejection_reason": getattr(pod_obj, "rejection_reason", None),
+            "file_url": pod_obj.file_url,
+            "pod_signature_url": pod_obj.file_url if "sig" in pod_obj.file_url else None,
+            "pod_photo_url": pod_obj.file_url if "sig" not in pod_obj.file_url else None,
+            "notes": pod_obj.notes,
+            "submitted_at": pod_obj.submitted_at.isoformat() if pod_obj.submitted_at else None,
+            "submitted_by": str(pod_obj.submitted_by) if pod_obj.submitted_by else None,
+            "submitted_by_name": sub_name,
+            "verified_at": pod_obj.verified_at.isoformat() if getattr(pod_obj, "verified_at", None) else None,
+            "verified_by": str(pod_obj.verified_by) if getattr(pod_obj, "verified_by", None) else None,
+            "verified_by_email": ver_user.email if ver_user else None,
+        }
+
     return {
         "id": trip.id,
         "request_id": trip.request_id,
@@ -334,6 +367,7 @@ async def get_trip_detail(
             "name": driver_obj.name if driver_obj else None,
             "phone": driver_obj.phone if driver_obj else None,
         } if driver_obj else None,
+        "pod": pod_data,
         "invoice": {
             "invoice_id": str(invoice.id) if invoice else None,
             "invoice_number": invoice.invoice_number if invoice else None,
@@ -390,6 +424,20 @@ async def verify_pod(
     Requires Admin privileges.
     """
     return await TrackingDeliveryService.verify_pod(trip_id, current_admin)
+
+@router.post("/trips/{trip_id}/reject-pod", response_model=PODRead)
+async def reject_pod(
+    trip_id: uuid.UUID,
+    rejection: Optional[dict] = None,
+    current_admin: User = Depends(get_current_admin),
+    ):
+    """
+    Rejects POD for a POD_SUBMITTED trip, recording rejection reason and returning trip to ARRIVED status
+    so the driver can correct and resubmit.
+    Requires Admin privileges.
+    """
+    reason = (rejection or {}).get("rejection_reason", "Proof of delivery document rejected by admin.")
+    return await TrackingDeliveryService.reject_pod(trip_id, reason, current_admin)
 
 @router.post("/trips/{trip_id}/complete")
 async def complete_trip(

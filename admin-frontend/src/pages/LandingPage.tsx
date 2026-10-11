@@ -9,7 +9,7 @@ export default function LandingPage() {
   const { user: clerkUser } = useUser();
   const [role, setRole] = useState<"ADMIN" | "DRIVER" | null>(null);
 
-  const customerPortalUrl = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "http://localhost:5173";
+  const customerPortalUrl = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "https://cargox-frontend.onrender.com";
 
   useEffect(() => {
     if (clerkUser?.primaryEmailAddress?.emailAddress) {

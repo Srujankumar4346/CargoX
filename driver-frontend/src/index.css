@@ -1,0 +1,84 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit', system-ui, sans-serif;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border-theme: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fade-in 0.3s ease forwards;
+  --animate-slide-up: slide-up 0.4s ease-out forwards;
+  --animate-pulse-slow: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scale-in: scale-in 0.2s ease-out forwards;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --background: #020617; /* Slate 950 */
+    --surface: #0f172a;    /* Slate 900 */
+    --surface-elevated: #1e293b; /* Slate 800 */
+    --border: #334155;     /* Slate 700 */
+    --foreground: #f8fafc; /* Slate 50 */
+    --muted: #94a3b8;      /* Slate 400 */
+    --primary: #6366f1;    /* Indigo 500 */
+    --primary-hover: #818cf8; /* Indigo 400 */
+    --accent: #3b82f6;     /* Blue 500 */
+    --success: #10b981;    /* Emerald 500 */
+    --warning: #f59e0b;    /* Amber 500 */
+    --danger: #ef4444;     /* Red 500 */
+  }
+
+  select, input, textarea {
+    color-scheme: dark;
+  }
+
+  select {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+
+  select option {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}

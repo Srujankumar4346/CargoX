@@ -1010,8 +1010,9 @@ export default function DriverWorkspace() {
       {/* Mobile Sidebar Backdrop */}
       {isMobileSidebarOpen && (
         <div 
-          onClick={() => setIsMobileSidebarOpen(false)} 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          onTouchStart={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer"
         />
       )}
 
@@ -1035,8 +1036,13 @@ export default function DriverWorkspace() {
                 e.stopPropagation();
                 setIsMobileSidebarOpen(false);
               }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMobileSidebarOpen(false);
+              }}
               aria-label="Close sidebar"
-              className="md:hidden flex items-center justify-center w-11 h-11 -mr-2 rounded-xl text-slate-200 hover:text-white bg-slate-800 active:bg-slate-700 transition-colors cursor-pointer"
+              className="md:hidden flex items-center justify-center w-12 h-12 -mr-2 rounded-xl text-slate-200 hover:text-white bg-slate-800 active:bg-slate-700 transition-colors cursor-pointer select-none"
             >
               <X size={24} />
             </button>

@@ -142,15 +142,13 @@ export default function LandingPage() {
               <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-slate-500" /> Electronic Proof of Delivery (POD)</li>
             </ul>
 
-            <a 
-              href={isSignedIn || localStorage.getItem("access_token") ? "/driver" : "/driver/login"} 
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link 
+              to={isSignedIn || localStorage.getItem("access_token") ? "/driver" : "/driver/login"} 
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-6 py-3.5 text-base font-semibold text-slate-200 transition hover:bg-slate-800 hover:border-blue-500/50 w-full"
             >
               Open Driver Portal
               <ExternalLink className="h-4 w-4 text-blue-400" />
-            </a>
+            </Link>
           </div>
         </div>
 

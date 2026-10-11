@@ -526,7 +526,8 @@ export default function AdminDashboard() {
       {isMobileSidebarOpen && (
         <div 
           onClick={() => setIsMobileSidebarOpen(false)} 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          onTouchStart={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer"
           aria-hidden="true"
         />
       )}
@@ -544,11 +545,21 @@ export default function AdminDashboard() {
               CargoX Admin
             </h2>
             <button 
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMobileSidebarOpen(false);
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMobileSidebarOpen(false);
+              }}
+              className="md:hidden flex items-center justify-center w-12 h-12 -mr-2 rounded-xl text-slate-200 hover:text-white bg-slate-800 active:bg-slate-700 transition-colors cursor-pointer select-none"
               aria-label="Close menu"
             >
-              <X size={20} />
+              <X size={22} />
             </button>
           </div>
           <div className="flex justify-between items-center mb-5 text-sm text-slate-400">

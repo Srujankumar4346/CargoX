@@ -2,6 +2,7 @@
   "expo": {
     "name": "CargoX Operations",
     "slug": "cargox-operations",
+    "scheme": "cargox-operations",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

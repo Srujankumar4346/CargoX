@@ -27,6 +27,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="com.cargox.customer"/>
+        <data android:scheme="cargox-customer"/>
       </intent-filter>
     </activity>
   </application>

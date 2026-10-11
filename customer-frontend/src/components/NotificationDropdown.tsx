@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Bell, CheckCircle } from "lucide-react";
+import { Bell, CheckCircle, CheckCheck, Trash2 } from "lucide-react";
 import { api } from "../services/api";
 
 export default function NotificationDropdown({ userType, userId }: { userType: string, userId: number }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toasts, setToasts] = useState<any[]>([]);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchNotifs = async () => {
@@ -17,7 +19,6 @@ export default function NotificationDropdown({ userType, userId }: { userType: s
           if (prev.length > 0) {
             const newNotifs = res.filter((n: any) => !prev.find((p: any) => p.id === n.id) && !n.is_read);
             if (newNotifs.length > 0) {
-              // Defer state updates to avoid updater side effects
               setTimeout(() => {
                 setToasts(t => [...t, ...newNotifs]);
                 newNotifs.forEach((n: any) => {
@@ -35,19 +36,43 @@ export default function NotificationDropdown({ userType, userId }: { userType: s
       }
     };
     fetchNotifs();
-    // In a real app we might use websockets or SSE, here we just poll occasionally or load once
     const interval = setInterval(fetchNotifs, 10000);
     return () => clearInterval(interval);
   }, [userType, userId]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
-  const markRead = async (id: number) => {
+  const markRead = async (id: string | number) => {
     try {
       await api.markNotificationRead(id);
-      setNotifications(notifications.map(n => n.id === id ? { ...n, is_read: true } : n));
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      setMarkingAll(true);
+      await api.markAllNotificationsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  const handleDelete = async (id: string | number) => {
+    try {
+      setDeletingId(String(id));
+      await api.deleteNotification(id);
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      setToasts(prev => prev.filter(n => n.id !== id));
+    } catch (e: any) {
+      alert(e.message || "Cannot delete notification until trip details are completed.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -67,12 +92,25 @@ export default function NotificationDropdown({ userType, userId }: { userType: s
           
           <div className="fixed inset-y-0 right-0 max-w-md w-full flex">
             <div className="w-full bg-[var(--surface)] shadow-2xl flex flex-col animate-slide-in-right">
-              <div className="bg-[var(--surface-elevated)] border-b border-[var(--border-theme)] px-6 py-4 flex justify-between items-center">
-                 <h3 className="text-xl font-bold text-slate-100">Notifications</h3>
-                 <div className="flex items-center gap-4">
-                   {unreadCount > 0 && <span className="text-xs bg-red-500/20 text-red-500 px-3 py-1 rounded-full font-bold">{unreadCount} New</span>}
-                   <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-100 transition-colors">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              <div className="bg-[var(--surface-elevated)] border-b border-[var(--border-theme)] px-5 py-4 flex justify-between items-center">
+                 <div className="flex items-center gap-2">
+                   <h3 className="text-lg font-bold text-slate-100">Notifications</h3>
+                   {unreadCount > 0 && <span className="text-xs bg-red-500/20 text-red-400 px-2.5 py-0.5 rounded-full font-bold">{unreadCount} New</span>}
+                 </div>
+                 <div className="flex items-center gap-2">
+                   {unreadCount > 0 && (
+                     <button
+                       onClick={markAllRead}
+                       disabled={markingAll}
+                       className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 transition-all disabled:opacity-50"
+                       title="Mark all notifications as read"
+                     >
+                       <CheckCheck size={14} />
+                       <span>{markingAll ? "Marking…" : "Mark all read"}</span>
+                     </button>
+                   )}
+                   <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-100 p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                    </button>
                  </div>
               </div>
@@ -86,17 +124,39 @@ export default function NotificationDropdown({ userType, userId }: { userType: s
                  ) : (
                     <div className="divide-y divide-slate-700/50">
                       {notifications.map(n => (
-                        <div key={n.id} className={`p-6 transition-colors hover:bg-slate-800 ${n.is_read ? 'opacity-70' : 'bg-blue-500/5'}`}>
-                          <div className="flex justify-between items-start mb-2">
-                             <h4 className={`text-sm ${n.is_read ? 'font-medium text-slate-400' : 'font-bold text-slate-100'}`}>{n.title}</h4>
-                             {!n.is_read && (
-                               <button onClick={() => markRead(n.id)} className="text-blue-500 hover:text-blue-400 p-1" title="Mark as read">
-                                 <CheckCircle size={18} />
-                               </button>
-                             )}
+                        <div key={n.id} className={`p-5 transition-colors hover:bg-slate-800/60 ${n.is_read ? 'opacity-75' : 'bg-blue-500/5'}`}>
+                          <div className="flex justify-between items-start gap-3 mb-2">
+                             <div className="flex items-center gap-2">
+                               <h4 className={`text-sm ${n.is_read ? 'font-medium text-slate-400' : 'font-bold text-slate-100'}`}>{n.title}</h4>
+                               {n.is_read && <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded font-medium border border-emerald-500/20">Read</span>}
+                             </div>
+                             <div className="flex items-center gap-1">
+                               {!n.is_read && (
+                                 <button onClick={() => markRead(n.id)} className="text-blue-400 hover:text-blue-300 p-1.5 rounded hover:bg-blue-500/10 transition-colors" title="Mark as read">
+                                   <CheckCircle size={16} />
+                                 </button>
+                               )}
+                               {n.can_delete && (
+                                 <button
+                                   onClick={() => handleDelete(n.id)}
+                                   disabled={deletingId === String(n.id)}
+                                   className="text-red-400 hover:text-red-300 p-1.5 rounded hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                                   title="Delete completed trip notification"
+                                 >
+                                   <Trash2 size={15} />
+                                 </button>
+                               )}
+                             </div>
                           </div>
-                          <p className="text-sm text-slate-300 leading-relaxed">{n.message}</p>
-                          <p className="text-xs text-slate-500 mt-3 opacity-60">{new Date(n.created_at).toLocaleString()}</p>
+                          <p className="text-xs text-slate-300 leading-relaxed">{n.message}</p>
+                          <div className="flex items-center justify-between mt-3 text-[11px] text-slate-500">
+                            <span>{new Date(n.created_at).toLocaleString()}</span>
+                            {n.can_delete ? (
+                              <span className="text-emerald-400/80 font-medium">Trip Completed · Deletable</span>
+                            ) : (
+                              <span className="text-slate-600">Active Trip Details</span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>

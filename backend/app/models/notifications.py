@@ -24,6 +24,8 @@ class Notification(Document):
     title: str
     message: str
     status: NotificationStatus = NotificationStatus.PENDING
+    is_read: bool = False
+    read_at: Optional[datetime] = None
     created_at: datetime
     sent_at: Optional[datetime] = None
     error_message: Optional[str] = None

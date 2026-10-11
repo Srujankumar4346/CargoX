@@ -1,4 +1,4 @@
-const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000") + "/api/v1";
+const API_URL = (import.meta.env.VITE_API_URL || "https://cargox-1.onrender.com") + "/api/v1";
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
 let userEmailGetter: (() => string | null | undefined) | null = null;
@@ -317,17 +317,36 @@ export const api = {
   },
   
   // Notifications (Phase 6)
-  getNotifications: async (userType: string, userId: number) => {
+  getNotifications: async (userType: string, userId: number | string) => {
     const res = await authFetch(`${API_URL}/notifications/?user_type=${userType}&user_id=${userId}`);
     if (!res.ok) throw new Error("Failed to fetch notifications");
     return res.json();
   },
   
-  markNotificationRead: async (notificationId: number) => {
+  markNotificationRead: async (notificationId: string | number) => {
     const res = await authFetch(`${API_URL}/notifications/${notificationId}/read`, {
       method: "POST"
     });
     if (!res.ok) throw new Error("Failed to mark notification read");
+    return res.json();
+  },
+
+  markAllNotificationsRead: async () => {
+    const res = await authFetch(`${API_URL}/notifications/read-all`, {
+      method: "POST"
+    });
+    if (!res.ok) throw new Error("Failed to mark all notifications read");
+    return res.json();
+  },
+
+  deleteNotification: async (notificationId: string | number) => {
+    const res = await authFetch(`${API_URL}/notifications/${notificationId}`, {
+      method: "DELETE"
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Cannot delete notification until trip details are completed.");
+    }
     return res.json();
   },
 

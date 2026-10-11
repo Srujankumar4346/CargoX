@@ -1,4 +1,4 @@
-export const DEFAULT_API_BASE_URL = "http://10.0.2.2:8000/api/v1";
+export const DEFAULT_API_BASE_URL = "https://cargox-1.onrender.com/api/v1";
 
 export async function getApiBaseUrl(): Promise<string> {
   const custom = await storage.getItem("cargox_api_base_url");
@@ -56,6 +56,11 @@ export async function apiRequest<T>(
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const userEmail = await storage.getItem("cargox_user_email");
+  if (userEmail) {
+    headers["X-User-Email"] = userEmail;
   }
 
   const baseUrl = await getApiBaseUrl();

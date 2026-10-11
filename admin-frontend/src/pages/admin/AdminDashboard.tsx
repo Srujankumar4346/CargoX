@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings, ExternalLink, Globe } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -135,6 +135,7 @@ const maskAadhaar = (val: string) => {
 export default function AdminDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
+  const customerPortalUrl = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "http://localhost:5173";
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -450,10 +451,39 @@ export default function AdminDashboard() {
               <span>Sign In as Admin</span>
             </button>
           </SignInButton>
-          <div className="mt-6 pt-4 border-t border-slate-800">
-            <Link to="/" className="text-xs text-slate-400 hover:text-white transition">
-              ← Return to CargoX Home
-            </Link>
+
+          <div className="mt-6 pt-4 border-t border-slate-800 space-y-3">
+            <p className="text-xs text-slate-400">
+              Are you a driver?{" "}
+              <a
+                href="/driver/login"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-blue-400 hover:text-blue-300 transition underline underline-offset-4"
+              >
+                Sign in to Driver Portal ↗
+              </a>
+            </p>
+
+            <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-2.5">
+              <p className="text-xs text-slate-400">
+                Looking to book transport?{" "}
+                <a
+                  href={import.meta.env.VITE_CUSTOMER_PORTAL_URL || "http://localhost:5173"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-amber-400 hover:text-amber-300 transition"
+                >
+                  Open Customer Portal ↗
+                </a>
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Link to="/" className="text-xs text-slate-500 hover:text-white transition">
+                ← Return to CargoX Home
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -476,11 +506,12 @@ export default function AdminDashboard() {
       <div className="md:hidden bg-slate-900 border-b border-slate-800 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
         <div className="flex items-center gap-2">
           <button 
-            onClick={() => setIsMobileSidebarOpen(true)}
-            aria-label="Open Navigation Menu"
-            className="p-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(prev => !prev)}
+            aria-label="Toggle Navigation Menu"
+            className="p-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 active:bg-slate-600 hover:text-white transition"
           >
-            <Menu size={22} />
+            {isMobileSidebarOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
           <span className="font-bold text-lg tracking-wide">CargoX Admin</span>
         </div>
@@ -579,6 +610,37 @@ export default function AdminDashboard() {
           >
             <Settings size={18} /> <span>Settings</span>
           </button>
+
+          {/* External Portals Navigation */}
+          <div className="pt-4 pb-1">
+            <p className="px-4 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">External Portals</p>
+          </div>
+          <a
+            href="/driver/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full text-left px-4 py-2 rounded transition font-medium flex items-center justify-between text-xs text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 border border-amber-500/20"
+            title="Open Driver Portal in new tab"
+          >
+            <span className="flex items-center gap-2.5">
+              <Truck size={15} className="text-amber-400" />
+              <span>Driver Portal</span>
+            </span>
+            <ExternalLink size={13} className="text-amber-400/80" />
+          </a>
+          <a
+            href={customerPortalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full text-left px-4 py-2 rounded transition font-medium flex items-center justify-between text-xs text-blue-300 hover:text-blue-200 hover:bg-blue-500/10 border border-blue-500/20"
+            title="Open Customer Booking Portal in new tab"
+          >
+            <span className="flex items-center gap-2.5">
+              <Globe size={15} className="text-blue-400" />
+              <span>Customer Portal</span>
+            </span>
+            <ExternalLink size={13} className="text-blue-400/80" />
+          </a>
         </nav>
         
         <div className="hidden md:block mb-4 px-3">
@@ -604,7 +666,7 @@ export default function AdminDashboard() {
         
         {activeTab === 'dashboard' && (
           <div className="fade-in mx-auto max-w-[1600px] space-y-6">
-            <div className="-mx-4 -mt-4 flex min-h-16 items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/70 px-4 py-3 backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6 md:-mx-8 md:-mt-8 md:px-8">
+            <div className="-mx-4 -mt-4 hidden md:flex min-h-16 items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/70 px-4 py-3 backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6 md:-mx-8 md:-mt-8 md:px-8">
               <div className="hidden items-center gap-3 sm:flex"><div className="rounded-lg bg-blue-500/15 p-2 text-blue-400"><Radio size={18} /></div><div><p className="text-sm font-bold text-white">CargoX Admin</p><p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Transport Operations</p></div></div>
               <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 sm:mx-8 sm:max-w-xl"><Search size={16} className="shrink-0 text-slate-500" /><input className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-600" placeholder="Search requests, customers, or locations..." aria-label="Search operations" /><span className="hidden rounded border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-500 md:inline">Ctrl K</span></div>
               <div className="flex items-center gap-3"><NotificationDropdown userType="ADMIN" userId={0} /><div className="hidden text-right sm:block"><p className="max-w-28 truncate text-xs font-semibold text-slate-200">{user?.fullName || user?.primaryEmailAddress?.emailAddress || "Admin"}</p><p className="text-[10px] uppercase tracking-wider text-emerald-400">Administrator</p></div><UserButton /></div>

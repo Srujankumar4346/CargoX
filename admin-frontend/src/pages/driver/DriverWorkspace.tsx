@@ -983,10 +983,12 @@ export default function DriverWorkspace() {
       <div className="md:hidden bg-slate-900 border-b border-slate-800 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
         <div className="flex items-center gap-2">
           <button 
-            onClick={() => setIsMobileSidebarOpen(true)}
-            className="p-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(prev => !prev)}
+            aria-label="Toggle Navigation Menu"
+            className="p-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 active:bg-slate-600 hover:text-white transition"
           >
-            <Menu size={22} />
+            {isMobileSidebarOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
           <span className="font-bold text-lg tracking-wide flex items-center gap-2">
              <Truck size={18} className="text-blue-400"/> CargoX
@@ -1021,14 +1023,22 @@ export default function DriverWorkspace() {
         ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <div className="p-5 pb-2">
-          <div className="flex items-center gap-3 mb-2">
-            <Truck size={24} className="text-blue-500" />
-            <h2 className="text-2xl font-bold tracking-wider">CargoX</h2>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <Truck size={24} className="text-blue-500" />
+              <h2 className="text-2xl font-bold tracking-wider">CargoX</h2>
+            </div>
             <button 
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="md:hidden ml-auto p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMobileSidebarOpen(false);
+              }}
+              aria-label="Close sidebar"
+              className="md:hidden flex items-center justify-center w-11 h-11 -mr-2 rounded-xl text-slate-200 hover:text-white bg-slate-800 active:bg-slate-700 transition-colors cursor-pointer"
             >
-              <X size={20} />
+              <X size={24} />
             </button>
           </div>
         </div>

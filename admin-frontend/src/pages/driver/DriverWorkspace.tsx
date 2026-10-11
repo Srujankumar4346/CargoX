@@ -68,6 +68,17 @@ export default function DriverWorkspace() {
   const [selectedTab, setSelectedTab] = useState("Dashboard");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // Prevent background scrolling while drawer is open on mobile
+  useEffect(() => {
+    if (isMobileSidebarOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isMobileSidebarOpen]);
+
   const [profile, setProfile] = useState<any>(null);
   const [paymentOrder, setPaymentOrder] = useState<any>(null);
   const [paymentState, setPaymentState] = useState<string>("Payment Due");
@@ -1012,17 +1023,23 @@ export default function DriverWorkspace() {
         <div 
           onClick={() => setIsMobileSidebarOpen(false)}
           onTouchStart={() => setIsMobileSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer"
+          aria-label="Close navigation drawer backdrop"
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer duration-300"
         />
       )}
 
-      {/* Sidebar */}
-      <div className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-64 bg-[#0B1120] border-r border-slate-800 text-white min-h-screen flex flex-col shadow-2xl
-        transition-transform duration-300 ease-in-out
-        ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      {/* Sidebar Navigation Drawer */}
+      <aside 
+        aria-label="Navigation drawer"
+        className={`
+          fixed md:static inset-y-0 left-0 z-50
+          w-[82vw] max-w-[320px] md:w-64 bg-[#0B1120] border-r border-slate-800 text-white 
+          h-[100dvh] md:h-auto md:min-h-screen flex flex-col shadow-2xl
+          overflow-y-auto overscroll-contain
+          transition-transform duration-300 ease-in-out motion-reduce:transition-none
+          ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
         <div className="p-5 pb-2">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
@@ -1049,7 +1066,7 @@ export default function DriverWorkspace() {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 mt-6">
+        <nav className="flex-1 space-y-1 px-3 mt-6 pb-6">
           {driverSidebar.map(({ label, icon: Icon }) => (
             <button
               key={label}
@@ -1065,7 +1082,7 @@ export default function DriverWorkspace() {
             </button>
           ))}
         </nav>
-      </div>
+      </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">

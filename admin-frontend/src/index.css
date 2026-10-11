@@ -56,44 +56,11 @@
     color: #f8fafc;
   }
 
-  html, body {
+  body {
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
     transition: background-color 0.3s ease, color 0.3s ease;
-    min-height: 100dvh;
-    margin: 0;
-    padding: 0;
-  }
-
-  /* Desktop Laptop Phone Viewport Mode: On screens > 600px, center the app in a 430px phone-like container */
-  @media (min-width: 601px) {
-    body {
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      background-color: #020617; /* Theme backdrop outside phone viewport */
-      overflow-x: hidden;
-    }
-
-    #root {
-      width: 100%;
-      max-width: 430px;
-      min-height: 100dvh;
-      margin: 0 auto;
-      position: relative;
-      background-color: var(--background);
-      box-shadow: 0 0 50px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
-      overflow-x: hidden;
-    }
-  }
-
-  @media (max-width: 600px) {
-    #root {
-      width: 100%;
-      min-height: 100dvh;
-      overflow-x: hidden;
-    }
   }
 
   h1, h2, h3, h4, h5, h6 {

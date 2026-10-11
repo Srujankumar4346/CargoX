@@ -62,10 +62,7 @@ function RoleGate({ allowedRole, children }: { allowedRole: "ADMIN" | "DRIVER"; 
 
   const hasLocalToken = !!localStorage.getItem("access_token");
   if (!isSignedIn && !hasLocalToken) {
-    if (allowedRole === "DRIVER") {
-      return <DriverLogin />;
-    }
-    return <AdminLogin />;
+    return <LandingPage />;
   }
 
   const normalizedRole = role ? role.toUpperCase() : null;

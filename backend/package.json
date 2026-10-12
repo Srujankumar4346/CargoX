@@ -1,0 +1,10 @@
+{
+  "name": "cargox-backend",
+  "version": "1.0.0",
+  "description": "CargoX FastAPI Backend wrapper scripts",
+  "scripts": {
+    "start": "python -m uvicorn app.main:app --port 8000 --reload",
+    "dev": "python -m uvicorn app.main:app --port 8000 --reload",
+    "test": "pytest"
+  }
+}

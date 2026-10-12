@@ -2,78 +2,56 @@
 @import "leaflet/dist/leaflet.css";
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-display: 'Outfit', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Outfit', 'Inter', system-ui, sans-serif;
 
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-border-theme: var(--border);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-primary: var(--primary);
-  --color-primary-hover: var(--primary-hover);
-  --color-accent: var(--accent);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-danger: var(--danger);
+  --color-cargox-blue: #1e60ff;
+  --color-cargox-dark: #070d1e;
+  --color-cargox-navy: #0d1730;
+  --color-cargox-gray: #f4f6fa;
+  --color-cargox-border: #e2e8f0;
 
   --animate-slide-in-right: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  --animate-fade-in: fade-in 0.3s ease forwards;
-  --animate-slide-up: slide-up 0.4s ease-out forwards;
-  --animate-pulse-slow: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  --animate-scale-in: scale-in 0.2s ease-out forwards;
+  --animate-fade-in: fade-in 0.25s ease forwards;
+  --animate-slide-up: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @layer base {
   :root {
-    color-scheme: dark;
-    --background: #020617; /* Slate 950 */
-    --surface: #0f172a;    /* Slate 900 */
-    --surface-elevated: #1e293b; /* Slate 800 */
-    --border: #334155;     /* Slate 700 */
-    --foreground: #f8fafc; /* Slate 50 */
-    --muted: #94a3b8;      /* Slate 400 */
-    --primary: #6366f1;    /* Indigo 500 */
-    --primary-hover: #818cf8; /* Indigo 400 */
-    --accent: #3b82f6;     /* Blue 500 */
-    --success: #10b981;    /* Emerald 500 */
-    --warning: #f59e0b;    /* Amber 500 */
-    --danger: #ef4444;     /* Red 500 */
-  }
-
-  select, input, textarea {
-    color-scheme: dark;
-  }
-
-  select {
-    background-color: #0f172a;
-    color: #f8fafc;
-  }
-
-  select option {
-    background-color: #0f172a;
-    color: #f8fafc;
+    color-scheme: light;
+    --background: #f8fafc;
+    --foreground: #0f172a;
+    --primary: #1e60ff;
+    --primary-hover: #164ed9;
   }
 
   body {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: #f1f5f9;
+    color: #0f172a;
     font-family: var(--font-sans);
-    transition: background-color 0.3s ease, color 0.3s ease;
+    -webkit-tap-highlight-color: transparent;
+    margin: 0;
+    padding: 0;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    * {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
-    }
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
   }
 
   @keyframes slide-in-right {
@@ -85,74 +63,16 @@
     to { opacity: 1; }
   }
   @keyframes slide-up {
-    from { opacity: 0; transform: translateY(20px); }
+    from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes pulse-slow {
-    0%, 100% { opacity: 1; }
-    50% { opacity: .5; }
-  }
-  @keyframes scale-in {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
   }
 }
 
-@layer components {
-  /* Selective Glassmorphism */
-  .glass-panel {
-    @apply bg-surface/80 backdrop-blur-md border border-border-theme shadow-xl rounded-2xl;
-  }
-  
-  /* Standard Base Card (Solid, not glass) */
-  .card {
-    @apply bg-surface border border-border-theme rounded-xl shadow-sm p-6;
-  }
-  .card-elevated {
-    @apply bg-surface-elevated border border-border-theme rounded-xl shadow-md p-6;
-  }
-
-  /* Buttons */
-  .btn-primary {
-    @apply bg-primary text-white hover:bg-primary-hover px-4 py-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0;
-  }
-  
-  .btn-secondary {
-    @apply bg-transparent text-foreground border border-border-theme hover:bg-surface-elevated px-4 py-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0;
-  }
-
-  .btn-danger {
-    @apply bg-danger text-white hover:bg-red-400 px-4 py-2 rounded-lg font-semibold transition-all duration-200;
-  }
-  
-  .btn-success {
-    @apply bg-success text-white hover:bg-emerald-400 px-4 py-2 rounded-lg font-semibold transition-all duration-200;
-  }
-
-  /* Inputs */
-  .input-field {
-    @apply w-full rounded-lg border border-border-theme bg-surface px-4 py-2 text-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors;
-  }
-
-  .customer-input {
-    @apply w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
-  }
-
-  .customer-settings-input {
-    @apply w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
-  }
-
-  .customer-dashboard {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .customer-dashboard > section:has(h1) { order: 1; }
-  .customer-dashboard > section.grid.grid-cols-1 { order: 2; }
-  .customer-dashboard > section.rounded-2xl { order: 3; }
-  .customer-dashboard > .quick-actions { order: 4; }
-  .customer-dashboard > .assigned-operations { order: 5; }
-  .customer-dashboard > section#bookings { order: 6; }
-  .customer-dashboard > section#invoices { order: 7; }
-  .customer-dashboard > section.rounded-xl.border-blue-500\/20 { display: none; }
+/* Hide scrollbar for clean horizontal vehicle/tab scrollers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

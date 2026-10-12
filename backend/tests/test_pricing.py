@@ -186,7 +186,7 @@ async def test_pricing_config_validation(async_client: AsyncClient, admin_user):
 async def test_generate_quotation_success(async_client: AsyncClient, admin_user, active_pricing_config, delivery_request_a):
     app.dependency_overrides[get_current_admin] = lambda: admin_user
 
-    # 250 km: base = 250*20 = 5000, margin = 250*2 = 500, total = 5500
+    # 250 km: base_cost = 250*20 = 5000, margin = 250*2 = 500, base_flat_fare = 500, total = 6000
     resp = await async_client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={
         "distance_km": "250.00",
         "validity_hours": 48
@@ -198,7 +198,7 @@ async def test_generate_quotation_success(async_client: AsyncClient, admin_user,
     assert Decimal(str(q["base_rate_per_km"])) == Decimal("20.00")
     assert Decimal(str(q["internal_base_cost"])) == Decimal("5000.00")
     assert Decimal(str(q["cargox_margin"])) == Decimal("500.00")
-    assert Decimal(str(q["customer_total_charge"])) == Decimal("5500.00")
+    assert Decimal(str(q["customer_total_charge"])) == Decimal("6000.00")
     assert q["status"] == "PENDING"
 
     # Verify delivery request status updated to QUOTED
@@ -325,3 +325,120 @@ async def test_lazy_expiration(async_client: AsyncClient, customer_user_a, activ
     resp_accept = await async_client.post(f"/api/v1/customer/quotations/{expired_quotation.id}/accept")
     assert resp_accept.status_code == 409
     assert "expired" in resp_accept.json()["detail"].lower()
+
+# ----------------------------------------------------------------------
+# VEHICLE PAYLOAD CAPACITY & ADMIN SURCHARGE VALIDATION TESTS
+# ----------------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_capacity_validation_excludes_under_capacity_vehicles(async_client: AsyncClient, admin_user, active_pricing_config, delivery_request_a):
+    """
+    Test 1 & 2: 5,000 kg (5.0 tons) cargo excludes vehicles rated for 2,000 kg (2.0t) and 3,000 kg (3.0t).
+    Direct API request attempting overload is rejected with 422.
+    """
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    # 5.0 ton cargo with 2.0 ton vehicle -> 422
+    resp_2t = await async_client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={
+        "distance_km": "100.00",
+        "weight_tons": 5.0,
+        "vehicle_capacity_tons": 2.0
+    })
+    assert resp_2t.status_code == 422
+    assert "exceeds vehicle maximum capacity" in resp_2t.json()["detail"]
+
+    # 5.0 ton cargo with 3.0 ton vehicle -> 422
+    resp_3t = await async_client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={
+        "distance_km": "100.00",
+        "weight_tons": 5.0,
+        "vehicle_capacity_tons": 3.0
+    })
+    assert resp_3t.status_code == 422
+    assert "exceeds vehicle maximum capacity" in resp_3t.json()["detail"]
+
+@pytest.mark.anyio
+async def test_capacity_validation_permits_adequate_and_higher_capacity_vehicles(async_client: AsyncClient, admin_user, active_pricing_config, delivery_request_a):
+    """
+    Test 3 & 4: 5,000 kg (5.0 tons) cargo permits vehicles rated for 5,000 kg (5.0t) and 6,000 kg (6.0t).
+    """
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    # 5.0 ton cargo on 5.0 ton vehicle (100% capacity utilization -> near max cap surcharge applies)
+    resp_5t = await async_client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={
+        "distance_km": "100.00",
+        "weight_tons": 5.0,
+        "vehicle_capacity_tons": 5.0
+    })
+    assert resp_5t.status_code == 201
+    q5 = resp_5t.json()
+    assert Decimal(str(q5["capacity_surcharge"])) == Decimal("600.00")
+
+    # Clean existing pending for next test and reset request status
+    q_doc = await Quotation.get(uuid.UUID(q5["id"]))
+    q_doc.status = QuotationStatus.EXPIRED
+    await q_doc.save()
+    delivery_request_a.status = DeliveryRequestStatus.SUBMITTED
+    await delivery_request_a.save()
+
+    # 5.0 ton cargo on 6.0 ton vehicle (83.3% capacity utilization -> below 85% threshold, no surcharge)
+    resp_6t = await async_client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={
+        "distance_km": "100.00",
+        "weight_tons": 5.0,
+        "vehicle_capacity_tons": 6.0
+    })
+    assert resp_6t.status_code == 201
+    q6 = resp_6t.json()
+    assert Decimal(str(q6["capacity_surcharge"])) == Decimal("0.00")
+
+@pytest.mark.anyio
+async def test_customer_estimate_strict_overload_rejection(async_client: AsyncClient, customer_user_a, active_pricing_config):
+    """
+    Test 5: Direct customer API request cannot bypass capacity validation.
+    """
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user_a
+
+    resp = await async_client.get(
+        "/api/v1/customer/quotations/pricing/estimate?distance_km=100&weight_tons=5.0&vehicle_capacity_tons=2.0"
+    )
+    assert resp.status_code == 422
+    assert "exceeds vehicle maximum capacity" in resp.json()["detail"]
+
+@pytest.mark.anyio
+async def test_disabled_surcharges_are_not_charged(async_client: AsyncClient, admin_user, delivery_request_a):
+    """
+    Test 9 & 10: Disabled surcharges are strictly not charged, and applicable surcharges apply exactly once.
+    """
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    # Create pricing config where fragile fee is disabled and capacity fee is disabled
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    conf = PricingConfig(
+        id=uuid.uuid4(),
+        base_rate_per_km=Decimal("20.00"),
+        margin_per_km=Decimal("2.00"),
+        base_flat_fare=Decimal("500.00"),
+        capacity_surcharge_enabled=False,
+        fragile_surcharge_enabled=False,
+        hazardous_surcharge_enabled=True,
+        hazardous_surcharge=Decimal("700.00"),
+        effective_from=now,
+        active=True,
+        created_by=admin_user.id,
+        created_at=now
+    )
+    await conf.insert()
+
+    resp = await async_client.post(f"/api/v1/admin/requests/{delivery_request_a.id}/quote", json={
+        "distance_km": "100.00",
+        "weight_tons": 1.9,
+        "vehicle_capacity_tons": 2.0,
+        "special_handling": "Fragile and delicate glassware"
+    })
+    assert resp.status_code == 201
+    q = resp.json()
+    # Capacity surcharge is disabled -> 0.00
+    assert Decimal(str(q["capacity_surcharge"])) == Decimal("0.00")
+    # Fragile surcharge is disabled -> 0.00
+    assert Decimal(str(q["handling_surcharge"])) == Decimal("0.00")
+    # customer_total_charge = 500 (base_flat) + 2200 (distance_charge) = 2700.00
+    assert Decimal(str(q["customer_total_charge"])) == Decimal("2700.00")

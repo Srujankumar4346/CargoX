@@ -88,14 +88,40 @@ async def approve_request(
                     detail="Cannot approve request without an actual approved distance",
                 )
 
-        # Calculate the snapshot from the approved request distance.
+        # Calculate the snapshot from the approved request distance and cargo requirements
         dist = Decimal(str(req.distance_km))
         base_rate = Decimal(str(active_config.base_rate_per_km))
         margin_rate = Decimal(str(active_config.margin_per_km))
         
         internal_base_cost = (dist * base_rate).quantize(Decimal("0.01"))
         cargox_margin = (dist * margin_rate).quantize(Decimal("0.01"))
-        customer_total_charge = internal_base_cost + cargox_margin
+
+        # Calculate surcharges
+        base_flat = Decimal(str(getattr(active_config, "base_flat_fare", Decimal("500.00"))))
+        distance_charge = ((base_rate + margin_rate) * dist).quantize(Decimal("0.01"))
+
+        # Calculate surcharges if applicable
+        capacity_surcharge = Decimal("0.00")
+        handling_surcharge = Decimal("0.00")
+
+        # 1. Capacity surcharge based on admin configured threshold & enabled flag
+        req_weight = float(req.weight_tons or 0)
+        veh_cap = 2.0
+        cap_enabled = getattr(active_config, "capacity_surcharge_enabled", True)
+        cap_threshold_pct = float(getattr(active_config, "capacity_utilization_threshold_percent", Decimal("85.00")))
+        if cap_enabled and (req_weight / veh_cap * 100.0) >= cap_threshold_pct:
+            capacity_surcharge = Decimal(str(getattr(active_config, "vehicle_max_capacity_surcharge", Decimal("600.00"))))
+
+        # 2. Handling care surcharge based on admin enabled flags
+        special_str = f"{req.special_instructions or ''} {req.goods_description or ''} {req.goods_type or ''}".lower()
+        if getattr(active_config, "fragile_surcharge_enabled", True) and ("fragile" in special_str or "delicate" in special_str or "handle with care" in special_str):
+            handling_surcharge += Decimal(str(getattr(active_config, "fragile_surcharge", Decimal("400.00"))))
+        elif getattr(active_config, "hazardous_surcharge_enabled", True) and ("hazardous" in special_str or "sensitive" in special_str):
+            handling_surcharge += Decimal(str(getattr(active_config, "hazardous_surcharge", Decimal("700.00"))))
+        elif getattr(active_config, "refrigerated_surcharge_enabled", True) and ("refrigerated" in special_str or "cold" in special_str):
+            handling_surcharge += Decimal(str(getattr(active_config, "refrigerated_surcharge", Decimal("800.00"))))
+
+        customer_total_charge = base_flat + distance_charge + capacity_surcharge + handling_surcharge
         
         from app.services.settings_service import SettingsService
         system_settings = await SettingsService.get_settings()
@@ -110,6 +136,10 @@ async def approve_request(
             base_rate_per_km=base_rate,
             internal_base_cost=internal_base_cost,
             cargox_margin=cargox_margin,
+            base_fare=base_flat,
+            distance_charge=distance_charge,
+            capacity_surcharge=capacity_surcharge,
+            handling_surcharge=handling_surcharge,
             customer_total_charge=customer_total_charge,
             service_fee_percentage=fee_pct,
             service_fee_amount=service_fee,

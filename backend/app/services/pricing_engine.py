@@ -30,6 +30,17 @@ class PricingEngineService:
         new_config = PricingConfig(
             base_rate_per_km=config_in.base_rate_per_km,
             margin_per_km=config_in.margin_per_km,
+            base_flat_fare=config_in.base_flat_fare or Decimal("500.00"),
+            base_distance_km=config_in.base_distance_km or Decimal("0.00"),
+            capacity_surcharge_enabled=config_in.capacity_surcharge_enabled if config_in.capacity_surcharge_enabled is not None else True,
+            capacity_utilization_threshold_percent=config_in.capacity_utilization_threshold_percent or Decimal("85.00"),
+            vehicle_max_capacity_surcharge=config_in.vehicle_max_capacity_surcharge or Decimal("600.00"),
+            fragile_surcharge_enabled=config_in.fragile_surcharge_enabled if config_in.fragile_surcharge_enabled is not None else True,
+            fragile_surcharge=config_in.fragile_surcharge or Decimal("400.00"),
+            hazardous_surcharge_enabled=config_in.hazardous_surcharge_enabled if config_in.hazardous_surcharge_enabled is not None else True,
+            hazardous_surcharge=config_in.hazardous_surcharge or Decimal("700.00"),
+            refrigerated_surcharge_enabled=config_in.refrigerated_surcharge_enabled if config_in.refrigerated_surcharge_enabled is not None else True,
+            refrigerated_surcharge=config_in.refrigerated_surcharge or Decimal("800.00"),
             effective_from=effective_from,
             active=True,
             created_by=admin_user.id,
@@ -51,6 +62,17 @@ class PricingEngineService:
             config = PricingConfig(
                 base_rate_per_km=Decimal("25.00"),
                 margin_per_km=Decimal("5.00"),
+                base_flat_fare=Decimal("500.00"),
+                base_distance_km=Decimal("0.00"),
+                capacity_surcharge_enabled=True,
+                capacity_utilization_threshold_percent=Decimal("85.00"),
+                vehicle_max_capacity_surcharge=Decimal("600.00"),
+                fragile_surcharge_enabled=True,
+                fragile_surcharge=Decimal("400.00"),
+                hazardous_surcharge_enabled=True,
+                hazardous_surcharge=Decimal("700.00"),
+                refrigerated_surcharge_enabled=True,
+                refrigerated_surcharge=Decimal("800.00"),
                 effective_from=now,
                 active=True,
                 created_by=uuid.uuid4(),
@@ -98,6 +120,15 @@ class PricingEngineService:
                     detail="A pending quotation already exists for this delivery request"
                 )
 
+        # Validate vehicle overload
+        req_weight = float(quote_in.weight_tons or request.weight_tons or 0)
+        veh_cap = float(quote_in.vehicle_capacity_tons or 0)
+        if veh_cap > 0 and req_weight > veh_cap:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Cargo weight ({req_weight} Tons) exceeds vehicle maximum capacity ({veh_cap} Tons). Overloaded vehicles are strictly ineligible."
+            )
+
         active_config = await PricingEngineService.get_active_pricing_config()
         from app.services.settings_service import SettingsService
         system_settings = await SettingsService.get_settings()
@@ -109,7 +140,30 @@ class PricingEngineService:
 
         internal_base_cost = (distance * base_rate).quantize(Decimal("0.01"))
         cargox_margin = (distance * margin_rate).quantize(Decimal("0.01"))
-        customer_total_charge = internal_base_cost + cargox_margin
+
+        base_flat = Decimal(str(getattr(active_config, "base_flat_fare", Decimal("500.00"))))
+        distance_charge = ((base_rate + margin_rate) * distance).quantize(Decimal("0.01"))
+
+        # Calculate surcharges if applicable
+        capacity_surcharge = Decimal("0.00")
+        handling_surcharge = Decimal("0.00")
+
+        # 1. Capacity surcharge (Rule: Admin configured threshold & enabled flag)
+        cap_enabled = getattr(active_config, "capacity_surcharge_enabled", True)
+        cap_threshold_pct = float(getattr(active_config, "capacity_utilization_threshold_percent", Decimal("85.00")))
+        if cap_enabled and veh_cap > 0 and (req_weight / veh_cap * 100.0) >= cap_threshold_pct:
+            capacity_surcharge = Decimal(str(getattr(active_config, "vehicle_max_capacity_surcharge", Decimal("600.00"))))
+
+        # 2. Delicate / Fragile / Handling Care surcharge (Checked once without double counting)
+        special_str = (quote_in.special_handling or request.special_instructions or request.goods_description or "").lower()
+        if getattr(active_config, "fragile_surcharge_enabled", True) and ("fragile" in special_str or "delicate" in special_str or "handle with care" in special_str):
+            handling_surcharge += Decimal(str(getattr(active_config, "fragile_surcharge", Decimal("400.00"))))
+        elif getattr(active_config, "hazardous_surcharge_enabled", True) and ("hazardous" in special_str or "sensitive" in special_str):
+            handling_surcharge += Decimal(str(getattr(active_config, "hazardous_surcharge", Decimal("700.00"))))
+        elif getattr(active_config, "refrigerated_surcharge_enabled", True) and ("refrigerated" in special_str or "cold" in special_str):
+            handling_surcharge += Decimal(str(getattr(active_config, "refrigerated_surcharge", Decimal("800.00"))))
+
+        customer_total_charge = base_flat + distance_charge + capacity_surcharge + handling_surcharge
 
         fee_pct = system_settings.cargox_service_fee_percentage
         service_fee = (customer_total_charge * fee_pct / Decimal("100")).quantize(Decimal("0.01"))
@@ -125,6 +179,10 @@ class PricingEngineService:
             base_rate_per_km=base_rate,
             internal_base_cost=internal_base_cost,
             cargox_margin=cargox_margin,
+            base_fare=base_flat,
+            distance_charge=distance_charge,
+            capacity_surcharge=capacity_surcharge,
+            handling_surcharge=handling_surcharge,
             customer_total_charge=customer_total_charge,
             service_fee_percentage=fee_pct,
             service_fee_amount=service_fee,

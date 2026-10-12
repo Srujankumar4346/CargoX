@@ -441,11 +441,41 @@ export const api = {
     return res.json();
   },
   
-  updatePricing: async (base_rate_per_km: number, margin_per_km: number = 0) => {
+  updatePricing: async (
+    base_rate_per_km: number, 
+    margin_per_km: number = 0,
+    surcharges?: {
+      base_flat_fare?: number;
+      base_distance_km?: number;
+      capacity_surcharge_enabled?: boolean;
+      capacity_utilization_threshold_percent?: number;
+      vehicle_max_capacity_surcharge?: number;
+      fragile_surcharge_enabled?: boolean;
+      fragile_surcharge?: number;
+      hazardous_surcharge_enabled?: boolean;
+      hazardous_surcharge?: number;
+      refrigerated_surcharge_enabled?: boolean;
+      refrigerated_surcharge?: number;
+    }
+  ) => {
     const res = await authFetch(`${API_URL}/admin/pricing-configs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base_rate_per_km, margin_per_km })
+      body: JSON.stringify({ 
+        base_rate_per_km, 
+        margin_per_km,
+        base_flat_fare: surcharges?.base_flat_fare ?? 500,
+        base_distance_km: surcharges?.base_distance_km ?? 0,
+        capacity_surcharge_enabled: surcharges?.capacity_surcharge_enabled ?? true,
+        capacity_utilization_threshold_percent: surcharges?.capacity_utilization_threshold_percent ?? 85,
+        vehicle_max_capacity_surcharge: surcharges?.vehicle_max_capacity_surcharge ?? 600,
+        fragile_surcharge_enabled: surcharges?.fragile_surcharge_enabled ?? true,
+        fragile_surcharge: surcharges?.fragile_surcharge ?? 400,
+        hazardous_surcharge_enabled: surcharges?.hazardous_surcharge_enabled ?? true,
+        hazardous_surcharge: surcharges?.hazardous_surcharge ?? 700,
+        refrigerated_surcharge_enabled: surcharges?.refrigerated_surcharge_enabled ?? true,
+        refrigerated_surcharge: surcharges?.refrigerated_surcharge ?? 800,
+      })
     });
     if (!res.ok) throw new Error("Failed to update pricing");
     return res.json();

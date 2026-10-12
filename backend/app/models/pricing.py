@@ -19,6 +19,24 @@ class PricingConfig(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
     base_rate_per_km: DecimalType
     margin_per_km: DecimalType
+    base_flat_fare: DecimalType = Decimal("500.00")
+    base_distance_km: DecimalType = Decimal("0.00")
+    
+    # Capacity Surcharge Rules
+    capacity_surcharge_enabled: bool = True
+    capacity_utilization_threshold_percent: DecimalType = Decimal("85.00")
+    vehicle_max_capacity_surcharge: DecimalType = Decimal("600.00")
+    
+    # Handling Care Surcharge Rules
+    fragile_surcharge_enabled: bool = True
+    fragile_surcharge: DecimalType = Decimal("400.00")
+    
+    hazardous_surcharge_enabled: bool = True
+    hazardous_surcharge: DecimalType = Decimal("700.00")
+    
+    refrigerated_surcharge_enabled: bool = True
+    refrigerated_surcharge: DecimalType = Decimal("800.00")
+    
     effective_from: datetime
     effective_until: Optional[datetime] = None
     active: bool = True
@@ -39,6 +57,10 @@ class Quotation(Document):
     base_rate_per_km: DecimalType
     internal_base_cost: DecimalType
     cargox_margin: DecimalType
+    base_fare: Optional[DecimalType] = Decimal("500.00")
+    distance_charge: Optional[DecimalType] = Decimal("0.00")
+    capacity_surcharge: Optional[DecimalType] = Decimal("0.00")
+    handling_surcharge: Optional[DecimalType] = Decimal("0.00")
     customer_total_charge: DecimalType
     service_fee_percentage: Optional[DecimalType] = None
     service_fee_amount: Optional[DecimalType] = None

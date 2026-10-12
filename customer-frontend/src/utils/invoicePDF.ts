@@ -486,16 +486,91 @@ export function generateInvoicePDF(inv: any, booking?: any, autoPrint: boolean =
     document.title = "${sanitizedFileName}";
     ${autoPrint ? `
     window.onload = function() {
-      setTimeout(function() { window.print(); }, 400);
+      setTimeout(function() { 
+        try { window.print(); } catch(e) {}
+      }, 400);
     };` : ''}
   </script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
+  // Try opening in new window/tab first (desktop standard)
+  let win: Window | null = null;
+  try {
+    win = window.open("", "_blank");
+  } catch (e) {
+    win = null;
+  }
+
+  if (win && !win.closed) {
+    try {
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      return;
+    } catch (e) {
+      // If cross-origin or security error, fallback below
+    }
+  }
+
+  // Fallback for Mobile WebViews or popup-blocked browsers:
+  // Render an in-app overlay modal so the user can easily view, print, or download
+  const existingModal = document.getElementById("cargox-invoice-modal-overlay");
+  if (existingModal) existingModal.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "cargox-invoice-modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;padding:12px;overflow:hidden;box-sizing:border-box;";
+
+  const toolbar = document.createElement("div");
+  toolbar.style.cssText = "width:100%;max-width:850px;display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#0f172a;border-radius:12px 12px 0 0;border:1px solid #334155;border-bottom:none;box-sizing:border-box;";
+
+  const titleEl = document.createElement("div");
+  titleEl.style.cssText = "color:#f8fafc;font-weight:700;font-size:14px;";
+  titleEl.textContent = `Invoice ${inv.invoice_number || ""}`;
+
+  const btnContainer = document.createElement("div");
+  btnContainer.style.cssText = "display:flex;gap:8px;";
+
+  const printBtn = document.createElement("button");
+  printBtn.style.cssText = "background:#2563eb;color:#ffffff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;";
+  printBtn.textContent = "Print / PDF";
+  printBtn.onclick = () => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (err) {
+      window.print();
+    }
+  };
+
+  const closeBtn = document.createElement("button");
+  closeBtn.style.cssText = "background:#334155;color:#f8fafc;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;";
+  closeBtn.textContent = "Close";
+  closeBtn.onclick = () => overlay.remove();
+
+  btnContainer.appendChild(printBtn);
+  btnContainer.appendChild(closeBtn);
+  toolbar.appendChild(titleEl);
+  toolbar.appendChild(btnContainer);
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "width:100%;max-width:850px;flex:1;background:#ffffff;border:1px solid #334155;border-radius:0 0 12px 12px;box-sizing:border-box;";
+  iframe.srcdoc = html;
+
+  overlay.appendChild(toolbar);
+  overlay.appendChild(iframe);
+  document.body.appendChild(overlay);
+
+  if (autoPrint) {
+    iframe.onload = () => {
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {}
+      }, 500);
+    };
   }
 }
 

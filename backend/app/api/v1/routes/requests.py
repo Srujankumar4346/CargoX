@@ -99,7 +99,15 @@ async def calculate_route(
     """
     Authoritative calculation of road distance and duration.
     Uses CargoX OSRM route engine (true road topography) with resilient fallback.
+    Validates pickup and destination coordinates are distinct.
     """
+    # Validate distinct locations
+    if abs(payload.pickup_lat - payload.destination_lat) < 0.0001 and abs(payload.pickup_lng - payload.destination_lng) < 0.0001:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Pickup and destination locations cannot be identical."
+        )
+
     from app.services.intelligence.route_engine import fetch_osrm_routes
 
     # 1. Attempt true road network calculation via OSRM

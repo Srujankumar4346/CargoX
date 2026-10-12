@@ -47,6 +47,32 @@ export default function CustomerDashboard() {
   const [paymentInvoice, setPaymentInvoice] = useState<any>(null);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
+  // Handle body scroll locking, escape key, and desktop resize cleanup for mobile drawer
+  useEffect(() => {
+    if (isMobileNavOpen) {
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setIsMobileNavOpen(false);
+        }
+      };
+      const handleResize = () => {
+        if (window.innerWidth >= 768) {
+          setIsMobileNavOpen(false);
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("resize", handleResize);
+      return () => {
+        document.body.style.overflow = "";
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("resize", handleResize);
+      };
+    } else {
+      document.body.style.overflow = "";
+    }
+  }, [isMobileNavOpen]);
+
   useEffect(() => { if (getToken) setTokenGetter(getToken); }, [getToken]);
   useEffect(() => {
     if (user?.primaryEmailAddress?.emailAddress) {
@@ -190,48 +216,74 @@ export default function CustomerDashboard() {
         </div>
       </div>
 
+      {/* Mobile Backdrop */}
+      <div 
+        onClick={() => setIsMobileNavOpen(false)}
+        onTouchStart={() => setIsMobileNavOpen(false)}
+        className={`customer-sidebar-backdrop ${isMobileNavOpen ? 'open' : ''}`}
+        aria-hidden="true"
+      />
+
       {/* Mobile Drawer Navigation */}
-      {isMobileNavOpen && (
-        <div className="border-t border-slate-800/80 bg-slate-950/95 px-4 py-3 md:hidden">
-          <div className="flex flex-col space-y-2 text-sm font-semibold">
-            <a 
-              href="#dashboard" 
-              onClick={() => setIsMobileNavOpen(false)}
-              className="rounded-lg bg-blue-600/10 px-3 py-2 text-blue-300"
-            >
-              Dashboard
-            </a>
-            <button 
-              onClick={() => { setIsMobileNavOpen(false); openNewBooking(); }} 
-              className="flex items-center justify-between rounded-lg px-3 py-2 text-left text-white hover:bg-slate-900"
-            >
-              <span>+ Book Transport</span>
-              <span className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold">New</span>
-            </button>
-            <a 
-              href="#bookings" 
-              onClick={() => setIsMobileNavOpen(false)}
-              className="rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900"
-            >
-              My Bookings
-            </a>
-            <a 
-              href="#invoices" 
-              onClick={() => setIsMobileNavOpen(false)}
-              className="rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900"
-            >
-              My Invoices
-            </a>
-            <Link 
-              to="/customer/settings" 
-              onClick={() => setIsMobileNavOpen(false)}
-              className="rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-900"
-            >
-              Account Settings
-            </Link>
+      <aside 
+        className={`customer-sidebar-drawer ${isMobileNavOpen ? 'open' : ''}`}
+        aria-label="Customer Navigation"
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 p-4">
+          <div className="flex items-center gap-2">
+            <span className="rounded-xl bg-blue-500/15 p-2 text-blue-400">
+              <Truck size={20} />
+            </span>
+            <span className="font-bold text-base text-white">CargoX Customer</span>
           </div>
+          <button 
+            type="button"
+            onClick={() => setIsMobileNavOpen(false)}
+            aria-label="Close menu"
+            className="flex items-center justify-center w-10 h-10 rounded-xl text-slate-300 hover:text-white bg-slate-800 active:bg-slate-700 transition"
+          >
+            <X size={20} />
+          </button>
         </div>
-      )}
+
+        <div className="flex flex-col space-y-1 p-3 text-sm font-semibold flex-1 overflow-y-auto">
+          <a 
+            href="#dashboard" 
+            onClick={() => setIsMobileNavOpen(false)}
+            className="rounded-lg bg-blue-600/10 px-3.5 py-2.5 text-blue-300 hover:bg-blue-600/20"
+          >
+            Dashboard
+          </a>
+          <button 
+            onClick={() => { setIsMobileNavOpen(false); openNewBooking(); }} 
+            className="flex items-center justify-between rounded-lg px-3.5 py-2.5 text-left text-white hover:bg-slate-800 transition"
+          >
+            <span>+ Book Transport</span>
+            <span className="rounded bg-blue-600 px-2 py-0.5 text-[10px] font-bold">New</span>
+          </button>
+          <a 
+            href="#bookings" 
+            onClick={() => setIsMobileNavOpen(false)}
+            className="rounded-lg px-3.5 py-2.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+          >
+            My Bookings
+          </a>
+          <a 
+            href="#invoices" 
+            onClick={() => setIsMobileNavOpen(false)}
+            className="rounded-lg px-3.5 py-2.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+          >
+            My Invoices
+          </a>
+          <Link 
+            to="/customer/settings" 
+            onClick={() => setIsMobileNavOpen(false)}
+            className="rounded-lg px-3.5 py-2.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+          >
+            Account Settings
+          </Link>
+        </div>
+      </aside>
     </header>
 
     <main id="dashboard" className="customer-dashboard mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -243,9 +295,9 @@ export default function CustomerDashboard() {
 
       {showBookingForm && <section className="rounded-xl border border-blue-500/20 bg-slate-900 p-5 shadow-xl"><div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-400">New request</p><h2 className="mt-1 text-xl font-bold text-white">{editBookingData ? "Edit booking" : "Book transport"}</h2></div><button onClick={() => { setShowBookingForm(false); setEditBookingData(null); }} className="text-slate-500 hover:text-white"><X size={18} /></button></div><form onSubmit={submitBooking} className="grid gap-4 md:grid-cols-2"><div className="md:col-span-2 grid gap-4 md:grid-cols-2"><StructuredAddressForm title="Pickup address" onChange={(data: AddressData) => setFormData({ ...formData, pickup_company: data.company, pickup_address: data.address, pickup_lat: "", pickup_lng: "" })} /><StructuredAddressForm title="Drop address" onChange={(data: AddressData) => setFormData({ ...formData, drop_company: data.company, drop_address: data.address, drop_lat: "", drop_lng: "" })} /></div><input required value={formData.cargo} onChange={(event) => setFormData({ ...formData, cargo: event.target.value })} placeholder="Cargo type" className="customer-input" /><input required type="number" step="0.1" value={formData.weight} onChange={(event) => setFormData({ ...formData, weight: event.target.value })} placeholder="Cargo weight (tons)" className="customer-input" /><input required type="number" step="1" value={formData.distance} onChange={(event) => setFormData({ ...formData, distance: event.target.value })} placeholder="Distance (km)" className="customer-input" />{formData.distance && pricePerKm && <div className="flex items-center justify-between rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm md:col-span-2"><div><p className="font-bold text-blue-200">Estimated charge</p><p className="text-xs text-blue-300/70">Estimate only, based on current rate ₹{pricePerKm}/km. Final quotation and invoice are authoritative.</p></div><strong className="text-xl text-white">{money(Number(formData.distance) * pricePerKm)}</strong></div>}<button className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-bold text-white hover:bg-blue-500 md:col-span-2">Confirm booking request <ArrowRight size={16} /></button></form></section>}
 
-      <section id="bookings" className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg sm:p-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><Package size={17} className="text-blue-400" /><h2 className="text-lg font-bold text-white">My bookings</h2></div><p className="mt-1 text-xs text-slate-500">View and track all your transport requests</p></div><div className="flex items-center gap-2"><div className="flex rounded-lg border border-slate-800 bg-slate-950/50 p-1">{[["ALL", "All"], ["ACTIVE", "Active"], ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"]].map(([value, label]) => <button key={value} onClick={() => setBookingFilter(value)} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${bookingFilter === value ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white"}`}>{label}</button>)}</div><button onClick={openNewBooking} className="hidden items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white sm:flex"><Plus size={14} />Book</button></div></div>{bookingsError && <div className="mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><span className="flex items-center gap-2"><AlertCircle size={15} />{bookingsError}</span><button onClick={loadData} className="font-bold underline">Retry</button></div>}<div className="mt-4 overflow-x-auto"><table className="w-full min-w-212.5 text-left"><thead><tr className="border-b border-slate-800 text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-3">Request no.</th><th className="px-3 py-3">Route</th><th className="px-3 py-3">Cargo</th><th className="px-3 py-3">Weight</th><th className="px-3 py-3">Distance</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-800/80">{loading ? [1, 2, 3].map((row) => <tr key={row}><td colSpan={7} className="p-3"><Skeleton className="h-12 w-full" /></td></tr>) : filteredBookings.map((booking) => <tr key={booking.id} className="hover:bg-slate-800/30"><td className="px-3 py-4 font-semibold text-blue-300">{booking.request_number || `REQ-${String(booking.id).slice(-8)}`}</td><td className="max-w-65 px-3 py-4"><p className="flex items-start gap-1 text-xs text-slate-300"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-400" />{booking.pickup_address || "Pickup"}</p><p className="my-1 ml-4 text-[10px] text-slate-700">to</p><p className="flex items-start gap-1 text-xs text-slate-400"><MapPin size={13} className="mt-0.5 shrink-0 text-red-400" />{booking.destination_address || "Destination"}</p></td><td className="px-3 py-4 text-sm text-slate-400">{booking.goods_type || "—"}</td><td className="px-3 py-4 text-sm font-bold text-white">{booking.weight_tons ?? "—"} t</td><td className="px-3 py-4 text-sm text-slate-400">{booking.distance_km ?? "—"} km</td><td className="px-3 py-4"><StatusBadge status={booking.status} /></td><td className="px-3 py-4"><div className="flex justify-end gap-2">{["SUBMITTED", "UNDER_REVIEW"].includes(normalize(booking.status)) && <button onClick={() => editBooking(booking)} className="rounded-md border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300">Edit</button>}{!cancelledStatuses.includes(normalize(booking.status)) && !["COMPLETED", "DELIVERED", "IN_TRANSIT", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS", "ARRIVED", "POD_SUBMITTED"].includes(normalize(booking.status)) && <button onClick={() => requestCancel(booking)} className="rounded-md border border-red-500/20 px-2.5 py-1.5 text-xs text-red-300">Cancel</button>}{!['REQUESTED', 'SUBMITTED', 'CUSTOMER_CANCELLED'].includes(normalize(booking.status)) && <button onClick={() => trackBooking(booking)} className="flex items-center gap-1 rounded-md bg-blue-500/10 px-2.5 py-1.5 text-xs font-semibold text-blue-300"><MapIcon size={13} />Track</button>}</div></td></tr>)}{!loading && !filteredBookings.length && <tr><td colSpan={7} className="py-14 text-center"><Package className="mx-auto mb-2 text-slate-700" size={24} /><p className="text-sm font-semibold text-slate-400">{bookings.length ? "No bookings match this filter" : "No transport requests yet."}</p><button onClick={openNewBooking} className="mt-3 text-xs font-bold text-blue-400">Book transport</button></td></tr>}</tbody></table></div></section>
+      <section id="bookings" className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg sm:p-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><Package size={17} className="text-blue-400" /><h2 className="text-lg font-bold text-white">My bookings</h2></div><p className="mt-1 text-xs text-slate-500">View and track all your transport requests</p></div><div className="flex items-center gap-2"><div className="flex rounded-lg border border-slate-800 bg-slate-950/50 p-1">{[["ALL", "All"], ["ACTIVE", "Active"], ["COMPLETED", "Completed"], ["CANCELLED", "Cancelled"]].map(([value, label]) => <button key={value} onClick={() => setBookingFilter(value)} className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${bookingFilter === value ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white"}`}>{label}</button>)}</div><button onClick={openNewBooking} className="hidden items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white sm:flex"><Plus size={14} />Book</button></div></div>{bookingsError && <div className="mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><span className="flex items-center gap-2"><AlertCircle size={15} />{bookingsError}</span><button onClick={loadData} className="font-bold underline">Retry</button></div>}<div className="mt-4 overflow-x-auto"><table className="w-full min-w-212.5 text-left"><thead><tr className="border-b border-slate-800 text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-3">Request no.</th><th className="px-3 py-3">Route</th><th className="px-3 py-3">Cargo</th><th className="px-3 py-3">Weight</th><th className="px-3 py-3">Distance</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Action</th></tr></thead><tbody className="divide-y divide-slate-800/80">{loading ? [1, 2, 3].map((row) => <tr key={row}><td colSpan={7} className="p-3"><Skeleton className="h-12 w-full" /></td></tr>) : filteredBookings.map((booking) => <tr key={booking.id} className="hover:bg-slate-800/30"><td className="px-3 py-4 font-semibold text-blue-300">{booking.request_number || `REQ-${String(booking.id).slice(-8)}`}</td><td className="max-w-65 px-3 py-4"><p className="flex items-start gap-1 text-xs text-slate-300"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-400" />{booking.pickup_address || "Pickup"}</p><p className="my-1 ml-4 text-[10px] text-slate-700">to</p><p className="flex items-start gap-1 text-xs text-slate-400"><MapPin size={13} className="mt-0.5 shrink-0 text-red-400" />{booking.destination_address || "Destination"}</p></td><td className="px-3 py-4 text-sm text-slate-400">{booking.goods_type || "—"}</td><td className="px-3 py-4 text-sm font-bold text-white">{booking.weight_tons ?? "—"} t</td><td className="px-3 py-4 text-sm text-slate-400">{booking.distance_km ?? "—"} km</td><td className="px-3 py-4"><StatusBadge status={booking.status} /></td><td className="px-3 py-4"><div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">{["SUBMITTED", "UNDER_REVIEW"].includes(normalize(booking.status)) && <button onClick={() => editBooking(booking)} className="rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition">Edit</button>}{!cancelledStatuses.includes(normalize(booking.status)) && !["COMPLETED", "DELIVERED", "IN_TRANSIT", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS", "ARRIVED", "POD_SUBMITTED"].includes(normalize(booking.status)) && <button onClick={() => requestCancel(booking)} className="rounded-md border border-red-500/20 px-2.5 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-500/10 transition">Cancel</button>}{!['REQUESTED', 'SUBMITTED', 'CUSTOMER_CANCELLED'].includes(normalize(booking.status)) && <button onClick={() => trackBooking(booking)} className="flex items-center gap-1.5 rounded-md bg-blue-500/15 border border-blue-500/30 px-3 py-1.5 text-xs font-bold text-blue-300 hover:bg-blue-500/25 transition"><MapIcon size={13} />Track</button>}</div></td></tr>)}{!loading && !filteredBookings.length && <tr><td colSpan={7} className="py-14 text-center"><Package className="mx-auto mb-2 text-slate-700" size={24} /><p className="text-sm font-semibold text-slate-400">{bookings.length ? "No bookings match this filter" : "No transport requests yet."}</p><button onClick={openNewBooking} className="mt-3 text-xs font-bold text-blue-400">Book transport</button></td></tr>}</tbody></table></div></section>
 
-      <section id="invoices" className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg sm:p-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><FileText size={17} className="text-blue-400" /><h2 className="text-lg font-bold text-white">My invoices</h2></div><p className="mt-1 text-xs text-slate-500">View, download and manage your invoices</p></div><div className="flex gap-2 text-right"><div><p className="text-[10px] uppercase tracking-wider text-slate-600">Invoiced</p><p className="text-sm font-bold text-white">{money(totalInvoiced)}</p></div><div className="border-l border-slate-800 pl-3"><p className="text-[10px] uppercase tracking-wider text-slate-600">Paid</p><p className="text-sm font-bold text-emerald-300">{money(totalPaid)}</p></div><div className="border-l border-slate-800 pl-3"><p className="text-[10px] uppercase tracking-wider text-slate-600">Outstanding</p><p className="text-sm font-bold text-amber-300">{money(outstanding)}</p></div></div></div>{invoicesError && <div className="mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><span className="flex items-center gap-2"><AlertCircle size={15} />{invoicesError}</span><button onClick={loadData} className="font-bold underline">Retry</button></div>}<div className="mt-4 overflow-x-auto"><table className="w-full min-w-190 text-left"><thead><tr className="border-b border-slate-800 text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-3">Invoice no.</th><th className="px-3 py-3">Request ref.</th><th className="px-3 py-3">Invoice date</th><th className="px-3 py-3">Total amount</th><th className="px-3 py-3">Amount due</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-800/80">{loading ? [1, 2].map((row) => <tr key={row}><td colSpan={7} className="p-3"><Skeleton className="h-12 w-full" /></td></tr>) : invoices.map((invoice) => <tr key={invoice.id} className="hover:bg-slate-800/30"><td className="px-3 py-4 font-semibold text-slate-200">{invoice.invoice_number}</td><td className="px-3 py-4 text-xs text-blue-300">{bookings.find((booking) => booking.id === invoice.request_id)?.request_number || invoice.tracking_number || "—"}</td><td className="px-3 py-4 text-xs text-slate-500">{invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : "—"}</td><td className="px-3 py-4 text-sm font-bold text-white">{money(invoice.total_amount)}</td><td className="px-3 py-4 text-sm font-bold text-amber-300">{money(invoice.amount_due)}</td><td className="px-3 py-4"><StatusBadge status={invoice.status} /></td><td className="px-3 py-4"><div className="flex justify-end gap-2"><button onClick={() => printInvoice(invoice, false)} className="flex items-center gap-1 rounded-md border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300"><Eye size={13} />View</button><button onClick={() => printInvoice(invoice, true)} className="flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white"><Download size={13} />PDF</button>{invoice.status !== "PAID" && <button onClick={() => payInvoice(invoice)} className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-xs font-bold text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)] transition-all hover:bg-emerald-500/20">Pay Now</button>}</div></td></tr>)}{!loading && !invoices.length && <tr><td colSpan={7} className="py-14 text-center"><FileText className="mx-auto mb-2 text-slate-700" size={24} /><p className="text-sm font-semibold text-slate-400">No invoices available.</p></td></tr>}</tbody></table></div>{!outstanding && invoices.length > 0 && <p className="mt-4 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />All invoices are paid.</p>}</section>
+      <section id="invoices" className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg sm:p-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><FileText size={17} className="text-blue-400" /><h2 className="text-lg font-bold text-white">My invoices</h2></div><p className="mt-1 text-xs text-slate-500">View, download and manage your invoices</p></div><div className="flex gap-2 text-right"><div><p className="text-[10px] uppercase tracking-wider text-slate-600">Invoiced</p><p className="text-sm font-bold text-white">{money(totalInvoiced)}</p></div><div className="border-l border-slate-800 pl-3"><p className="text-[10px] uppercase tracking-wider text-slate-600">Paid</p><p className="text-sm font-bold text-emerald-300">{money(totalPaid)}</p></div><div className="border-l border-slate-800 pl-3"><p className="text-[10px] uppercase tracking-wider text-slate-600">Outstanding</p><p className="text-sm font-bold text-amber-300">{money(outstanding)}</p></div></div></div>{invoicesError && <div className="mt-4 flex items-center justify-between rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><span className="flex items-center gap-2"><AlertCircle size={15} />{invoicesError}</span><button onClick={loadData} className="font-bold underline">Retry</button></div>}<div className="mt-4 overflow-x-auto"><table className="w-full min-w-190 text-left"><thead><tr className="border-b border-slate-800 text-[10px] uppercase tracking-[0.14em] text-slate-600"><th className="px-3 py-3">Invoice no.</th><th className="px-3 py-3">Request ref.</th><th className="px-3 py-3">Invoice date</th><th className="px-3 py-3">Total amount</th><th className="px-3 py-3">Amount due</th><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-800/80">{loading ? [1, 2].map((row) => <tr key={row}><td colSpan={7} className="p-3"><Skeleton className="h-12 w-full" /></td></tr>) : invoices.map((invoice) => <tr key={invoice.id} className="hover:bg-slate-800/30"><td className="px-3 py-4 font-semibold text-slate-200">{invoice.invoice_number}</td><td className="px-3 py-4 text-xs text-blue-300">{bookings.find((booking) => booking.id === invoice.request_id)?.request_number || invoice.tracking_number || "—"}</td><td className="px-3 py-4 text-xs text-slate-500">{invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : "—"}</td><td className="px-3 py-4 text-sm font-bold text-white">{money(invoice.total_amount)}</td><td className="px-3 py-4 text-sm font-bold text-amber-300">{money(invoice.amount_due)}</td><td className="px-3 py-4"><StatusBadge status={invoice.status} /></td><td className="px-3 py-4"><div className="flex flex-wrap items-center justify-end gap-2 min-w-0"><button onClick={() => printInvoice(invoice, false)} className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition"><Eye size={13} />View</button><button onClick={() => printInvoice(invoice, true)} className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition"><Download size={13} />PDF</button>{invoice.status !== "PAID" && <button onClick={() => payInvoice(invoice)} className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 hover:bg-emerald-500/25 px-4 py-1.5 text-xs font-bold text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)] transition">Pay Now</button>}</div></td></tr>)}{!loading && !invoices.length && <tr><td colSpan={7} className="py-14 text-center"><FileText className="mx-auto mb-2 text-slate-700" size={24} /><p className="text-sm font-semibold text-slate-400">No invoices available.</p></td></tr>}</tbody></table></div>{!outstanding && invoices.length > 0 && <p className="mt-4 flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 size={14} />All invoices are paid.</p>}</section>
       <section className="quick-actions rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-lg sm:p-6"><div className="mb-4"><h2 className="text-lg font-bold text-white">Quick Actions</h2><p className="mt-1 text-xs text-slate-500">Get started with your transport needs</p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><button onClick={openNewBooking} className="group rounded-xl border border-blue-500/30 bg-blue-600/10 p-4 text-left transition hover:-translate-y-0.5 hover:bg-blue-600/20"><Plus className="text-blue-300" size={20} /><p className="mt-4 text-sm font-bold text-white">New Booking</p><p className="mt-1 text-xs text-blue-200/60">Book a transport request</p></button><a href="#bookings" className="group rounded-xl border border-slate-800 bg-slate-950/40 p-4 transition hover:-translate-y-0.5 hover:border-slate-700"><Package className="text-cyan-300" size={20} /><p className="mt-4 text-sm font-bold text-white">My Bookings</p><p className="mt-1 text-xs text-slate-500">View and track requests</p></a><a href="#invoices" className="group rounded-xl border border-slate-800 bg-slate-950/40 p-4 transition hover:-translate-y-0.5 hover:border-slate-700"><FileText className="text-amber-300" size={20} /><p className="mt-4 text-sm font-bold text-white">My Invoices</p><p className="mt-1 text-xs text-slate-500">View invoices and payments</p></a><button onClick={() => activeBookings[0] && trackBooking(activeBookings[0])} disabled={!activeBookings.length} className="group rounded-xl border border-slate-800 bg-slate-950/40 p-4 text-left transition hover:-translate-y-0.5 hover:border-slate-700 disabled:cursor-not-allowed disabled:opacity-50"><MapIcon className="text-emerald-300" size={20} /><p className="mt-4 text-sm font-bold text-white">Track Shipment</p><p className="mt-1 text-xs text-slate-500">Real-time delivery tracking</p></button></div></section><AssignedOperationsSection bookings={bookings} onTrack={trackBooking} onViewBookings={() => document.getElementById("bookings")?.scrollIntoView({ behavior: "smooth" })} />
     </main>
   </div>;

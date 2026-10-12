@@ -29,17 +29,20 @@
   :root {
     color-scheme: dark;
     --background: #020617; /* Slate 950 */
-    --surface: #0f172a;    /* Slate 900 */
-    --surface-elevated: #1e293b; /* Slate 800 */
-    --border: #334155;     /* Slate 700 */
-    --foreground: #f8fafc; /* Slate 50 */
+    --surface: #0b1329;    /* Deep navy solid */
+    --surface-elevated: #152238; /* Elevated navy */
+    --border: #223654;     /* Crisp slate border */
+    --foreground: #f8fafc; /* Crisp white */
     --muted: #94a3b8;      /* Slate 400 */
-    --primary: #6366f1;    /* Indigo 500 */
-    --primary-hover: #818cf8; /* Indigo 400 */
+    --primary: #2563eb;    /* CargoX Blue 600 */
+    --primary-hover: #1d4ed8; /* Blue 700 */
     --accent: #3b82f6;     /* Blue 500 */
-    --success: #10b981;    /* Emerald 500 */
-    --warning: #f59e0b;    /* Amber 500 */
-    --danger: #ef4444;     /* Red 500 */
+    --success: #059669;    /* Emerald 600 */
+    --success-hover: #047857;
+    --warning: #d97706;    /* Amber 600 */
+    --warning-hover: #b45309;
+    --danger: #dc2626;     /* Red 600 */
+    --danger-hover: #b91c1c;
   }
 
   select, input, textarea {
@@ -47,12 +50,12 @@
   }
 
   select {
-    background-color: #0f172a;
+    background-color: #0b1329;
     color: #f8fafc;
   }
 
   select option {
-    background-color: #0f172a;
+    background-color: #0b1329;
     color: #f8fafc;
   }
 
@@ -101,7 +104,7 @@
 @layer components {
   /* Selective Glassmorphism */
   .glass-panel {
-    @apply bg-surface/80 backdrop-blur-md border border-border-theme shadow-xl rounded-2xl;
+    @apply bg-surface/90 backdrop-blur-md border border-border-theme shadow-xl rounded-2xl;
   }
   
   /* Standard Base Card (Solid, not glass) */
@@ -112,21 +115,38 @@
     @apply bg-surface-elevated border border-border-theme rounded-xl shadow-md p-6;
   }
 
-  /* Buttons */
+  /* High-Contrast Action Buttons */
   .btn-primary {
-    @apply bg-primary text-white hover:bg-primary-hover px-4 py-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0;
+    @apply bg-blue-600 text-white hover:bg-blue-500 active:bg-blue-700 px-4 py-2.5 rounded-xl font-bold transition-all duration-150 shadow-md shadow-blue-900/30 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-950 inline-flex items-center justify-center gap-2;
   }
   
   .btn-secondary {
-    @apply bg-transparent text-foreground border border-border-theme hover:bg-surface-elevated px-4 py-2 rounded-lg font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0;
+    @apply bg-slate-800 text-slate-100 border border-slate-600 hover:bg-slate-700 hover:border-slate-500 active:bg-slate-900 px-4 py-2.5 rounded-xl font-bold transition-all duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-slate-950 inline-flex items-center justify-center gap-2;
   }
 
   .btn-danger {
-    @apply bg-danger text-white hover:bg-red-400 px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+    @apply bg-red-600 text-white hover:bg-red-500 active:bg-red-700 px-4 py-2.5 rounded-xl font-bold transition-all duration-150 shadow-md shadow-red-900/30 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-950 inline-flex items-center justify-center gap-2;
   }
   
   .btn-success {
-    @apply bg-success text-white hover:bg-emerald-400 px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+    @apply bg-emerald-600 text-white hover:bg-emerald-500 active:bg-emerald-700 px-4 py-2.5 rounded-xl font-bold transition-all duration-150 shadow-md shadow-emerald-900/30 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-950 inline-flex items-center justify-center gap-2;
+  }
+
+  /* High-contrast status badges */
+  .badge-success {
+    @apply inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-bold text-emerald-300 tracking-wide;
+  }
+
+  .badge-warning {
+    @apply inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-300 tracking-wide;
+  }
+
+  .badge-danger {
+    @apply inline-flex items-center rounded-full border border-red-400/30 bg-red-500/15 px-2.5 py-1 text-xs font-bold text-red-300 tracking-wide;
+  }
+
+  .badge-info {
+    @apply inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/15 px-2.5 py-1 text-xs font-bold text-blue-300 tracking-wide;
   }
 
   /* Inputs */
@@ -135,10 +155,79 @@
   }
 
   .fleet-input {
-    @apply w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
+    @apply w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40;
   }
 
   .settings-input {
-    @apply w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/30;
+    @apply w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40;
+  }
+}
+
+/* Robust Mobile Sidebar Drawer for all WebViews (Placed outside @layer to guarantee precedence) */
+.admin-sidebar-drawer {
+  position: fixed !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 9999 !important;
+  width: min(18rem, 82vw) !important;
+  background-color: #0b1120 !important; /* solid deep slate to prevent see-through */
+  border-right: 1px solid #1e293b !important;
+  color: #ffffff !important;
+  min-height: 100vh !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: 10px 0 35px -5px rgba(0, 0, 0, 0.75) !important;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), -webkit-transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  -webkit-transform: translateX(-100%) !important;
+  transform: translateX(-100%) !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  overflow: hidden !important;
+}
+
+.admin-sidebar-drawer.open {
+  -webkit-transform: translateX(0) !important;
+  transform: translateX(0) !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+}
+
+@media (min-width: 768px) {
+  .admin-sidebar-drawer {
+    position: static !important;
+    width: 16rem !important; /* 256px */
+    -webkit-transform: none !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    box-shadow: none !important;
+  }
+}
+
+.admin-sidebar-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  background-color: rgba(2, 6, 23, 0.8) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  z-index: 9990 !important;
+  cursor: pointer !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transition: opacity 0.3s ease, visibility 0.3s ease !important;
+}
+
+.admin-sidebar-backdrop.open {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+}
+
+@media (min-width: 768px) {
+  .admin-sidebar-backdrop {
+    display: none !important;
   }
 }

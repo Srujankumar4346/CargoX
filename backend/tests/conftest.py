@@ -4,8 +4,27 @@ from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.db.database import init_db, client
 
-# Force the database URL to a test database BEFORE anything connects
-settings.DATABASE_URL = "mongodb://localhost:27017/cargox_test_db"
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+
+# Resolve target test database URL
+_db_base_url = os.getenv("DATABASE_URL", settings.DATABASE_URL)
+if "mongodb+srv://" in _db_base_url or "mongodb://" in _db_base_url:
+    # Use cargox_test_db database
+    if "?" in _db_base_url:
+        _prefix, _query = _db_base_url.split("?", 1)
+        _base = _prefix.rstrip("/")
+        if not _base.endswith("/cargox_test_db"):
+            _target_db_url = f"{_base}/cargox_test_db?{_query}"
+        else:
+            _target_db_url = _db_base_url
+    else:
+        _base = _db_base_url.rstrip("/")
+        _target_db_url = f"{_base}/cargox_test_db"
+else:
+    _target_db_url = "mongodb://localhost:27017/cargox_test_db"
+
+settings.DATABASE_URL = _target_db_url
 
 @pytest.fixture(scope="session")
 def anyio_backend():
@@ -21,14 +40,15 @@ async def setup_db():
     from beanie import init_beanie
     import app.db.database as db_module
     
-    # Initialize our test database explicitly, bypassing the hardcoded "cargox" in production init_db
-    test_client = AsyncIOMotorClient("mongodb://localhost:27017/cargox_test_db")
-    db_module.client = test_client # Mock the global client just in case
+    test_client = AsyncIOMotorClient(settings.DATABASE_URL)
+    db_module.client = test_client # Mock the global client
     
-    # Drop to ensure clean state
-    await test_client.drop_database("cargox_test_db")
-    
+    # Clean test collections
     database = test_client["cargox_test_db"]
+    try:
+        await test_client.drop_database("cargox_test_db")
+    except Exception:
+        pass
     
     from app.models.company import CustomerCompany, RecipientCompany
     from app.models.user import User

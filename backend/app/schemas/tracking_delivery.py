@@ -58,6 +58,22 @@ class PODRejection(BaseModel):
             raise ValueError("A clear rejection reason is required.")
         return str(value).strip()
 
+class CustomerPODRead(BaseModel):
+    id: uuid.UUID
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    delivery_confirmed: bool = True
+    status: str = "SUBMITTED"  # SUBMITTED, VERIFIED, REJECTED
+    notes: Optional[str] = None
+    file_url: Optional[str] = None
+    pod_signature_url: Optional[str] = None
+    pod_photo_url: Optional[str] = None
+    submitted_at: datetime
+    verified_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class LocationBreadcrumbRead(BaseModel):
     lat: float
     lng: float
@@ -91,5 +107,6 @@ class CustomerTrackingRead(BaseModel):
     vehicle_type: Optional[str] = None
     vehicle_capacity_tons: Optional[float] = None
     breadcrumbs: List[LocationBreadcrumbRead] = []
+    pod: Optional[CustomerPODRead] = None
 
     model_config = ConfigDict(from_attributes=True)

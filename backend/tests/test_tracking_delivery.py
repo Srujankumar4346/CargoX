@@ -427,3 +427,92 @@ async def test_unauthorized_driver_cannot_submit_pod(async_client: AsyncClient, 
     assert bad_pod.status_code == 403
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_customer_pod_visibility_and_cross_company_isolation(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    """
+    Verifies that:
+    1. Customer can view their own submitted and verified POD via tracking API.
+    2. POD details contain recipient name, delivery confirmation, notes, photo/signature, status, and timestamps.
+    3. Another customer from a different company is denied access (HTTP 404 tenant isolation).
+    """
+    ctx = await setup_full_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+    req_id = ctx["request_id"]
+
+    # Move to ARRIVED
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-pickup")
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-transit")
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/arrive")
+
+    # Before POD submission, customer tracking returns pod = None
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+    pre_pod_resp = await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")
+    assert pre_pod_resp.status_code == 200
+    assert pre_pod_resp.json()["pod"] is None
+
+    # Driver submits POD
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    pod_payload = {
+        "receiver_name": "Suresh Raina",
+        "receiver_phone": "+91 99887 76655",
+        "delivery_confirmed": True,
+        "pod_photo_url": "https://storage.cargox.com/photos/cargo_unloaded.jpg",
+        "notes": "Delivered and verified by warehouse supervisor."
+    }
+    pod_sub = await async_client.post(f"/api/v1/driver/trips/{trip_id}/pod", json=pod_payload)
+    assert pod_sub.status_code == 201
+
+    # Customer fetches tracking and sees POD details
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+    cust_resp = await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")
+    assert cust_resp.status_code == 200
+    cust_data = cust_resp.json()
+    assert cust_data["pod"] is not None
+    assert cust_data["pod"]["receiver_name"] == "Suresh Raina"
+    assert cust_data["pod"]["receiver_phone"] == "+91 99887 76655"
+    assert cust_data["pod"]["delivery_confirmed"] is True
+    assert cust_data["pod"]["status"] == "SUBMITTED"
+    assert cust_data["pod"]["notes"] == "Delivered and verified by warehouse supervisor."
+    assert cust_data["pod"]["file_url"] == "https://storage.cargox.com/photos/cargo_unloaded.jpg"
+    assert cust_data["pod"]["submitted_at"] is not None
+    assert cust_data["pod"]["verified_at"] is None
+
+    # Admin verifies the POD
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+    ver_resp = await async_client.post(f"/api/v1/admin/trips/{trip_id}/verify-pod")
+    assert ver_resp.status_code == 200
+
+    # Customer fetches tracking again and sees updated VERIFIED status and verified_at
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+    cust_ver_resp = await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")
+    assert cust_ver_resp.status_code == 200
+    cust_ver_data = cust_ver_resp.json()
+    assert cust_ver_data["pod"]["status"] == "VERIFIED"
+    assert cust_ver_data["pod"]["verified_at"] is not None
+
+    # Cross-tenant customer from a different company attempts to access
+    company2 = CustomerCompany(
+        id=uuid.uuid4(),
+        name="Competitor Logistics Co",
+        billing_address="999 Other St, Delhi",
+        status=CompanyStatus.ACTIVE
+    )
+    await company2.insert()
+    customer2_user = User(
+        id=uuid.uuid4(),
+        clerk_user_id="user_unauth_competitor",
+        email="competitor@other.com",
+        role=UserRole.CUSTOMER_USER,
+        customer_company_id=company2.id,
+        is_active=True
+    )
+    await customer2_user.insert()
+
+    app.dependency_overrides[get_current_customer_user] = lambda: customer2_user
+    idor_resp = await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")
+    assert idor_resp.status_code == 404  # Tenant isolation enforced
+
+    app.dependency_overrides.clear()

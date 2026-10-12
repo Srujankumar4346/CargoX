@@ -344,6 +344,7 @@ class TrackingDeliveryService:
         vehicle_registration = None
         vehicle_type = None
         vehicle_capacity_tons = None
+        pod_data = None
         if trip:
             assignment = await VehicleAssignment.find_one(
                 VehicleAssignment.trip_id == trip.id,
@@ -357,6 +358,24 @@ class TrackingDeliveryService:
                 vehicle_registration = vehicle.registration_number if vehicle else None
                 vehicle_type = vehicle.type.value if vehicle and hasattr(vehicle.type, "value") else (str(vehicle.type) if vehicle else None)
                 vehicle_capacity_tons = vehicle.capacity_tons if vehicle else None
+
+            # Fetch customer-scoped Proof of Delivery record
+            pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
+            if pod:
+                from app.schemas.tracking_delivery import CustomerPODRead
+                pod_data = CustomerPODRead(
+                    id=pod.id,
+                    receiver_name=pod.receiver_name,
+                    receiver_phone=pod.receiver_phone,
+                    delivery_confirmed=getattr(pod, "delivery_confirmed", True),
+                    status=getattr(pod, "status", "SUBMITTED"),
+                    notes=pod.notes,
+                    file_url=pod.file_url,
+                    pod_signature_url=pod.file_url if "sig" in pod.file_url else None,
+                    pod_photo_url=pod.file_url if "sig" not in pod.file_url else None,
+                    submitted_at=pod.submitted_at,
+                    verified_at=getattr(pod, "verified_at", None),
+                )
 
         return CustomerTrackingRead(
             request_id=request.id,
@@ -383,5 +402,6 @@ class TrackingDeliveryService:
             vehicle_registration=vehicle_registration,
             vehicle_type=vehicle_type,
             vehicle_capacity_tons=vehicle_capacity_tons,
-            breadcrumbs=breadcrumbs_list
+            breadcrumbs=breadcrumbs_list,
+            pod=pod_data,
         )

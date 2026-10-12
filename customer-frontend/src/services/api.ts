@@ -82,6 +82,15 @@ export const api = {
     return res.json();
   },
   // Bookings (now Delivery Requests)
+  calculateRoute: async (data: { pickup_lat: number; pickup_lng: number; destination_lat: number; destination_lng: number }) => {
+    const res = await authFetch(`${API_URL}/customer/requests/calculate-route`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
   createBooking: async (data: any) => {
     const res = await authFetch(`${API_URL}/customer/requests`, {
       method: "POST",
@@ -310,8 +319,20 @@ export const api = {
     if (!res.ok) throw new Error("Failed to fetch active pricing");
     return res.json();
   },
-  getPricingEstimate: async (distance_km: number | string) => {
-    const res = await authFetch(`${API_URL}/customer/quotations/pricing/estimate?distance_km=${encodeURIComponent(distance_km)}`);
+  getPricingEstimate: async (
+    distance_km: number | string,
+    options?: {
+      weight_tons?: number | string;
+      vehicle_capacity_tons?: number | string;
+      special_handling?: string;
+    }
+  ) => {
+    const params = new URLSearchParams({ distance_km: String(distance_km) });
+    if (options?.weight_tons) params.append("weight_tons", String(options.weight_tons));
+    if (options?.vehicle_capacity_tons) params.append("vehicle_capacity_tons", String(options.vehicle_capacity_tons));
+    if (options?.special_handling) params.append("special_handling", options.special_handling);
+
+    const res = await authFetch(`${API_URL}/customer/quotations/pricing/estimate?${params.toString()}`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

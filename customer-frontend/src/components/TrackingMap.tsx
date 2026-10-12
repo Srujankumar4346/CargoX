@@ -86,20 +86,104 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
          )}
       </div>
 
-         {(trip.driver_name || trip.vehicle_registration) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] p-5">
-               <div>
-                  <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Assigned Driver</span>
-                  <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.driver_name || "Driver contact unavailable"}</p>
-                  {trip.driver_phone && <a href={`tel:${trip.driver_phone}`} className="text-sm text-blue-500">{trip.driver_phone}</a>}
-               </div>
-               <div>
-                  <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Assigned Vehicle</span>
-                  <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.vehicle_registration || "Vehicle unavailable"}</p>
-                  <p className="text-sm text-[var(--text-secondary)]">{trip.vehicle_type || ""}{trip.vehicle_capacity_tons ? ` · ${trip.vehicle_capacity_tons} tons` : ""}</p>
-               </div>
+      {(trip.driver_name || trip.vehicle_registration) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] p-5">
+           <div>
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Assigned Driver</span>
+              <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.driver_name || "Driver contact unavailable"}</p>
+              {trip.driver_phone && <a href={`tel:${trip.driver_phone}`} className="text-sm text-blue-500">{trip.driver_phone}</a>}
+           </div>
+           <div>
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">Assigned Vehicle</span>
+              <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.vehicle_registration || "Vehicle unavailable"}</p>
+              <p className="text-sm text-[var(--text-secondary)]">{trip.vehicle_type || ""}{trip.vehicle_capacity_tons ? ` · ${trip.vehicle_capacity_tons} tons` : ""}</p>
+           </div>
+        </div>
+      )}
+
+      {/* Customer-authorized Proof of Delivery (POD) section */}
+      {trip.pod && (
+        <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] p-6 shadow-sm">
+          <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+            <div className="flex items-center gap-2">
+              <PackageCheck size={20} className="text-emerald-500" />
+              <div>
+                <h4 className="text-base font-bold text-[var(--text-primary)]">Proof of Delivery (POD)</h4>
+                <p className="text-xs text-[var(--text-secondary)]">Consignment handover verification</p>
+              </div>
             </div>
-         )}
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold border ${
+              trip.pod.status === "VERIFIED" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+              trip.pod.status === "REJECTED" ? "bg-red-500/10 text-red-400 border-red-500/30" :
+              "bg-purple-500/10 text-purple-400 border-purple-500/30"
+            }`}>
+              {trip.pod.status === "VERIFIED" ? "Verified Delivery" :
+               trip.pod.status === "REJECTED" ? "Verification Resubmission" :
+               "Pending Verification"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)] block">Recipient</span>
+              <p className="mt-1 font-bold text-[var(--text-primary)]">{trip.pod.receiver_name || "Recipient"}</p>
+              {trip.pod.receiver_phone && <p className="text-xs text-[var(--text-secondary)] mt-0.5">{trip.pod.receiver_phone}</p>}
+            </div>
+
+            <div className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)] block">Delivery Timestamp</span>
+              <p className="mt-1 font-semibold text-[var(--text-primary)]">
+                {trip.pod.submitted_at ? formatDate(trip.pod.submitted_at) : "Recent"}
+              </p>
+              <p className="text-xs text-emerald-500 mt-0.5 flex items-center gap-1">
+                <CheckCircle2 size={12} /> Handover Confirmed
+              </p>
+            </div>
+          </div>
+
+          {trip.pod.notes && (
+            <div className="mt-3 p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)] text-sm">
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)] block">Delivery Notes</span>
+              <p className="mt-1 text-[var(--text-primary)] italic">{trip.pod.notes}</p>
+            </div>
+          )}
+
+          {/* Customer Attachment / Signature Preview */}
+          {(trip.pod.file_url || trip.pod.pod_photo_url || trip.pod.pod_signature_url) && (
+            <div className="mt-4 p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]">
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)] block mb-2">POD Document & Signature</span>
+              <div className="flex items-center gap-4">
+                <a
+                  href={trip.pod.file_url || trip.pod.pod_photo_url || trip.pod.pod_signature_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative h-20 w-28 overflow-hidden rounded-lg border border-[var(--border-color)] bg-slate-900 shrink-0"
+                >
+                  <img
+                    src={trip.pod.file_url || trip.pod.pod_photo_url || trip.pod.pod_signature_url}
+                    alt="Proof of Delivery"
+                    className="h-full w-full object-cover group-hover:opacity-80 transition"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-bold text-white opacity-0 group-hover:opacity-100 transition">
+                    View
+                  </span>
+                </a>
+                <div className="text-xs space-y-1">
+                  <a
+                    href={trip.pod.file_url || trip.pod.pod_photo_url || trip.pod.pod_signature_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-blue-500 hover:underline inline-flex items-center gap-1"
+                  >
+                    Open Document in New Tab
+                  </a>
+                  <p className="text-[var(--text-secondary)]">Legally binding delivery receipt captured at destination</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       
       <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] shadow-sm p-8">
          <h3 className="text-lg font-bold text-[var(--text-primary)] mb-8 border-b pb-4">Tracking History</h3>

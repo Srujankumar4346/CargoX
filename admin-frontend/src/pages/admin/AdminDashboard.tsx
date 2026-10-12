@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, Edit2, Trash2, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings, ExternalLink, Globe } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings, ExternalLink, Globe } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -104,34 +104,6 @@ function ConfirmModal({ open, title, message, confirmLabel, confirmClass, onConf
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Validation / formatting helpers ─────────────────────────────────────────
-/** Title-case every word: "john doe" → "John Doe" */
-const toTitleCase = (val: string) =>
-  val.replace(/\b\w/g, (c) => c.toUpperCase());
-
-/** Format Aadhaar: digits only → XXXX XXXX XXXX */
-const formatAadhaar = (val: string) => {
-  const digits = val.replace(/\D/g, "").slice(0, 12);
-  return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
-};
-
-/** Indian vehicle registration: XX 00 XX 0000 (uppercase, no spaces stored) */
-// Accepts: XX00XX0000 or XX0XX0000 — state(2) + district(2) + series(1-2) + num(4)
-const VEHICLE_REG_REGEX = /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/;
-
-/** Indian driving licence hint: SSYYNNNNNNNNN (state 2 letters + RTO 2 digits + year 4 + 7 digits) */
-// Common formats: TN0120210012345 or DL-0120110012345 — validated at submit
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Mask Aadhaar (show only last 4 digits) ───────────────────────────────────
-const maskAadhaar = (val: string) => {
-  const digits = (val || "").replace(/\D/g, "");
-  if (digits.length < 4) return "XXXX XXXX " + digits.padStart(4, 'X');
-  const last4 = digits.slice(-4);
-  return `XXXX XXXX ${last4}`;
-};
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function AdminDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
@@ -150,9 +122,6 @@ export default function AdminDashboard() {
   const [trips, setTrips] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   
-  const [editingDriver, setEditingDriver] = useState<any>(null);
-  const [editingVehicle, setEditingVehicle] = useState<any>(null);
-  
   const [aiQuery, setAiQuery] = useState("");
   const [aiResponse, setAiResponse] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -162,13 +131,6 @@ export default function AdminDashboard() {
   const [activePricing, setActivePricing] = useState<any>(null);
   const [isUpdatingPricing, setIsUpdatingPricing] = useState(false);
 
-  // Form states for strict validation
-  const [newDriverAadhaar, setNewDriverAadhaar] = useState("");
-  const [newDriverPhone, setNewDriverPhone] = useState("");
-  const [newDriverAge, setNewDriverAge] = useState("");
-  const [newDriverName, setNewDriverName] = useState("");
-  const [newDriverLicense, setNewDriverLicense] = useState("");
-  const [newVehicleReg, setNewVehicleReg] = useState("");
   const [grantDriverEmail, setGrantDriverEmail] = useState("");
   const [grantingDriver, setGrantingDriver] = useState(false);
 
@@ -207,6 +169,32 @@ export default function AdminDashboard() {
       setTokenGetter(getToken);
     }
   }, [getToken]);
+
+  // Handle body scroll locking, escape key, and desktop resize cleanup for mobile drawer
+  useEffect(() => {
+    if (isMobileSidebarOpen) {
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setIsMobileSidebarOpen(false);
+        }
+      };
+      const handleResize = () => {
+        if (window.innerWidth >= 768) {
+          setIsMobileSidebarOpen(false);
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("resize", handleResize);
+      return () => {
+        document.body.style.overflow = "";
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("resize", handleResize);
+      };
+    } else {
+      document.body.style.overflow = "";
+    }
+  }, [isMobileSidebarOpen]);
 
   const loadData = async () => {
     setIsRefreshing(true);
@@ -523,22 +511,18 @@ export default function AdminDashboard() {
       </div>
 
       {/* Mobile Sidebar Backdrop */}
-      {isMobileSidebarOpen && (
-        <div 
-          onClick={() => setIsMobileSidebarOpen(false)} 
-          onTouchStart={() => setIsMobileSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer"
-          aria-hidden="true"
-        />
-      )}
+      <div 
+        onClick={() => setIsMobileSidebarOpen(false)} 
+        onTouchStart={() => setIsMobileSidebarOpen(false)}
+        className={`admin-sidebar-backdrop ${isMobileSidebarOpen ? 'open' : ''}`}
+        aria-hidden="true"
+      />
 
       {/* Sidebar (Desktop + Mobile Drawer) */}
-      <div className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-72 md:w-64 bg-slate-900 border-r border-slate-800 text-white min-h-screen flex flex-col shadow-2xl
-        transition-transform duration-300 ease-in-out
-        ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      <aside 
+        className={`admin-sidebar-drawer bg-slate-900 ${isMobileSidebarOpen ? 'open' : ''}`}
+        aria-label="Admin Navigation"
+      >
         <div className="p-5 pb-2">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-2xl font-bold tracking-wider">
@@ -670,7 +654,7 @@ export default function AdminDashboard() {
             <LogOut size={18} />
           </Link>
         </div>
-      </div>
+      </aside>
 
       {/* Main Content */}
       <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto w-full min-w-0">
@@ -787,427 +771,7 @@ export default function AdminDashboard() {
         {activeTab === 'vehicles' && (
           <FleetManagementPanel vehicles={vehicles} drivers={drivers} trips={trips} isRefreshing={isRefreshing} loadData={loadData} showConfirm={showConfirm} />
         )}
-        {activeTab === 'vehicles' && false && (
-          <div>
-             <h1 className="text-3xl font-bold text-foreground mb-6">Fleet Status</h1>
 
-             <h2 className="text-2xl font-bold text-foreground mb-4">Driver Profiles</h2>
-             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
-                <div className="overflow-x-auto">
-                   <table className="min-w-full divide-y divide-gray-200">
-                   <thead className="bg-surface-elevated">
-                      <tr>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Driver Name</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Contact & Email</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">License / Aadhaar</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
-                         <th className="px-6 py-3 text-right text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
-                      </tr>
-                   </thead>
-                   <tbody className="bg-surface divide-y divide-gray-200">
-                      {drivers.map((d: any, i: number) => (
-                        editingDriver?.id === d.id ? (
-                           <tr key={d.id}>
-                               <td colSpan={5} className="px-6 py-4">
-                                   <form onSubmit={async (e) => {
-                                       e.preventDefault();
-                                       const formData = new FormData(e.currentTarget);
-                                       try {
-                                           await api.updateDriver(d.id, {
-                                               email: formData.get('email'),
-                                               aadhaar_number: formData.get('aadhaar_number'),
-                                               age: parseInt(formData.get('age') as string, 10),
-                                               name: formData.get('name'),
-                                               phone: formData.get('phone'),
-                                               license_number: formData.get('license_number'),
-                                               status: formData.get('status')
-                                           });
-                                           setEditingDriver(null);
-                                           loadData();
-                                       } catch (err: any) { alert('Failed to update driver: ' + err.message); }
-                                   }} className="flex items-center gap-2">
-                                       <input name="name" defaultValue={d.name} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <input type="email" name="email" defaultValue={d.email} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <input name="phone" defaultValue={d.phone} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <input name="aadhaar_number" defaultValue={d.aadhaar_number} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <input type="number" name="age" defaultValue={d.age} required min="18" max="75" className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <input name="license_number" defaultValue={d.license_number} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <select name="status" defaultValue={d.status} className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2">
-                                           <option value="AVAILABLE">AVAILABLE</option>
-                                           <option value="ON_TRIP">ON_TRIP</option>
-                                           <option value="INACTIVE">INACTIVE</option>
-                                       </select>
-                                       <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium">Save</button>
-                                       <button type="button" onClick={() => setEditingDriver(null)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-medium">Cancel</button>
-                                   </form>
-                               </td>
-                           </tr>
-                        ) : (
-                        <tr key={d.id || i}>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{d.name}<div className="text-xs text-muted font-normal">Age: {d.age || 'N/A'}</div></td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.phone}<br/>{d.email}</td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{d.license_number}<br/>{maskAadhaar(d.aadhaar_number)}</td>
-                           <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${d.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{d.status}</span></td>
-                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <div className="flex items-center justify-end gap-2">
-                                    <button 
-                                        onClick={() => setEditingDriver(d)} 
-                                        title="Edit Driver"
-                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition"
-                                    >
-                                        <Edit2 size={12} /> Edit
-                                    </button>
-                                     <button 
-                                         onClick={() => showConfirm({
-                                           title: "Delete Driver",
-                                           message: `Are you sure you want to delete driver "${d.name}"? This action cannot be undone.`,
-                                           confirmLabel: "Delete Driver",
-                                           onConfirm: async () => {
-                                             closeConfirm();
-                                             try {
-                                               await api.deleteDriver(d.id);
-                                               loadData();
-                                             } catch (err: any) { alert('Failed to delete driver: ' + err.message); }
-                                           }
-                                         })}
-                                        title="Delete Driver"
-                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition"
-                                    >
-                                        <Trash2 size={12} /> Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        )
-                      ))}
-                      {drivers.length === 0 && (
-                          <tr>
-                             <td colSpan={5} className="px-6 py-4 text-center text-muted">No drivers found.</td>
-                          </tr>
-                      )}
-                   </tbody>
-                </table>
-                </div>
-             </div>
-
-             <div className="mt-4 bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-12">
-                <h2 className="text-xl font-bold text-foreground mb-4">Add New Driver</h2>
-                <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    const formData = new FormData(e.currentTarget);
-                    const phone = (formData.get('phone') as string).replace(/\D/g, '');
-                    const aadhaar = (formData.get('aadhaar_number') as string).replace(/\s/g, '');
-                    if (phone.length !== 10) { alert('Mobile number must be exactly 10 digits.'); return; }
-                    if (aadhaar.length !== 12) { alert('Aadhaar must be exactly 12 digits (XXXX XXXX XXXX).'); return; }
-                    const age = parseInt(formData.get('age') as string, 10);
-                    if (isNaN(age) || age < 18 || age > 75) { alert('Age must be between 18 and 75.'); return; }
-                    try {
-                        await api.createDriver({
-                            email: formData.get('email'),
-                            aadhaar_number: aadhaar,
-                            age,
-                            name: newDriverName,
-                            phone: newDriverPhone,
-                            license_number: newDriverLicense,
-                            username: formData.get('username') || undefined,
-                            password: formData.get('password') || undefined
-                        });
-                        alert('Driver added successfully');
-                        loadData();
-                        (e.target as HTMLFormElement).reset();
-                        setNewDriverAadhaar("");
-                        setNewDriverPhone("");
-                        setNewDriverAge("");
-                        setNewDriverName("");
-                        setNewDriverLicense("");
-                    } catch (err: any) {
-                        alert('Failed to add driver: ' + err.message);
-                    }
-                }} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Email / Gmail</label>
-                        <input
-                          type="email" name="email" required
-                          placeholder="driver@gmail.com"
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Aadhaar Number <span className="text-xs text-muted">(XXXX XXXX XXXX)</span>
-                        </label>
-                        <input
-                          name="aadhaar_number" required
-                          placeholder="1234 5678 9012"
-                          maxLength={14}
-                          inputMode="numeric"
-                          pattern="\d{4} \d{4} \d{4}"
-                          title="Enter 12-digit Aadhaar in format: XXXX XXXX XXXX"
-                          value={newDriverAadhaar}
-                          onChange={(e) => { setNewDriverAadhaar(formatAadhaar(e.target.value)); }}
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Age <span className="text-xs text-muted">(18–75)</span>
-                        </label>
-                        <input
-                          type="number" name="age" required
-                          placeholder="30" min="18" max="75"
-                          inputMode="numeric"
-                          value={newDriverAge}
-                          onChange={(e) => {
-                            let val = e.target.value;
-                            if (val.length > 2) val = val.slice(0, 2);
-                            setNewDriverAge(val);
-                          }}
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Full Name <span className="text-xs text-muted">(Title Case)</span>
-                        </label>
-                        <input
-                          name="name" required
-                          placeholder="John Doe"
-                          pattern="[A-Za-z ]+"
-                          title="Name should contain letters only (each word starts with capital)"
-                          value={newDriverName}
-                          onChange={(e) => { setNewDriverName(toTitleCase(e.target.value.replace(/[^a-zA-Z ]/g, ""))); }}
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Mobile Number <span className="text-xs text-muted">(10 digits)</span>
-                        </label>
-                        <input
-                          name="phone" required
-                          placeholder="9876543210"
-                          inputMode="numeric"
-                          maxLength={10}
-                          pattern="[0-9]{10}"
-                          title="Enter exactly 10-digit mobile number without country code"
-                          value={newDriverPhone}
-                          onChange={(e) => { setNewDriverPhone(e.target.value.replace(/\D/g, "").slice(0, 10)); }}
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Licence Number <span className="text-xs text-muted">(Indian DL format)</span>
-                        </label>
-                        <input
-                          name="license_number" required
-                          placeholder="TN0120210012345"
-                          maxLength={20}
-                          title="Indian driving licence format e.g. TN0120210012345"
-                          value={newDriverLicense}
-                          onChange={(e) => {
-                            setNewDriverLicense(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""));
-                          }}
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Login Username
-                        </label>
-                        <input
-                          name="username"
-                          placeholder="Optional"
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Login Password
-                        </label>
-                        <input
-                          name="password" type="text"
-                          placeholder="Optional"
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div className="md:col-span-3 lg:col-span-6 mt-4">
-                        <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
-                            Add Driver
-                        </button>
-                    </div>
-                </form>
-             </div>
-
-             <h2 className="text-2xl font-bold text-foreground mb-4">Vehicles</h2>
-             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
-                <div className="overflow-x-auto">
-                   <table className="min-w-full divide-y divide-gray-200">
-                   <thead className="bg-surface-elevated">
-                      <tr>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Vehicle</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Capacity</th>
-                         <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">Status</th>
-                         <th className="px-6 py-3 text-right text-xs font-medium text-muted uppercase tracking-wider">Actions</th>
-                      </tr>
-                   </thead>
-                   <tbody className="bg-surface divide-y divide-gray-200">
-                      {vehicles.map((v: any, i: number) => (
-                        editingVehicle?.id === v.id ? (
-                            <tr key={v.id}>
-                               <td colSpan={4} className="px-6 py-4">
-                                   <form onSubmit={async (e) => {
-                                       e.preventDefault();
-                                       const formData = new FormData(e.currentTarget);
-                                       try {
-                                           await api.updateVehicle(v.id, {
-                                               registration_number: formData.get('registration_number'),
-                                               type: formData.get('type'),
-                                               capacity_tons: formData.get('capacity_tons'),
-                                               status: formData.get('status')
-                                           });
-                                           setEditingVehicle(null);
-                                           loadData();
-                                       } catch (err: any) { alert('Failed to update vehicle: ' + err.message); }
-                                   }} className="flex items-center gap-2">
-                                       <input name="registration_number" defaultValue={v.registration_number || `TG${String(10 + (i%90)).padStart(2, '0')}HS${String(1000 + i).padStart(4, '0')}`} required className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <select name="type" defaultValue={v.type || "TRUCK"} className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2">
-                                           <option value="OPEN">OPEN (Open Truck / Flatbed)</option>
-                                           <option value="CONTAINER">CONTAINER (Closed Body)</option>
-                                           <option value="TRAILER">TRAILER (Heavy Trailer)</option>
-                                       </select>
-                                       <input name="capacity_tons" type="number" step="0.1" defaultValue={v.capacity_tons || v.capacity || 10} required className="w-24 rounded border-border-theme bg-surface-elevated text-foreground p-2" />
-                                       <select name="status" defaultValue={v.status} className="w-full rounded border-border-theme bg-surface-elevated text-foreground p-2">
-                                           <option value="AVAILABLE">AVAILABLE</option>
-                                           <option value="MAINTENANCE">MAINTENANCE</option>
-                                           <option value="ON_TRIP">ON_TRIP</option>
-                                       </select>
-                                       <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium">Save</button>
-                                       <button type="button" onClick={() => setEditingVehicle(null)} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-medium">Cancel</button>
-                                   </form>
-                               </td>
-                           </tr>
-                        ) : (
-                        <tr key={v.id || i}>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                              {v.type || "TRUCK"} - {v.registration_number || `TG${String(10 + (i%90)).padStart(2, '0')}HS${String(1000 + i).padStart(4, '0')}`} <br/>
-                              <span className="text-xs text-muted">Driver: {drivers.find((d: any) => d.id === v.driver_id)?.name || drivers.find((d: any) => d.id === v.driver_id)?.full_name || 'Unassigned'}</span>
-                           </td>
-                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{v.capacity_tons || v.capacity || 10} Ton</td>
-                           <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 rounded-full text-xs font-bold ${v.status === 'AVAILABLE' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{v.status}</span></td>
-                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <div className="flex items-center justify-end gap-2">
-                                    <button 
-                                        onClick={() => setEditingVehicle(v)} 
-                                        title="Edit Vehicle"
-                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 hover:text-blue-300 transition"
-                                    >
-                                        <Edit2 size={12} /> Edit
-                                    </button>
-                                     {v.is_deletable && (
-                                     <button 
-                                         onClick={() => showConfirm({
-                                           title: "Delete Vehicle",
-                                           message: `Delete vehicle "${v.registration_number || v.vehicle_number}"? This vehicle has no trip history and will be permanently removed.`,
-                                           confirmLabel: "Delete Vehicle",
-                                           onConfirm: async () => {
-                                             closeConfirm();
-                                             try {
-                                               await api.deleteVehicle(v.id);
-                                               loadData();
-                                             } catch (err: any) { alert('Failed to delete vehicle: ' + err.message); }
-                                           }
-                                         })}
-                                        title="Delete Vehicle"
-                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 hover:text-red-300 transition"
-                                    >
-                                        <Trash2 size={12} /> Delete
-                                    </button>
-                                     )}
-                                </div>
-                            </td>
-                        </tr>
-                        )
-                      ))}
-                      {vehicles.length === 0 && (
-                          <tr>
-                             <td colSpan={4} className="px-6 py-4 text-center text-muted">No vehicles found.</td>
-                          </tr>
-                      )}
-                   </tbody>
-                </table>
-                </div>
-             </div>
-             
-             <div className="mt-8 bg-surface rounded-lg shadow-sm border border-border-theme p-6">
-                <h2 className="text-xl font-bold text-foreground mb-4">Add New Vehicle</h2>
-                <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    const formData = new FormData(e.currentTarget);
-                    const regRaw = (formData.get('registration_number') as string).toUpperCase().replace(/[^A-Z0-9]/g, '');
-                    if (!VEHICLE_REG_REGEX.test(regRaw)) {
-                      alert('Invalid vehicle registration number.\nFormat: 2 letters + 2 digits + 1-2 letters + 4 digits\nExample: TG09HS1234 or MH02A1234');
-                      return;
-                    }
-                    try {
-                        await api.createVehicle({
-                            registration_number: regRaw,
-                            type: formData.get('type'),
-                            capacity_tons: parseFloat(formData.get('capacity_tons') as string)
-                        });
-                        alert('Vehicle added successfully');
-                        loadData();
-                        (e.target as HTMLFormElement).reset();
-                    } catch (err: any) {
-                        alert('Failed to add vehicle: ' + err.message);
-                    }
-                }} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">
-                          Registration Number
-                          <span className="text-xs text-muted ml-1">(e.g. TG09HS1234)</span>
-                        </label>
-                        <input
-                          name="registration_number" required
-                          placeholder="TG09HS1234"
-                          maxLength={11}
-                          title="Indian vehicle registration format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g. TG09HS1234)"
-                          value={newVehicleReg}
-                          onChange={(e) => {
-                            const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                            setNewVehicleReg(raw);
-                            const valid = VEHICLE_REG_REGEX.test(raw);
-                            e.target.setCustomValidity(valid || raw.length === 0 ? "" : "Format: 2 letters + 2 digits + 1-2 letters + 4 digits (e.g. TG09HS1234)");
-                          }}
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2 font-mono tracking-widest"
-                        />
-                        <p className="text-xs text-muted mt-1">State (2) + District (2) + Series (1-2) + Number (4)</p>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Type</label>
-                        <select name="type" required className="w-full rounded-md border-border-theme shadow-sm border p-2">
-                            <option value="OPEN">OPEN (Open Truck / Flatbed)</option>
-                            <option value="CONTAINER">CONTAINER (Closed Container)</option>
-                            <option value="TRAILER">TRAILER (Heavy Trailer)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1">Capacity (Tons)</label>
-                        <input
-                          name="capacity_tons" type="number" step="0.1" required
-                          placeholder="10" min="0.5" max="50"
-                          className="w-full rounded-md border-border-theme shadow-sm border p-2"
-                        />
-                    </div>
-                    <div>
-                        <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition">
-                            Add Vehicle
-                        </button>
-                    </div>
-                </form>
-             </div>
-          </div>
-        )}
         {activeTab === 'settings' && (
           <div className="space-y-6">
             <PaymentSettingsSection />
@@ -1256,41 +820,121 @@ export default function AdminDashboard() {
                  );
              })()}
 
-             <h2 className="text-2xl font-bold text-foreground mb-4">Pricing Configuration</h2>
-             <div className="bg-surface rounded-lg shadow-sm border border-border-theme p-6 mb-8">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <p className="text-sm font-medium text-muted uppercase">Base Delivery Rate</p>
-                        {activePricing ? (
-                            <p className="text-3xl font-bold text-foreground mt-1">₹{activePricing.base_rate_per_km} <span className="text-sm font-normal text-muted">/ km</span></p>
-                        ) : (
-                            <p className="text-xl text-muted mt-1">Not configured</p>
-                        )}
+             <h2 className="text-2xl font-bold text-foreground mb-4">Admin Pricing & Surcharge Configuration</h2>
+             <div className="bg-surface rounded-xl shadow-sm border border-border-theme p-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div className="p-3 bg-surface-elevated rounded-lg border border-border-theme">
+                        <p className="text-xs font-semibold text-muted uppercase">Base Rate / km</p>
+                        <p className="text-2xl font-bold text-foreground mt-1">₹{activePricing?.base_rate_per_km || "25.00"} <span className="text-xs text-muted font-normal">/ km</span></p>
                     </div>
-                    <form onSubmit={async (e) => {
-                        e.preventDefault();
-                        const formData = new FormData(e.currentTarget);
-                        const newRate = parseFloat(formData.get('base_rate_per_km') as string);
-                        try {
-                            setIsUpdatingPricing(true);
-                            await api.updatePricing(newRate);
-                            await loadData();
-                        } catch (err: any) {
-                            alert("Failed to update pricing: " + err.message);
-                        } finally {
-                            setIsUpdatingPricing(false);
-                            (e.target as HTMLFormElement).reset();
-                        }
-                    }} className="flex items-end gap-2">
-                        <div>
-                            <label className="block text-xs font-bold text-foreground mb-1">Set New Rate (₹/km)</label>
-                            <input name="base_rate_per_km" type="number" step="0.1" required placeholder="22.0" className="w-32 rounded-md border-border-theme shadow-sm border p-2 text-sm" />
-                        </div>
-                        <button type="submit" disabled={isUpdatingPricing} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition disabled:opacity-50">
-                            {isUpdatingPricing ? 'Updating...' : 'Update'}
-                        </button>
-                    </form>
+                    <div className="p-3 bg-surface-elevated rounded-lg border border-border-theme">
+                        <p className="text-xs font-semibold text-muted uppercase">Base Booking Fare</p>
+                        <p className="text-2xl font-bold text-foreground mt-1">₹{activePricing?.base_flat_fare || "500.00"}</p>
+                    </div>
+                    <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                        <p className="text-xs font-semibold text-amber-500 uppercase">Max Capacity Surcharge</p>
+                        <p className="text-2xl font-bold text-amber-400 mt-1">₹{activePricing?.vehicle_max_capacity_surcharge || "600.00"}</p>
+                        <span className="text-[10px] text-muted">Applied at ≥{activePricing?.capacity_utilization_threshold_percent || "85"}% capacity ({activePricing?.capacity_surcharge_enabled !== false ? "Active" : "Disabled"})</span>
+                    </div>
+                    <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                        <p className="text-xs font-semibold text-blue-400 uppercase">Delicate / Handling Care</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">₹{activePricing?.fragile_surcharge || "400.00"}</p>
+                        <span className="text-[10px] text-muted">Fragile: ₹{activePricing?.fragile_surcharge || 400} | Cold: ₹{activePricing?.refrigerated_surcharge || 800}</span>
+                    </div>
                 </div>
+
+                <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.currentTarget);
+                    const newRate = parseFloat(formData.get('base_rate_per_km') as string);
+                    const flatFare = parseFloat(formData.get('base_flat_fare') as string);
+                    const capThreshold = parseFloat(formData.get('capacity_utilization_threshold_percent') as string);
+                    const capSurcharge = parseFloat(formData.get('vehicle_max_capacity_surcharge') as string);
+                    const fragileSurcharge = parseFloat(formData.get('fragile_surcharge') as string);
+                    const hazardousSurcharge = parseFloat(formData.get('hazardous_surcharge') as string);
+                    const refrigeratedSurcharge = parseFloat(formData.get('refrigerated_surcharge') as string);
+                    const capEnabled = formData.get('capacity_surcharge_enabled') === 'on';
+                    const fragileEnabled = formData.get('fragile_surcharge_enabled') === 'on';
+                    const hazardousEnabled = formData.get('hazardous_surcharge_enabled') === 'on';
+                    const refrigeratedEnabled = formData.get('refrigerated_surcharge_enabled') === 'on';
+                    try {
+                        setIsUpdatingPricing(true);
+                        await api.updatePricing(newRate, 0, {
+                            base_flat_fare: flatFare,
+                            capacity_surcharge_enabled: capEnabled,
+                            capacity_utilization_threshold_percent: capThreshold,
+                            vehicle_max_capacity_surcharge: capSurcharge,
+                            fragile_surcharge_enabled: fragileEnabled,
+                            fragile_surcharge: fragileSurcharge,
+                            hazardous_surcharge_enabled: hazardousEnabled,
+                            hazardous_surcharge: hazardousSurcharge,
+                            refrigerated_surcharge_enabled: refrigeratedEnabled,
+                            refrigerated_surcharge: refrigeratedSurcharge
+                        });
+                        await loadData();
+                        alert("Pricing & surcharges updated successfully!");
+                    } catch (err: any) {
+                        alert("Failed to update pricing: " + err.message);
+                    } finally {
+                        setIsUpdatingPricing(false);
+                    }
+                }} className="border-t border-border-theme pt-4">
+                    <p className="text-xs font-bold text-foreground uppercase tracking-wider mb-3">Adjust Active Pricing & Surcharges (Admin Only)</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Rate (₹/km)</label>
+                            <input name="base_rate_per_km" type="number" step="0.5" min="1" defaultValue={activePricing?.base_rate_per_km || 25} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Base Fare (₹)</label>
+                            <input name="base_flat_fare" type="number" step="50" min="0" defaultValue={activePricing?.base_flat_fare || 500} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Cap Threshold (%)</label>
+                            <input name="capacity_utilization_threshold_percent" type="number" step="5" min="50" max="100" defaultValue={activePricing?.capacity_utilization_threshold_percent || 85} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Max Cap Fee (₹)</label>
+                            <input name="vehicle_max_capacity_surcharge" type="number" step="50" min="0" defaultValue={activePricing?.vehicle_max_capacity_surcharge || 600} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Fragile/Care (₹)</label>
+                            <input name="fragile_surcharge" type="number" step="50" min="0" defaultValue={activePricing?.fragile_surcharge || 400} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Hazardous (₹)</label>
+                            <input name="hazardous_surcharge" type="number" step="50" min="0" defaultValue={activePricing?.hazardous_surcharge || 700} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-foreground mb-1">Cold/Refrig (₹)</label>
+                            <input name="refrigerated_surcharge" type="number" step="50" min="0" defaultValue={activePricing?.refrigerated_surcharge || 800} required className="w-full rounded-md border-border-theme bg-surface-elevated shadow-sm border p-2 text-sm text-foreground" />
+                        </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-4 items-center">
+                        <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                            <input type="checkbox" name="capacity_surcharge_enabled" defaultChecked={activePricing?.capacity_surcharge_enabled !== false} className="rounded text-blue-600 focus:ring-blue-500" />
+                            Enable Capacity Surcharge
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                            <input type="checkbox" name="fragile_surcharge_enabled" defaultChecked={activePricing?.fragile_surcharge_enabled !== false} className="rounded text-blue-600 focus:ring-blue-500" />
+                            Enable Fragile/Delicate Fee
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                            <input type="checkbox" name="hazardous_surcharge_enabled" defaultChecked={activePricing?.hazardous_surcharge_enabled !== false} className="rounded text-blue-600 focus:ring-blue-500" />
+                            Enable Hazardous Fee
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                            <input type="checkbox" name="refrigerated_surcharge_enabled" defaultChecked={activePricing?.refrigerated_surcharge_enabled !== false} className="rounded text-blue-600 focus:ring-blue-500" />
+                            Enable Refrigerated Fee
+                        </label>
+                        <div className="ml-auto">
+                            <button type="submit" disabled={isUpdatingPricing} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-md hover:bg-blue-700 transition disabled:opacity-50 text-sm shadow-sm">
+                                {isUpdatingPricing ? 'Saving...' : 'Save Pricing'}
+                            </button>
+                        </div>
+                    </div>
+                </form>
              </div>
 
               <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>

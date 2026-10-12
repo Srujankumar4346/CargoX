@@ -12,6 +12,10 @@ class DeliveryRequestCreate(BaseModel):
     special_instructions: Optional[str] = None
     distance_km: Decimal = Field(..., gt=Decimal("0"), description="Distance in kilometers")
     
+    # Selected vehicle verification
+    selected_vehicle_id: Optional[str] = None
+    vehicle_capacity_tons: Optional[float] = Field(None, gt=0.0)
+    
     # Pickup
     pickup_company_name: str = Field(..., min_length=1)
     pickup_address: str = Field(..., min_length=1)
@@ -48,6 +52,13 @@ class DeliveryRequestCreate(BaseModel):
             if not self.destination_company_name or not self.destination_address:
                 raise ValueError("Must provide either recipient_company_id or manual destination_company_name and destination_address")
         
+        # Strict payload capacity validation
+        if self.vehicle_capacity_tons is not None and self.weight_tons is not None:
+            if float(self.weight_tons) > float(self.vehicle_capacity_tons):
+                raise ValueError(
+                    f"Cargo weight ({self.weight_tons} Tons) exceeds vehicle maximum payload ({self.vehicle_capacity_tons} Tons). Overloaded vehicles are strictly ineligible."
+                )
+
         return self
 
 class DeliveryRequestRead(BaseModel):

@@ -7,12 +7,34 @@ from datetime import datetime
 class PricingConfigCreate(BaseModel):
     base_rate_per_km: Decimal = Field(..., gt=Decimal("0"), description="Base rate per km in INR")
     margin_per_km: Decimal = Field(..., ge=Decimal("0"), description="Margin per km in INR")
+    base_flat_fare: Optional[Decimal] = Field(default=Decimal("500.00"), ge=Decimal("0"), description="Base booking fare")
+    base_distance_km: Optional[Decimal] = Field(default=Decimal("0.00"), ge=Decimal("0"), description="Included base distance threshold in km")
+    capacity_surcharge_enabled: Optional[bool] = Field(default=True, description="Whether capacity surcharge is enabled")
+    capacity_utilization_threshold_percent: Optional[Decimal] = Field(default=Decimal("85.00"), ge=Decimal("0"), le=Decimal("100"), description="Threshold percent for capacity surcharge")
+    vehicle_max_capacity_surcharge: Optional[Decimal] = Field(default=Decimal("600.00"), ge=Decimal("0"), description="Surcharge when reaching vehicle max capacity")
+    fragile_surcharge_enabled: Optional[bool] = Field(default=True, description="Whether fragile surcharge is enabled")
+    fragile_surcharge: Optional[Decimal] = Field(default=Decimal("400.00"), ge=Decimal("0"), description="Surcharge for fragile/delicate cargo")
+    hazardous_surcharge_enabled: Optional[bool] = Field(default=True, description="Whether hazardous surcharge is enabled")
+    hazardous_surcharge: Optional[Decimal] = Field(default=Decimal("700.00"), ge=Decimal("0"), description="Surcharge for hazardous cargo")
+    refrigerated_surcharge_enabled: Optional[bool] = Field(default=True, description="Whether refrigerated surcharge is enabled")
+    refrigerated_surcharge: Optional[Decimal] = Field(default=Decimal("800.00"), ge=Decimal("0"), description="Surcharge for refrigerated cargo")
     effective_from: Optional[datetime] = None
 
 class PricingConfigRead(BaseModel):
     id: uuid.UUID
     base_rate_per_km: Decimal
     margin_per_km: Decimal
+    base_flat_fare: Decimal = Decimal("500.00")
+    base_distance_km: Decimal = Decimal("0.00")
+    capacity_surcharge_enabled: bool = True
+    capacity_utilization_threshold_percent: Decimal = Decimal("85.00")
+    vehicle_max_capacity_surcharge: Decimal = Decimal("600.00")
+    fragile_surcharge_enabled: bool = True
+    fragile_surcharge: Decimal = Decimal("400.00")
+    hazardous_surcharge_enabled: bool = True
+    hazardous_surcharge: Decimal = Decimal("700.00")
+    refrigerated_surcharge_enabled: bool = True
+    refrigerated_surcharge: Decimal = Decimal("800.00")
     effective_from: datetime
     effective_until: Optional[datetime] = None
     active: bool
@@ -24,6 +46,10 @@ class PricingConfigRead(BaseModel):
 class CustomerPriceEstimateRead(BaseModel):
     distance_km: Decimal
     customer_rate_per_km: Decimal
+    base_fare: Decimal = Decimal("500.00")
+    distance_charge: Decimal = Decimal("0.00")
+    capacity_surcharge: Decimal = Decimal("0.00")
+    handling_surcharge: Decimal = Decimal("0.00")
     estimated_total: Decimal
     currency: str = "INR"
 

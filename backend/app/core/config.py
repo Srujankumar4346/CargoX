@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     
     # DB
-    DATABASE_URL: str
+    DATABASE_URL: str = "mongodb://localhost:27017/cargox_test_db"
     
     # Security / Clerk
     # These must be configured in environment (.env).

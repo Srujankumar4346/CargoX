@@ -5,7 +5,7 @@ import { api } from "../../services/api";
 export interface VehicleOption {
   id: string;
   name: string;
-  category: "Mini Trucks" | "Pickup Trucks" | "Medium Trucks";
+  category: "Mini Trucks" | "Pickup Trucks" | "Medium Trucks" | "Heavy Trucks";
   capacity: string;
   maxPayloadTons: number;
   maxPayloadKg: number;
@@ -32,7 +32,7 @@ export default function ChooseVehicleScreen({
   cargoWeightTons = 1.8,
   specialHandling = "None"
 }: ChooseVehicleScreenProps) {
-  const [filter, setFilter] = useState<"All" | "Mini Trucks" | "Pickup Trucks" | "Medium Trucks">("All");
+  const [filter, setFilter] = useState<"All" | "Mini Trucks" | "Pickup Trucks" | "Medium Trucks" | "Heavy Trucks">("All");
   const [vehiclePrices, setVehiclePrices] = useState<Record<string, number>>({});
 
   const cargoWeightKg = Math.round((cargoWeightTons || 0) * 1000);
@@ -42,7 +42,7 @@ export default function ChooseVehicleScreen({
       id: "tata-ace",
       name: "Tata Ace Gold",
       category: "Mini Trucks",
-      capacity: "0.75 - 1 Ton (1,000 kg)",
+      capacity: "1.0 Ton (1,000 kg)",
       maxPayloadTons: 1.0,
       maxPayloadKg: 1000,
       dimensions: "8 x 4.5 ft",
@@ -85,6 +85,30 @@ export default function ChooseVehicleScreen({
       description: "Best for medium cargo",
       price: 9800,
       image: "/images/vehicles/tata-intra-v30.png"
+    },
+    {
+      id: "eicher-pro",
+      name: "Eicher Pro 2049",
+      category: "Heavy Trucks",
+      capacity: "5.0 Ton (5,000 kg)",
+      maxPayloadTons: 5.0,
+      maxPayloadKg: 5000,
+      dimensions: "14 x 7 ft",
+      description: "Heavy haul carrier for bulk & machinery cargo",
+      price: 14500,
+      image: "/images/vehicles/col5_full.png"
+    },
+    {
+      id: "bharatbenz-1015r",
+      name: "BharatBenz 1015R",
+      category: "Heavy Trucks",
+      capacity: "6.0 Ton (6,000 kg)",
+      maxPayloadTons: 6.0,
+      maxPayloadKg: 6000,
+      dimensions: "17 x 7.5 ft",
+      description: "High capacity intercity freight transporter",
+      price: 18200,
+      image: "/images/vehicles/screen6_full.png"
     }
   ];
 
@@ -182,7 +206,7 @@ export default function ChooseVehicleScreen({
 
         {/* Category Filter Pills */}
         <div className="px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
-          {(["All", "Mini Trucks", "Pickup Trucks", "Medium Trucks"] as const).map((cat) => (
+          {(["All", "Mini Trucks", "Pickup Trucks", "Medium Trucks", "Heavy Trucks"] as const).map((cat) => (
             <button
               key={cat}
               onClick={() => setFilter(cat)}

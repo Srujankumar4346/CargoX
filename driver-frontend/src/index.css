@@ -82,3 +82,70 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted);
 }
+
+/* Robust Mobile Sidebar Drawer for WebViews */
+.driver-sidebar-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  width: 16rem; /* 256px */
+  background-color: #0b1120;
+  border-right: 1px solid #1e293b;
+  color: #ffffff;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), -webkit-transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-transform: translateX(-100%);
+  transform: translateX(-100%);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.driver-sidebar-drawer.open {
+  -webkit-transform: translateX(0);
+  transform: translateX(0);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+@media (min-width: 768px) {
+  .driver-sidebar-drawer {
+    position: static;
+    -webkit-transform: none !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    visibility: visible !important;
+    box-shadow: none;
+  }
+}
+
+.driver-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 40;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.driver-sidebar-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+@media (min-width: 768px) {
+  .driver-sidebar-backdrop {
+    display: none !important;
+  }
+}
+

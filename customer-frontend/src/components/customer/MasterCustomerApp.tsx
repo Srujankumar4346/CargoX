@@ -38,13 +38,13 @@ export default function MasterCustomerApp() {
   const [currentScreen, setCurrentScreen] = useState<CustomerFlowScreen>("welcome");
   const [activeTab, setActiveTab] = useState<TabType>("home");
 
-  // Booking Flow Data
-  const [pickupAddress, setPickupAddress] = useState("St. Martin's Engineering College, Hyderabad, Telangana");
+  // Booking Flow Data — distance/duration are null until a real OSRM route is calculated
+  const [pickupAddress, setPickupAddress] = useState("");
   const [pickupCoords, setPickupCoords] = useState({ lat: 17.5375, lng: 78.4735 });
-  const [dropAddress, setDropAddress] = useState("Vijayawada, Andhra Pradesh");
+  const [dropAddress, setDropAddress] = useState("");
   const [dropCoords, setDropCoords] = useState({ lat: 16.5062, lng: 80.6480 });
-  const [distanceKm, setDistanceKm] = useState(275);
-  const [durationStr, setDurationStr] = useState("5h 20m");
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [durationStr, setDurationStr] = useState<string | null>(null);
 
   const [cargoData, setCargoData] = useState({
     cargoType: "Industrial Machinery",
@@ -71,17 +71,20 @@ export default function MasterCustomerApp() {
   const [createdBooking, setCreatedBooking] = useState<any>(null);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [activeBookingsList, setActiveBookingsList] = useState<BookingItem[]>([]);
+  const [isBookingsLoading, setIsBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
 
-  const [totalCalculatedPrice, setTotalCalculatedPrice] = useState(7850);
+  const [totalCalculatedPrice, setTotalCalculatedPrice] = useState<number | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
-  // Automatically start on Home screen if already signed in, else Welcome
+  // Automatically start on Home screen if signed in or onboarding already completed
   useEffect(() => {
-    if (isSignedIn && currentScreen === "welcome") {
+    const onboardingDone = localStorage.getItem("cargox_onboarding_completed") === "true";
+    if ((isSignedIn || onboardingDone) && currentScreen === "welcome") {
       setCurrentScreen("home");
       setActiveTab("home");
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, currentScreen]);
 
   // Handle GPS detection directly from home screen or automatically on load
   const handleUseCurrentLocation = (silent = false) => {
@@ -125,27 +128,42 @@ export default function MasterCustomerApp() {
   }, []);
 
   // Load real bookings from backend when signed in
+  const loadCustomerBookings = () => {
+    if (!isSignedIn) return;
+    setIsBookingsLoading(true);
+    setBookingsError(null);
+    api.getBookings()
+      .then((res) => {
+        if (Array.isArray(res)) {
+          const mapped: BookingItem[] = res.map((b: any) => ({
+            id: b.id || b._id || "",
+            ref: b.request_number || b.id || "",
+            routeFrom: b.pickup_address?.split(",")[0] || b.pickup_address || "",
+            routeTo: b.destination_address?.split(",")[0] || b.destination_address || "",
+            date: b.created_at
+              ? new Date(b.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+              : "",
+            price: b.final_price ?? b.estimated_price ?? null,
+            status: b.status === "DELIVERED" ? "Delivered" : b.status === "CANCELLED" ? "Cancelled" : "In Transit",
+            vehicleName: b.assigned_vehicle_type || b.assigned_vehicle_model || "",
+            vehicleImage: "/images/vehicles/mahindra-bolero-pikup.png",
+            hasInvoice: !!b.final_price
+          }));
+          setActiveBookingsList(mapped);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load bookings:", err);
+        setBookingsError(err?.message || "Failed to load bookings");
+      })
+      .finally(() => {
+        setIsBookingsLoading(false);
+      });
+  };
+
   useEffect(() => {
     if (isSignedIn) {
-      api.getBookings()
-        .then((res) => {
-          if (Array.isArray(res)) {
-            const mapped: BookingItem[] = res.map((b: any) => ({
-              id: b.id || b._id || String(Math.random()),
-              ref: b.request_number || `CRGX-${String(b.id || "").slice(-4)}`,
-              routeFrom: b.pickup_address?.split(",")[0] || "Hyderabad",
-              routeTo: b.destination_address?.split(",")[0] || "Vijayawada",
-              date: b.created_at ? new Date(b.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "10 Oct 2026",
-              price: b.final_price || b.estimated_price || 7850,
-              status: b.status === "DELIVERED" ? "Delivered" : b.status === "CANCELLED" ? "Cancelled" : "In Transit",
-              vehicleName: b.assigned_vehicle_model || "Mahindra Bolero Pik-Up",
-              vehicleImage: "/images/vehicles/mahindra-bolero-pikup.png",
-              hasInvoice: true
-            }));
-            if (mapped.length > 0) setActiveBookingsList(mapped);
-          }
-        })
-        .catch(() => {});
+      loadCustomerBookings();
     }
   }, [isSignedIn, currentScreen]);
 
@@ -169,6 +187,9 @@ export default function MasterCustomerApp() {
 
     setIsSubmittingBooking(true);
     try {
+      if (distanceKm === null) {
+        throw new Error("No valid route distance. Please re-select your pickup and destination.");
+      }
       const payload = {
         goods_type: cargoData.cargoType,
         goods_description: `${cargoData.specialHandling !== "None" ? cargoData.specialHandling + " - " : ""}${selectedVehicle.name}`,
@@ -199,21 +220,22 @@ export default function MasterCustomerApp() {
   };
 
   const handleDownloadInvoice = (booking: BookingItem) => {
-    const mockInv = {
-      invoice_number: `INV-${booking.ref}`,
-      issue_date: booking.date,
-      payment_due_date: "10 Oct 2026",
-      status: "PAID",
-      total_amount: booking.price,
+    // Use actual data from the backend booking record, not the current flow state
+    const invData = {
+      invoice_number: `INV-${booking.ref || booking.id}`,
+      issue_date: booking.date || new Date().toLocaleDateString("en-IN"),
+      payment_due_date: booking.date || new Date().toLocaleDateString("en-IN"),
+      status: booking.status === "Delivered" ? "PAID" : "PENDING",
+      total_amount: booking.price ?? 0,
       customer_company_name: user?.fullName || "Valued Customer",
-      pickup_address: pickupAddress,
-      destination_address: dropAddress,
-      goods_type: cargoData.cargoType,
-      weight_tons: cargoData.weightTons,
-      distance_km: distanceKm,
-      payment_method: "UPI"
+      pickup_address: booking.routeFrom || "",
+      destination_address: booking.routeTo || "",
+      goods_type: "",
+      weight_tons: 0,
+      distance_km: 0,
+      payment_method: ""
     };
-    generateInvoicePDF(mockInv);
+    generateInvoicePDF(invData);
   };
 
   // Show mobile bottom navigation on top-level tabs
@@ -282,6 +304,10 @@ export default function MasterCustomerApp() {
             onConfirm={(addr, coords) => {
               setPickupAddress(addr);
               setPickupCoords(coords);
+              // Pickup changed — invalidate any previously calculated route
+              setDistanceKm(null);
+              setDurationStr(null);
+              setTotalCalculatedPrice(null);
               setCurrentScreen("drop");
             }}
           />
@@ -298,7 +324,8 @@ export default function MasterCustomerApp() {
               setDropAddress(addr);
               setDropCoords(coords);
               setDistanceKm(dist);
-              setDurationStr(dur);
+              setDurationStr(dur ?? null);
+              setTotalCalculatedPrice(null); // Invalidate old quote on new route
               setCurrentScreen("cargo");
             }}
           />
@@ -319,7 +346,7 @@ export default function MasterCustomerApp() {
         {currentScreen === "vehicle" && (
           <ChooseVehicleScreen
             selectedVehicleId={selectedVehicle.id}
-            calculatedDistanceKm={distanceKm}
+            calculatedDistanceKm={distanceKm ?? undefined}
             cargoWeightTons={cargoData.weightTons}
             specialHandling={cargoData.specialHandling}
             onBack={() => setCurrentScreen("cargo")}
@@ -330,13 +357,13 @@ export default function MasterCustomerApp() {
           />
         )}
 
-        {/* Screen 7: Price Quote */}
-        {currentScreen === "quote" && (
+        {/* Screen 7: Price Quote — only reachable if a valid OSRM route exists */}
+        {currentScreen === "quote" && distanceKm !== null && (
           <PriceQuoteScreen
             pickupAddress={pickupAddress}
             dropAddress={dropAddress}
             distanceKm={distanceKm}
-            durationStr={durationStr}
+            durationStr={durationStr ?? ""}
             vehicle={selectedVehicle}
             cargoData={cargoData}
             onBack={() => setCurrentScreen("vehicle")}
@@ -349,8 +376,8 @@ export default function MasterCustomerApp() {
           />
         )}
 
-        {/* Screen 8: Booking Summary */}
-        {currentScreen === "summary" && (
+        {/* Screen 8: Booking Summary — requires valid price from quote screen */}
+        {currentScreen === "summary" && distanceKm !== null && totalCalculatedPrice !== null && (
           <BookingSummaryScreen
             pickupAddress={pickupAddress}
             dropAddress={dropAddress}
@@ -358,7 +385,7 @@ export default function MasterCustomerApp() {
             cargoType={cargoData.cargoType}
             weightTons={cargoData.weightTons}
             distanceKm={distanceKm}
-            durationStr={durationStr}
+            durationStr={durationStr ?? ""}
             totalPrice={totalCalculatedPrice}
             isLoading={isSubmittingBooking}
             onBack={() => setCurrentScreen("quote")}
@@ -368,10 +395,10 @@ export default function MasterCustomerApp() {
           />
         )}
 
-        {/* Screen 9: Booking Confirmation */}
-        {currentScreen === "confirmation" && (
+        {/* Screen 9: Booking Confirmation — only show with a real backend booking ID */}
+        {currentScreen === "confirmation" && createdBooking && (
           <BookingConfirmationScreen
-            bookingId={createdBooking?.request_number || "CRGX20261010-7990"}
+            bookingId={createdBooking.request_number || createdBooking.id || createdBooking._id || "—"}
             bookingData={createdBooking}
             onTrackShipment={() => {
               setActiveTab("track");
@@ -396,7 +423,7 @@ export default function MasterCustomerApp() {
               setCurrentScreen("bookings");
             }}
             requestId={createdBooking?.id || createdBooking?._id}
-            bookingRef={createdBooking?.request_number || "CRGX20261010-7990"}
+            bookingRef={createdBooking?.request_number || createdBooking?.id || ""}
             vehicleModel={selectedVehicle.name}
             vehicleCapacity={selectedVehicle.capacity}
           />
@@ -406,6 +433,9 @@ export default function MasterCustomerApp() {
         {currentScreen === "bookings" && (
           <MyBookingsScreen
             bookingsList={activeBookingsList}
+            isLoading={isBookingsLoading}
+            error={bookingsError}
+            onRetry={loadCustomerBookings}
             onBack={() => {
               setActiveTab("home");
               setCurrentScreen("home");

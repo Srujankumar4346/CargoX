@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArrowLeft, Search, Crosshair, ArrowRight, X } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Polyline, useMapEvents } from "react-leaflet";
 import L from "leaflet";
@@ -22,7 +22,7 @@ const dropIcon = new L.Icon({
 
 interface SelectDropLocationScreenProps {
   onBack: () => void;
-  onConfirm: (address: string, coords: { lat: number; lng: number }, distanceKm: number, durationStr: string) => void;
+  onConfirm: (address: string, coords: { lat: number; lng: number }, distanceKm: number, durationStr: string | null) => void;
   pickupCoords?: { lat: number; lng: number };
   pickupAddress?: string;
   initialDropAddress?: string;
@@ -58,16 +58,11 @@ export default function SelectDropLocationScreen({
   const [searchQuery, setSearchQuery] = useState(initialDropAddress);
   const [selectedAddress, setSelectedAddress] = useState(initialDropAddress);
   const [dropCoords, setDropCoords] = useState({ lat: 16.5062, lng: 80.6480 }); // Vijayawada
-  const [distanceKm, setDistanceKm] = useState(275);
-  const [durationStr, setDurationStr] = useState("5h 20m");
-  const [routePolyline, setRoutePolyline] = useState<[number, number][]>([
-    [pickupCoords.lat, pickupCoords.lng],
-    [17.3850, 78.4867],
-    [17.1500, 79.2000],
-    [16.8500, 79.8000],
-    [16.6500, 80.3000],
-    [16.5062, 80.6480]
-  ]);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [durationStr, setDurationStr] = useState<string | null>(null);
+  // Starts empty — polyline is ONLY populated from real OSRM road-network waypoints
+  const [routePolyline, setRoutePolyline] = useState<[number, number][]>([]);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
@@ -112,14 +107,31 @@ export default function SelectDropLocationScreen({
     return () => clearTimeout(timer);
   }, [searchQuery, selectedAddress]);
 
-  const calculateActualRoute = async (destLat: number, destLng: number) => {
+  // AbortController ref: cancels in-flight OSRM requests when location changes
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Fetch actual OSRM driving route on mount for the default destination
+  useEffect(() => {
+    calculateActualRoute(dropCoords.lat, dropCoords.lng);
+    return () => { abortRef.current?.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  const calculateActualRoute = async (destLat: number, destLng: number) => {
     // Check identical locations
     if (Math.abs(destLat - pickupCoords.lat) < 0.0001 && Math.abs(destLng - pickupCoords.lng) < 0.0001) {
-      alert("Pickup and Drop locations cannot be identical. Please choose a different destination.");
+      setRouteError("Pickup and Drop locations cannot be identical. Please choose a different destination.");
       return;
     }
 
+    // Cancel any previous in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setIsCalculating(true);
+    setRouteError(null);
+    setRoutePolyline([]); // Clear stale route while fetching
+    setDistanceKm(null);
+    setDurationStr(null);
     try {
       const res = await api.calculateRoute({
         pickup_lat: pickupCoords.lat,
@@ -127,41 +139,49 @@ export default function SelectDropLocationScreen({
         destination_lat: destLat,
         destination_lng: destLng,
       });
+
+      // Discard if this request was superseded by a newer one
+      if (controller.signal.aborted) return;
+
       if (res && res.distance_km) {
-        const dist = Math.round(Number(res.distance_km));
+        const rawDist = Number(res.distance_km);
+        if (!isFinite(rawDist) || rawDist <= 0) {
+          setRouteError("Routing returned an invalid distance. Please choose reachable road points.");
+          return;
+        }
+        const dist = Math.round(rawDist);
         setDistanceKm(dist);
-        const mins = Number(res.estimated_duration_minutes || 60);
-        const hrs = Math.floor(mins / 60);
-        const remMins = mins % 60;
-        setDurationStr(hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`);
-        if (Array.isArray(res.waypoints) && res.waypoints.length > 1) {
+        const mins = Number(res.estimated_duration_minutes || 1);
+        if (!isFinite(mins) || mins <= 0) {
+          setDurationStr(null);
+        } else {
+          const hrs = Math.floor(mins / 60);
+          const remMins = mins % 60;
+          setDurationStr(hrs > 0 ? `${hrs}h ${remMins}m` : `${remMins}m`);
+        }
+        // Accept any route geometry with 2 or more real OSRM waypoints
+        if (Array.isArray(res.waypoints) && res.waypoints.length >= 2) {
           setRoutePolyline(res.waypoints as [number, number][]);
         } else {
-          setRoutePolyline([
-            [pickupCoords.lat, pickupCoords.lng],
-            [destLat, destLng]
-          ]);
+          // Route distance is valid but geometry is absent — distance/duration still usable
+          setRoutePolyline([]);
         }
+      } else {
+        setRouteError("Routing returned no distance. Please choose reachable road points.");
       }
-    } catch {
-      // Haversine fallback
-      const dLat = (destLat - pickupCoords.lat) * (Math.PI / 180);
-      const dLon = (destLng - pickupCoords.lng) * (Math.PI / 180);
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(pickupCoords.lat * (Math.PI / 180)) *
-          Math.cos(destLat * (Math.PI / 180)) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const approxRoadKm = Math.round(6371 * c * 1.25);
-      setDistanceKm(Math.max(10, approxRoadKm));
-      setRoutePolyline([
-        [pickupCoords.lat, pickupCoords.lng],
-        [destLat, destLng]
-      ]);
+    } catch (err: any) {
+      if (controller.signal.aborted) return; // Ignore errors from cancelled requests
+      // Do NOT fall back to straight-line Haversine distance.
+      const msg = err?.message || "Unable to calculate a driving route for the selected destination.";
+      setRouteError(msg.includes("502") || msg.includes("Bad Gateway")
+        ? "No drivable road route found between these locations. Please pick a different destination."
+        : "Route calculation failed. Please try again or select a different destination."
+      );
+      setRoutePolyline([]);
+      setDistanceKm(null);
+      setDurationStr(null);
     } finally {
-      setIsCalculating(false);
+      if (!controller.signal.aborted) setIsCalculating(false);
     }
   };
 
@@ -307,13 +327,33 @@ export default function SelectDropLocationScreen({
         </MapContainer>
       </div>
 
-      {/* Route Badge pill matching Screen 4 reference ("275 km | 5h 20m") */}
-      <div className="absolute top-[36%] right-8 z-10">
-        <div className="bg-[#0b1329] text-white px-3 py-2 rounded-xl shadow-xl border border-white/10 text-center">
-          <p className="text-xs font-bold leading-tight">{isCalculating ? "Calculating..." : `${distanceKm} km`}</p>
-          <p className="text-[10px] text-slate-300 font-medium mt-0.5">{isCalculating ? "Please wait" : durationStr}</p>
+      {/* Route info badge — only shown when real OSRM data is available */}
+      {(isCalculating || distanceKm !== null) && (
+        <div className="absolute top-[36%] right-4 z-10">
+          <div className="bg-[#0b1329] text-white px-3 py-2 rounded-xl shadow-xl border border-white/10 text-center">
+            {isCalculating ? (
+              <>
+                <p className="text-xs font-bold leading-tight animate-pulse">Calculating...</p>
+                <p className="text-[10px] text-slate-300 font-medium mt-0.5">Road route</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-bold leading-tight">{distanceKm} km</p>
+                <p className="text-[10px] text-slate-300 font-medium mt-0.5">{durationStr}</p>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Route error message */}
+      {routeError && !isCalculating && (
+        <div className="absolute top-[36%] left-4 right-4 z-10">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-xl shadow text-[10px] font-semibold text-center">
+            ⚠️ {routeError}
+          </div>
+        </div>
+      )}
 
       {/* Relocate control */}
       <div className="absolute bottom-36 right-4 z-20">
@@ -338,11 +378,16 @@ export default function SelectDropLocationScreen({
         </div>
 
         <button
-          onClick={() => onConfirm(selectedAddress, dropCoords, distanceKm, durationStr)}
-          className="w-full bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.98] text-white py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all"
+          disabled={distanceKm === null || isCalculating}
+          onClick={() => onConfirm(selectedAddress, dropCoords, distanceKm ?? 0, durationStr ?? "N/A")}
+          className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
+            distanceKm !== null && !isCalculating
+              ? "bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.98] text-white shadow-blue-500/25"
+              : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+          }`}
         >
-          <span>Confirm Destination</span>
-          <ArrowRight className="w-4 h-4" />
+          <span>{isCalculating ? "Calculating route..." : distanceKm === null ? "Select a destination" : "Confirm Destination"}</span>
+          {!isCalculating && distanceKm !== null && <ArrowRight className="w-4 h-4" />}
         </button>
       </div>
     </div>

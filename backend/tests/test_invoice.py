@@ -108,7 +108,7 @@ async def setup_completed_trip(async_client, admin_user, customer_user, driver_u
 
     # Pricing config + quote
     await async_client.post("/api/v1/admin/pricing-configs", json={
-        "name": "Standard", "base_rate_per_km": "20.00", "margin_per_km": "5.00"
+        "name": "Standard", "base_rate_per_km": "20.00", "margin_per_km": "5.00", "base_flat_fare": "0.00"
     })
     q = await async_client.post(f"/api/v1/admin/requests/{request_id}/quote", json={"distance_km": "100.00"})
     assert q.status_code == 201
@@ -795,7 +795,7 @@ async def test_customer_pricing_estimate_endpoint(async_client, admin_user, cust
 
     # Create active pricing: Base 25 + Margin 2 = 27 / km
     await async_client.post("/api/v1/admin/pricing-configs", json={
-        "name": "Estimate Rate", "base_rate_per_km": "25.00", "margin_per_km": "2.00"
+        "name": "Estimate Rate", "base_rate_per_km": "25.00", "margin_per_km": "2.00", "base_flat_fare": "0.00"
     })
 
     # Estimate for 10 km: 10 * 27 = 270.00

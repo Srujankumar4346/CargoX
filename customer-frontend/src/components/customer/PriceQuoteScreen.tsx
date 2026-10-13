@@ -8,7 +8,7 @@ interface PriceQuoteScreenProps {
   onProceedToBooking: (finalCalculatedPrice: number) => void;
   pickupAddress: string;
   dropAddress: string;
-  distanceKm: number;
+  distanceKm: number;   // Must be from a real OSRM route response
   durationStr: string;
   vehicle: VehicleOption;
   cargoData?: {
@@ -28,16 +28,18 @@ export default function PriceQuoteScreen({
   onProceedToBooking,
   pickupAddress,
   dropAddress,
-  distanceKm = 275,
-  durationStr = "5h 20m",
+  distanceKm,
+  durationStr,
   vehicle,
   cargoData
 }: PriceQuoteScreenProps) {
-  const [estimatedPrice, setEstimatedPrice] = useState(vehicle.price || 7850);
-  const [baseFare, setBaseFare] = useState(2500);
-  const [distanceCharges, setDistanceCharges] = useState(Math.round(Math.max(0, distanceKm - 50) * 20));
-  const [tollTax] = useState(600);
-  const [driverAllowance] = useState(250);
+  const [pricingLoading, setPricingLoading] = useState(true);
+  const [pricingError, setPricingError] = useState<string | null>(null);
+  const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
+  const [baseFare, setBaseFare] = useState<number | null>(null);
+  const [distanceCharges, setDistanceCharges] = useState<number | null>(null);
+  const [tollTax, setTollTax] = useState<number | null>(null);
+  const [driverAllowance, setDriverAllowance] = useState<number | null>(null);
   const [capacitySurcharge, setCapacitySurcharge] = useState(0);
   const [handlingSurcharge, setHandlingSurcharge] = useState(0);
 
@@ -48,6 +50,9 @@ export default function PriceQuoteScreen({
 
   useEffect(() => {
     let isMounted = true;
+    setPricingLoading(true);
+    setPricingError(null);
+    setEstimatedPrice(null);
     const vehicleCap = parseCapacityTons(vehicle.capacity);
     const weight = cargoData?.weightTons || 1.5;
     const handling = cargoData?.specialHandling || "None";
@@ -58,48 +63,32 @@ export default function PriceQuoteScreen({
       special_handling: handling
     })
       .then((res) => {
-        if (isMounted && res && res.estimated_total) {
+        if (!isMounted) return;
+        if (res && res.estimated_total) {
           const total = Math.round(Number(res.estimated_total));
           setEstimatedPrice(total);
           if (res.breakdown) {
-            setBaseFare(Math.round(Number(res.breakdown.base_fare || 2500)));
-            setDistanceCharges(Math.round(Number(res.breakdown.distance_charge || Math.max(0, distanceKm - 50) * 20)));
+            setBaseFare(Math.round(Number(res.breakdown.base_fare ?? null)));
+            setDistanceCharges(Math.round(Number(res.breakdown.distance_charge ?? null)));
+            setTollTax(res.breakdown.toll_tax != null ? Math.round(Number(res.breakdown.toll_tax)) : null);
+            setDriverAllowance(res.breakdown.driver_allowance != null ? Math.round(Number(res.breakdown.driver_allowance)) : null);
             setCapacitySurcharge(Math.round(Number(res.breakdown.capacity_surcharge || 0)));
             setHandlingSurcharge(Math.round(Number(res.breakdown.handling_surcharge || 0)));
-          } else {
-            const base = Math.min(2500, Math.round(total * 0.32));
-            setBaseFare(base);
-            setDistanceCharges(Math.max(0, total - base - 600 - 250));
           }
+        } else {
+          setPricingError("Pricing data unavailable. Please go back and retry.");
         }
       })
       .catch(() => {
-        // Fallback local calculation
-        const rem = Math.max(0, distanceKm - 50);
-        const distChg = Math.round(rem * 20);
-        let capFee = 0;
-        if (weight >= vehicleCap * 0.85) {
-          capFee = 450;
-        }
-        let handFee = 0;
-        if (handling.toLowerCase().includes("delicate") || handling.toLowerCase().includes("fragile")) {
-          handFee = 500;
-        } else if (handling.toLowerCase().includes("refrigerated") || handling.toLowerCase().includes("cold")) {
-          handFee = 750;
-        } else if (handling.toLowerCase().includes("care") || handling.toLowerCase().includes("sensitive")) {
-          handFee = 350;
-        }
-        setBaseFare(2500);
-        setDistanceCharges(distChg);
-        setCapacitySurcharge(capFee);
-        setHandlingSurcharge(handFee);
-        setEstimatedPrice(2500 + distChg + 600 + 250 + capFee + handFee);
-      });
+        if (!isMounted) return;
+        // Do NOT substitute hardcoded local pricing. Show an actionable error.
+        setPricingError("Unable to retrieve pricing from the server. Please go back and try again.");
+      })
+      .finally(() => { if (isMounted) setPricingLoading(false); });
     return () => { isMounted = false; };
   }, [distanceKm, vehicle, cargoData]);
 
   const remainingKm = Math.max(0, distanceKm - 50);
-  const totalEstimatedPrice = estimatedPrice;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-8 select-none">
@@ -136,7 +125,7 @@ export default function PriceQuoteScreen({
                   <div className="w-2 h-2 rounded-full bg-[#1e60ff]" />
                 </div>
                 <p className="text-xs font-semibold text-slate-700 leading-tight">
-                  {pickupAddress || "St. Martin's Engineering College, Hyderabad, Telangana"}
+                  {pickupAddress || "—"}
                 </p>
               </div>
 
@@ -149,7 +138,7 @@ export default function PriceQuoteScreen({
                   <MapPin className="w-3 h-3" />
                 </div>
                 <p className="text-xs font-semibold text-slate-700 leading-tight">
-                  {dropAddress || "Vijayawada, Andhra Pradesh"}
+                  {dropAddress || "—"}
                 </p>
               </div>
             </div>
@@ -196,68 +185,104 @@ export default function PriceQuoteScreen({
             </div>
           </div>
 
-          {/* Price Breakdown Card matching Screen 7 */}
+          {/* Price Breakdown Card */}
           <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-xs">
             <h2 className="text-xs font-bold text-slate-900 mb-3">Price Breakdown</h2>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between text-slate-600">
-                <span>Base Fare (0 - 50 km)</span>
-                <span className="font-semibold text-slate-800">₹{baseFare.toLocaleString("en-IN")}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Distance Charges ({remainingKm} km)</span>
-                <span className="font-semibold text-slate-800">₹{distanceCharges.toLocaleString("en-IN")}</span>
-              </div>
 
-              {/* Vehicle Max Capacity Surcharge */}
-              {capacitySurcharge > 0 && (
-                <div className="flex justify-between text-amber-700 bg-amber-50/70 px-2 py-1 rounded-lg">
-                  <span className="font-medium flex items-center gap-1">
-                    Near Vehicle Max Capacity Surcharge
+            {pricingLoading && (
+              <div className="space-y-2 animate-pulse">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex justify-between">
+                    <div className="h-3 w-32 bg-slate-100 rounded" />
+                    <div className="h-3 w-16 bg-slate-100 rounded" />
+                  </div>
+                ))}
+                <div className="mt-4 h-10 bg-slate-100 rounded-xl" />
+              </div>
+            )}
+
+            {!pricingLoading && pricingError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                <p className="text-xs font-semibold text-red-700">⚠️ {pricingError}</p>
+                <button
+                  onClick={() => onBack()}
+                  className="mt-2 text-xs font-bold text-[#1e60ff] hover:underline"
+                >
+                  ← Go back and retry
+                </button>
+              </div>
+            )}
+
+            {!pricingLoading && !pricingError && estimatedPrice !== null && (
+              <div className="space-y-2 text-xs">
+                {baseFare !== null && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Base Fare</span>
+                    <span className="font-semibold text-slate-800">₹{baseFare.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+                {distanceCharges !== null && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Distance Charges ({remainingKm} km)</span>
+                    <span className="font-semibold text-slate-800">₹{distanceCharges.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+
+                {capacitySurcharge > 0 && (
+                  <div className="flex justify-between text-amber-700 bg-amber-50/70 px-2 py-1 rounded-lg">
+                    <span className="font-medium">Near Vehicle Max Capacity Surcharge</span>
+                    <span className="font-bold">+₹{capacitySurcharge.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+
+                {handlingSurcharge > 0 && (
+                  <div className="flex justify-between text-blue-700 bg-blue-50/70 px-2 py-1 rounded-lg">
+                    <span className="font-medium">Special Handling ({cargoData?.specialHandling || "Care/Fragile"})</span>
+                    <span className="font-bold">+₹{handlingSurcharge.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+
+                {tollTax !== null && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Toll &amp; State Tax</span>
+                    <span className="font-semibold text-slate-800">₹{tollTax.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+                {driverAllowance !== null && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Driver Allowance</span>
+                    <span className="font-semibold text-slate-800">₹{driverAllowance.toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+
+                {/* Total */}
+                <div className="mt-4 bg-emerald-50 rounded-xl p-3 flex items-center justify-between border border-emerald-100">
+                  <span className="text-xs font-bold text-emerald-800">Total Estimated Price</span>
+                  <span className="text-base font-extrabold text-emerald-600">
+                    ₹{estimatedPrice.toLocaleString("en-IN")}
                   </span>
-                  <span className="font-bold">+₹{capacitySurcharge.toLocaleString("en-IN")}</span>
                 </div>
-              )}
-
-              {/* Special Handling / Delicate Cargo Surcharge */}
-              {handlingSurcharge > 0 && (
-                <div className="flex justify-between text-blue-700 bg-blue-50/70 px-2 py-1 rounded-lg">
-                  <span className="font-medium flex items-center gap-1">
-                    Special Handling ({cargoData?.specialHandling || "Care/Fragile"})
-                  </span>
-                  <span className="font-bold">+₹{handlingSurcharge.toLocaleString("en-IN")}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-slate-600">
-                <span>Toll & State Tax</span>
-                <span className="font-semibold text-slate-800">₹{tollTax.toLocaleString("en-IN")}</span>
               </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Driver Allowance</span>
-                <span className="font-semibold text-slate-800">₹{driverAllowance.toLocaleString("en-IN")}</span>
-              </div>
-            </div>
-
-            {/* Total Estimated Price Highlight Banner */}
-            <div className="mt-4 bg-emerald-50 rounded-xl p-3 flex items-center justify-between border border-emerald-100">
-              <span className="text-xs font-bold text-emerald-800">Total Estimated Price</span>
-              <span className="text-base font-extrabold text-emerald-600">
-                ₹{totalEstimatedPrice.toLocaleString("en-IN")}
-              </span>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Proceed to Booking Button */}
+      {/* Proceed to Booking Button — disabled until real backend pricing is loaded */}
       <div className="px-5 mt-2">
         <button
-          onClick={() => onProceedToBooking(totalEstimatedPrice)}
-          className="w-full bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.98] text-white py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all"
+          disabled={pricingLoading || pricingError !== null || estimatedPrice === null}
+          onClick={() => estimatedPrice !== null && onProceedToBooking(estimatedPrice)}
+          className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${
+            !pricingLoading && pricingError === null && estimatedPrice !== null
+              ? "bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.98] text-white shadow-blue-500/25"
+              : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+          }`}
         >
-          <span>Proceed to Booking</span>
-          <ArrowRight className="w-4 h-4" />
+          <span>
+            {pricingLoading ? "Fetching price..." : pricingError ? "Pricing unavailable" : "Proceed to Booking"}
+          </span>
+          {!pricingLoading && !pricingError && estimatedPrice !== null && <ArrowRight className="w-4 h-4" />}
         </button>
       </div>
     </div>

@@ -121,6 +121,8 @@ export default function App() {
           setLoadError(nativeEvent.description || 'Failed to connect to CargoX Operations Portal');
           setLoading(false);
         }}
+        // Prevent opening links in external browser window
+        setSupportMultipleWindows={false}
         // Enable file uploads for POD photos, receipts & signatures
         allowFileAccess={true}
         allowFileAccessFromFileURLs={true}

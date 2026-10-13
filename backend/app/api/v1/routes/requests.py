@@ -120,16 +120,20 @@ async def calculate_route(
 
     if routes and len(routes) > 0:
         primary_route = routes[0]
+        # Actual road-network driving distance from OSRM meters -> km
         dist_km = Decimal(str(round(primary_route.get("distance", 0) / 1000.0, 2)))
         duration_s = primary_route.get("duration", 0)
-        duration_mins = max(int(duration_s // 60), 10)
+        duration_mins = max(int(duration_s // 60), 1)
         
-        # Extract waypoints if coordinates overview is returned
+        # Extract full road-following geometry waypoints
         geometry = primary_route.get("geometry")
         waypoints = []
         if isinstance(geometry, dict) and "coordinates" in geometry:
-            # GeoJSON coordinates are [lon, lat] -> convert to [lat, lon]
-            waypoints = [[round(coord[1], 6), round(coord[0], 6)] for coord in geometry["coordinates"][:20]]
+            # GeoJSON coordinates are [lon, lat] -> convert to [lat, lon] for Leaflet
+            waypoints = [[round(coord[1], 6), round(coord[0], 6)] for coord in geometry["coordinates"]]
+        elif isinstance(geometry, list):
+            waypoints = [[round(coord[1], 6), round(coord[0], 6)] for coord in geometry]
+
         if not waypoints:
             waypoints = [
                 [payload.pickup_lat, payload.pickup_lng],
@@ -142,24 +146,10 @@ async def calculate_route(
             waypoints=waypoints
         )
 
-    # 2. Resilient fallback: Mathematical Haversine with 1.25x road factor
-    dist = _haversine_road_distance(
-        payload.pickup_lat, payload.pickup_lng,
-        payload.destination_lat, payload.destination_lng
-    )
-    duration_mins = max(int((float(dist) / 45.0) * 60), 10)
-    steps = 10
-    waypoints = []
-    for i in range(steps + 1):
-        frac = i / float(steps)
-        lat = payload.pickup_lat + (payload.destination_lat - payload.pickup_lat) * frac
-        lng = payload.pickup_lng + (payload.destination_lng - payload.pickup_lng) * frac
-        waypoints.append([round(lat, 6), round(lng, 6)])
-
-    return RouteCalculationResponse(
-        distance_km=dist,
-        estimated_duration_minutes=duration_mins,
-        waypoints=waypoints
+    # If OSRM driving route cannot be calculated, do not fabricate a straight-line fallback
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Unable to calculate a valid road-network driving route between the selected locations. Please select reachable road points and try again."
     )
 
 

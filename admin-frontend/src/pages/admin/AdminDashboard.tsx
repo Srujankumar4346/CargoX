@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings, ExternalLink, Globe } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
-import { Link } from "react-router-dom";
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
 import NotificationDropdown from "../../components/NotificationDropdown";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
@@ -108,7 +108,46 @@ export default function AdminDashboard() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const { user } = useUser();
   const customerPortalUrl = import.meta.env.VITE_CUSTOMER_PORTAL_URL || "http://localhost:5173";
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Valid tabs in Admin
+  const validTabs: Record<string, string> = {
+    dashboard: "dashboard",
+    bookings: "bookings",
+    dispatch: "bookings",
+    fleet: "vehicles",
+    vehicles: "vehicles",
+    trips: "trips",
+    financials: "financials",
+    finance: "financials",
+    pricing: "financials",
+    users: "users",
+    team: "users",
+    ai: "ai",
+    settings: "settings",
+  };
+
+  const currentTabFromUrl = tab ? (validTabs[tab.toLowerCase()] || "invalid") : "dashboard";
+  const [activeTab, setActiveTabState] = useState(currentTabFromUrl === "invalid" ? "dashboard" : currentTabFromUrl);
+
+  useEffect(() => {
+    if (!tab) {
+      setActiveTabState("dashboard");
+    } else if (validTabs[tab.toLowerCase()]) {
+      setActiveTabState(validTabs[tab.toLowerCase()]);
+    }
+  }, [tab]);
+
+  const setActiveTab = (newTab: string) => {
+    setActiveTabState(newTab);
+    const targetPath = newTab === "dashboard" ? "/admin" : `/admin/${newTab}`;
+    if (location.pathname !== targetPath) {
+      navigate(targetPath);
+    }
+  };
+
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);

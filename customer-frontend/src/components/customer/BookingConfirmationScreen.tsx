@@ -9,7 +9,7 @@ interface BookingConfirmationScreenProps {
 }
 
 export default function BookingConfirmationScreen({
-  bookingId = "CRGX20261010-7990",
+  bookingId = "—",
   bookingData,
   onTrackShipment,
   onGoHome

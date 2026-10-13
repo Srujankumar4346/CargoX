@@ -20,6 +20,9 @@ interface MyBookingsScreenProps {
   onViewDetails: (booking: BookingItem) => void;
   onDownloadInvoice: (booking: BookingItem) => void;
   bookingsList?: BookingItem[];
+  isLoading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 export default function MyBookingsScreen({
@@ -27,51 +30,14 @@ export default function MyBookingsScreen({
   onLiveTracking,
   onViewDetails,
   onDownloadInvoice,
-  bookingsList
+  bookingsList = [],
+  isLoading = false,
+  error = null,
+  onRetry
 }: MyBookingsScreenProps) {
   const [filter, setFilter] = useState<"Active" | "Completed" | "Cancelled">("Active");
 
-  // Fallback default list matching Screen 11 reference exactly
-  const defaultBookings: BookingItem[] = [
-    {
-      id: "b1",
-      ref: "CRGX20261010-7990",
-      routeFrom: "Hyderabad",
-      routeTo: "Vijayawada",
-      date: "10 Oct 2026",
-      price: 7850,
-      status: "In Transit",
-      vehicleName: "Mahindra Bolero Pik-Up",
-      vehicleImage: "/images/vehicles/mahindra-bolero-pikup.png",
-      hasInvoice: true
-    },
-    {
-      id: "b2",
-      ref: "CRGX20261008-5632",
-      routeFrom: "Warangal",
-      routeTo: "Hyderabad",
-      date: "08 Oct 2026",
-      price: 6900,
-      status: "Delivered",
-      vehicleName: "Tata Ace Gold",
-      vehicleImage: "/images/vehicles/tata-ace-gold.png",
-      hasInvoice: true
-    },
-    {
-      id: "b3",
-      ref: "CRGX20260928-6654",
-      routeFrom: "Hyderabad",
-      routeTo: "Pune",
-      date: "28 Sep 2026",
-      price: 9800,
-      status: "Delivered",
-      vehicleName: "Tata Intra V30",
-      vehicleImage: "/images/vehicles/tata-intra-v30.png",
-      hasInvoice: true
-    }
-  ];
-
-  const items = bookingsList && bookingsList.length > 0 ? bookingsList : defaultBookings;
+  const items = bookingsList;
 
   const activeCount = items.filter((b) => b.status === "In Transit" || b.status === "Pending").length;
   const completedCount = items.filter((b) => b.status === "Delivered").length;
@@ -85,9 +51,9 @@ export default function MyBookingsScreen({
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-24 select-none">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-28 select-none">
       <div>
-        {/* Header matching Screen 11 */}
+        {/* Header matching CargoX Design */}
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">
           <button
             onClick={onBack}
@@ -99,7 +65,7 @@ export default function MyBookingsScreen({
           <div className="w-6" />
         </div>
 
-        {/* Tab Filter Pills matching Screen 11 ("Active (1)", "Completed (8)", "Cancelled (2)") */}
+        {/* Tab Filter Pills with accurate count reflection */}
         <div className="bg-white px-4 py-3 border-b border-slate-100 flex items-center gap-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setFilter("Active")}
@@ -119,7 +85,7 @@ export default function MyBookingsScreen({
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            Completed ({completedCount || 8})
+            Completed ({completedCount})
           </button>
           <button
             onClick={() => setFilter("Cancelled")}
@@ -129,15 +95,40 @@ export default function MyBookingsScreen({
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            Cancelled ({cancelledCount || 2})
+            Cancelled ({cancelledCount})
           </button>
         </div>
 
-        {/* Bookings Card List matching Screen 11 */}
+        {/* Bookings Card List or genuine empty/loading state */}
         <div className="px-4 py-3 space-y-3">
-          {filteredItems.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 text-xs">
-              No bookings found in this category.
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-semibold text-slate-500">Loading your bookings...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 px-4 bg-white rounded-2xl border border-red-100 mt-2">
+              <p className="text-xs text-red-600 font-semibold mb-3">{error}</p>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-center py-16 px-4 bg-white rounded-2xl border border-slate-100 mt-2">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                <Navigation className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-800">No {filter.toLowerCase()} bookings</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                {filter === "Active"
+                  ? "You don't have any in-progress shipments right now. Book a truck to start shipping."
+                  : `You have no ${filter.toLowerCase()} shipments recorded.`}
+              </p>
             </div>
           ) : (
             filteredItems.map((b) => (

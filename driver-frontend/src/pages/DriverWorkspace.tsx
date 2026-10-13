@@ -295,6 +295,32 @@ export default function DriverWorkspace() {
     }
   };
 
+  // Handle body scroll locking, escape key, and desktop resize cleanup for mobile drawer
+  useEffect(() => {
+    if (isMobileSidebarOpen) {
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setIsMobileSidebarOpen(false);
+        }
+      };
+      const handleResize = () => {
+        if (window.innerWidth >= 768) {
+          setIsMobileSidebarOpen(false);
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("resize", handleResize);
+      return () => {
+        document.body.style.overflow = "";
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("resize", handleResize);
+      };
+    } else {
+      document.body.style.overflow = "";
+    }
+  }, [isMobileSidebarOpen]);
+
   useEffect(() => {
     if ((isLoaded && isSignedIn) || localStorage.getItem("access_token")) {
       loadDriverData();
@@ -1043,21 +1069,18 @@ export default function DriverWorkspace() {
       </div>
 
       {/* Mobile Sidebar Backdrop */}
-      {isMobileSidebarOpen && (
-        <div 
-          onClick={() => setIsMobileSidebarOpen(false)}
-          onTouchStart={() => setIsMobileSidebarOpen(false)}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer"
-        />
-      )}
+      <div 
+        onClick={() => setIsMobileSidebarOpen(false)}
+        onTouchStart={() => setIsMobileSidebarOpen(false)}
+        className={`driver-sidebar-backdrop ${isMobileSidebarOpen ? 'open' : ''}`}
+        aria-hidden="true"
+      />
 
       {/* Sidebar */}
-      <div className={`
-        fixed md:static inset-y-0 left-0 z-50
-        w-64 bg-[#0B1120] border-r border-slate-800 text-white min-h-screen flex flex-col shadow-2xl
-        transition-transform duration-300 ease-in-out
-        ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      <aside 
+        className={`driver-sidebar-drawer ${isMobileSidebarOpen ? 'open' : ''}`}
+        aria-label="Driver Navigation"
+      >
         <div className="p-5 pb-2">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
@@ -1100,7 +1123,7 @@ export default function DriverWorkspace() {
             </button>
           ))}
         </nav>
-      </div>
+      </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">

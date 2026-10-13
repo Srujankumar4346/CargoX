@@ -156,7 +156,15 @@ function App() {
         <Route path="/driver/login" element={<DriverLogin />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<RoleGate allowedRole="ADMIN"><AdminDashboard /></RoleGate>} />
+        <Route path="/admin/:tab" element={<RoleGate allowedRole="ADMIN"><AdminDashboard /></RoleGate>} />
         <Route path="/driver" element={<RoleGate allowedRole="DRIVER"><DriverWorkspace /></RoleGate>} />
+        <Route path="*" element={
+          <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 text-center">
+            <h1 className="text-4xl font-extrabold text-blue-500 mb-2">404</h1>
+            <p className="text-slate-300 font-semibold mb-4">Page Not Found</p>
+            <Link to="/admin" className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition">Return to Admin Dashboard</Link>
+          </div>
+        } />
       </Routes>
     </Router>
   );

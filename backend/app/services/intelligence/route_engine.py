@@ -1,7 +1,7 @@
 import requests
 
 def fetch_osrm_routes(pickup_lat: float, pickup_lng: float, drop_lat: float, drop_lng: float):
-    url = f"http://router.project-osrm.org/route/v1/driving/{pickup_lng},{pickup_lat};{drop_lng},{drop_lat}?overview=full&alternatives=true"
+    url = f"http://router.project-osrm.org/route/v1/driving/{pickup_lng},{pickup_lat};{drop_lng},{drop_lat}?overview=full&geometries=geojson&alternatives=true"
     
     try:
         response = requests.get(url, timeout=10)

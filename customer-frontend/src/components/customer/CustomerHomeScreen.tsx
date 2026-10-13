@@ -16,6 +16,7 @@ import { UserButton, useUser } from "@clerk/react";
 interface CustomerHomeScreenProps {
   pickupAddress: string;
   dropAddress: string;
+  isDetectingLocation?: boolean;
   onOpenPickup: () => void;
   onOpenDrop: () => void;
   onUseCurrentLocation?: () => void;
@@ -30,6 +31,7 @@ interface CustomerHomeScreenProps {
 export default function CustomerHomeScreen({
   pickupAddress,
   dropAddress,
+  isDetectingLocation = false,
   onOpenPickup,
   onOpenDrop,
   onUseCurrentLocation,
@@ -166,9 +168,11 @@ export default function CustomerHomeScreen({
                   <div className="w-2.5 h-2.5 rounded-full bg-[#1e60ff]" />
                 </div>
                 <div className="truncate text-left">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Pickup Location</p>
+                  <p className="text-[10px] uppercase font-bold text-slate-400">
+                    {isDetectingLocation ? "Detecting GPS..." : "Pickup Location"}
+                  </p>
                   <p className="text-xs font-bold text-slate-800 truncate">
-                    {pickupAddress || "Use Current Location"}
+                    {isDetectingLocation ? "Fetching your current location…" : (pickupAddress || "Use Current Location")}
                   </p>
                 </div>
               </div>
@@ -182,8 +186,13 @@ export default function CustomerHomeScreen({
                     onOpenPickup();
                   }
                 }}
+                disabled={isDetectingLocation}
                 title="Detect Current GPS Location"
-                className="p-1 hover:bg-blue-100 rounded-lg text-slate-400 hover:text-[#1e60ff] transition-colors shrink-0"
+                className={`p-1 rounded-lg transition-colors shrink-0 ${
+                  isDetectingLocation
+                    ? "text-[#1e60ff] animate-spin"
+                    : "text-slate-400 hover:text-[#1e60ff] hover:bg-blue-100"
+                }`}
               >
                 <Crosshair className="w-4 h-4" />
               </button>

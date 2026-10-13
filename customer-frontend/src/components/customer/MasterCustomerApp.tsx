@@ -73,6 +73,7 @@ export default function MasterCustomerApp() {
   const [activeBookingsList, setActiveBookingsList] = useState<BookingItem[]>([]);
 
   const [totalCalculatedPrice, setTotalCalculatedPrice] = useState(7850);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
   // Automatically start on Home screen if already signed in, else Welcome
   useEffect(() => {
@@ -82,12 +83,13 @@ export default function MasterCustomerApp() {
     }
   }, [isSignedIn]);
 
-  // Handle GPS detection directly from home screen
-  const handleUseCurrentLocation = () => {
+  // Handle GPS detection directly from home screen or automatically on load
+  const handleUseCurrentLocation = (silent = false) => {
     if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
+      if (!silent) alert("Geolocation is not supported by your browser");
       return;
     }
+    setIsDetectingLocation(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -102,15 +104,25 @@ export default function MasterCustomerApp() {
           }
         } catch {
           setPickupAddress(`Current GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+        } finally {
+          setIsDetectingLocation(false);
         }
       },
       (err) => {
         console.warn("GPS error:", err);
-        alert("Unable to retrieve your location. Please check location permissions or enter address manually.");
+        setIsDetectingLocation(false);
+        if (!silent) {
+          alert("Unable to retrieve your location. Please check location permissions or enter address manually.");
+        }
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
+
+  // Automatically detect user GPS location on component mount
+  useEffect(() => {
+    handleUseCurrentLocation(true);
+  }, []);
 
   // Load real bookings from backend when signed in
   useEffect(() => {
@@ -231,9 +243,10 @@ export default function MasterCustomerApp() {
           <CustomerHomeScreen
             pickupAddress={pickupAddress}
             dropAddress={dropAddress}
+            isDetectingLocation={isDetectingLocation}
             onOpenPickup={() => setCurrentScreen("pickup")}
             onOpenDrop={() => setCurrentScreen("drop")}
-            onUseCurrentLocation={handleUseCurrentLocation}
+            onUseCurrentLocation={() => handleUseCurrentLocation(false)}
             onGetQuote={() => setCurrentScreen("cargo")}
             onQuickTrack={() => {
               setActiveTab("track");

@@ -54,11 +54,30 @@ export default function SelectPickupLocationScreen({
 
   // Fallback preset suggestions
   const defaultPresets = [
-    { name: "St. Martin's Engineering College, Hyderabad, Telangana", lat: 17.5375, lng: 78.4735 },
     { name: "Secunderabad Railway Station, Hyderabad", lat: 17.4399, lng: 78.4983 },
     { name: "Kukatpally Industrial Area, Hyderabad", lat: 17.4849, lng: 78.4138 },
     { name: "Gachibowli Logistics Park, Hyderabad", lat: 17.4401, lng: 78.3489 }
   ];
+
+  // Auto-detect current GPS on screen open if not already set by user
+  useEffect(() => {
+    if (navigator.geolocation && (!initialAddress || initialAddress.includes("St. Martin's"))) {
+      setIsLocating(true);
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setCoords({ lat, lng });
+          await reverseGeocode(lat, lng);
+          setIsLocating(false);
+        },
+        () => {
+          setIsLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+  }, []);
 
   // Debounced live location search using Nominatim
   useEffect(() => {

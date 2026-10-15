@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 import uuid
-from typing import List
+from typing import List, Optional
 
 from app.api.deps import get_current_driver
 from app.models.user import User
@@ -14,8 +14,14 @@ from app.schemas.driver_pwa import (
 )
 from app.schemas.tracking_delivery import PODSubmission, PODRead
 from app.schemas.settlement import DriverSettlementSummaryRead
+from app.schemas.delivery_otp import (
+    DeliveryOTPVerifyRequest,
+    DeliveryOTPVerifyResponse,
+    DeliveryOTPStatusResponse,
+)
 from app.services.driver_service import DriverService
 from app.services.tracking_delivery_service import TrackingDeliveryService
+from app.services.delivery_otp_service import DeliveryOTPService
 
 router = APIRouter()
 
@@ -78,6 +84,31 @@ async def arrive(
     """
     return await DriverService.arrive(trip_id, current_driver)
 
+@router.post("/trips/{trip_id}/otp/verify", response_model=DeliveryOTPVerifyResponse)
+async def verify_delivery_otp(
+    trip_id: uuid.UUID,
+    payload: DeliveryOTPVerifyRequest,
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Verifies the 6-digit OTP entered by the driver for the active stage (PICKUP or DELIVERY).
+    On successful verification, confirms physical handover.
+    """
+    purpose = payload.purpose or "DELIVERY"
+    return await DeliveryOTPService.verify_otp(trip_id, payload.otp, current_driver, purpose)
+
+@router.get("/trips/{trip_id}/otp/status", response_model=DeliveryOTPStatusResponse)
+async def get_delivery_otp_status(
+    trip_id: uuid.UUID,
+    purpose: Optional[str] = None,
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Returns current stage OTP verification status without exposing plain OTP codes.
+    """
+    return await DeliveryOTPService.get_otp_status(trip_id, current_driver, purpose)
+
+
 @router.post("/trips/{trip_id}/pod", response_model=PODRead, status_code=status.HTTP_201_CREATED)
 async def submit_pod(
     trip_id: uuid.UUID,
@@ -86,6 +117,7 @@ async def submit_pod(
     ):
     """
     Submits Proof of Delivery for an ARRIVED trip, transitioning status to POD_SUBMITTED.
+    Requires that recipient handover OTP has been successfully verified (or Admin overridden).
     """
     return await TrackingDeliveryService.submit_pod(trip_id, pod_in, current_driver)
 

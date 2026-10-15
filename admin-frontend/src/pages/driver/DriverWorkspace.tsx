@@ -1138,11 +1138,11 @@ export default function DriverWorkspace() {
                   type="text"
                   required
                   value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
+                  onChange={(e) => setRecipientName(e.target.value.replace(/[^a-zA-Z\s]/g, ""))}
                   placeholder="Person who physically received goods (e.g. Ramesh Sharma)"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
                 />
-                <span className="text-[11px] text-slate-500 mt-1 block">Full legal name of the receiver at destination.</span>
+                <span className="text-[11px] text-slate-500 mt-1 block">Full legal name of the receiver at destination (alphabets only).</span>
               </div>
 
               <div>
@@ -1151,11 +1151,17 @@ export default function DriverWorkspace() {
                 </label>
                 <input
                   type="tel"
+                  maxLength={10}
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
                   value={recipientPhone}
-                  onChange={(e) => setRecipientPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => setRecipientPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="10-digit mobile (e.g. 9876543210)"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono"
                 />
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  {recipientPhone.length}/10 digits entered
+                </span>
               </div>
 
               <div className="flex items-start gap-3 p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20">

@@ -198,3 +198,19 @@ async def update_request(
 ):
     req = await CustomerPortalService.update_delivery_request(current_user, request_id, payload)
     return await _customer_request_response(req)
+
+from app.schemas.delivery_otp import CustomerActiveOTPResponse
+from app.services.delivery_otp_service import DeliveryOTPService
+
+@router.get("/{request_id}/otp", response_model=CustomerActiveOTPResponse)
+async def get_customer_active_otp(
+    request_id: uuid.UUID,
+    current_user: User = Depends(get_current_customer_user)
+):
+    """
+    Returns the active 6-digit verification code (Pickup or Delivery) strictly to the
+    authenticated customer who owns this booking.
+    Code is encrypted at rest and only returned in this endpoint for the active stage.
+    """
+    return await DeliveryOTPService.get_or_create_customer_otp(request_id, current_user)
+

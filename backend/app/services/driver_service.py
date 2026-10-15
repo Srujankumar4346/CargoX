@@ -130,6 +130,33 @@ class DriverService:
         gateway_order_id = getattr(invoice, "gateway_order_id", None) if invoice else None
         gateway_key_id = PaymentGatewayService.get_public_key_id()
 
+        # Stage OTP verification states
+        from app.models.delivery_otp import DeliveryOTP
+
+        pickup_otp_record = await DeliveryOTP.find_one(
+            DeliveryOTP.request_id == request.id,
+            DeliveryOTP.purpose == "PICKUP",
+            DeliveryOTP.is_consumed == True,
+            sort=[("consumed_at", -1)]
+        )
+        pickup_otp_verified = bool(
+            pickup_otp_record and (pickup_otp_record.verified_by_user_id is not None or pickup_otp_record.is_admin_override)
+        )
+
+        delivery_otp_record = await DeliveryOTP.find_one(
+            DeliveryOTP.request_id == request.id,
+            DeliveryOTP.purpose == "DELIVERY",
+            DeliveryOTP.is_consumed == True,
+            sort=[("consumed_at", -1)]
+        )
+        delivery_otp_verified = bool(
+            delivery_otp_record and (delivery_otp_record.verified_by_user_id is not None or delivery_otp_record.is_admin_override)
+        )
+        otp_verified = delivery_otp_verified
+        otp_verified_at = delivery_otp_record.consumed_at if (delivery_otp_record and delivery_otp_verified) else None
+        otp_is_override = getattr(delivery_otp_record, "is_admin_override", False) if (delivery_otp_record and delivery_otp_verified) else False
+
+
         if invoice:
             if invoice.status == InvoiceStatus.PAID or Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
                 payment_status_display = "Paid"
@@ -229,6 +256,12 @@ class DriverService:
             "gateway_order_id": gateway_order_id,
             "gateway_key_id": gateway_key_id,
             "payment_instructions": payment_instructions,
+            # Handover OTP Verification status
+            "otp_verified": otp_verified,
+            "otp_verified_at": otp_verified_at,
+            "otp_is_override": otp_is_override,
+            "pickup_otp_verified": pickup_otp_verified,
+            "delivery_otp_verified": delivery_otp_verified,
         }
 
     @staticmethod
@@ -357,6 +390,24 @@ class DriverService:
         if not trip:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
+        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
+        if not request:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+
+        allowed_statuses = [
+            DeliveryRequestStatus.DRIVER_ASSIGNED.value,
+            DeliveryRequestStatus.PICKUP_IN_PROGRESS.value,
+            DeliveryRequestStatus.IN_TRANSIT.value,
+            DeliveryRequestStatus.ARRIVED.value,
+            DeliveryRequestStatus.POD_SUBMITTED.value,
+            DeliveryRequestStatus.DELIVERED.value,
+        ]
+        if request.status not in allowed_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot update location for request in status '{request.status.value if hasattr(request.status, 'value') else str(request.status)}'"
+            )
+
         assignment = await VehicleAssignment.find_one(
             VehicleAssignment.trip_id == trip.id,
             VehicleAssignment.released_at == None
@@ -366,19 +417,6 @@ class DriverService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
         await AuthorizationService.verify_driver_trip_access(driver_user, assignment.driver_id, is_released=False)
-
-        request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
-        allowed_statuses = [
-            DeliveryRequestStatus.DRIVER_ASSIGNED.value,
-            DeliveryRequestStatus.PICKUP_IN_PROGRESS.value,
-            DeliveryRequestStatus.IN_TRANSIT.value,
-            DeliveryRequestStatus.ARRIVED.value
-        ]
-        if request.status not in allowed_statuses:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Cannot update location for request in status '{request.status.value}'"
-            )
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         trip.current_lat = loc_in.lat
@@ -477,6 +515,25 @@ class DriverService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot start transit for delivery request in status '{request.status.value}'"
             )
+
+        # Enforce Pickup Handover OTP Verification (or Admin override)
+        from app.models.delivery_otp import DeliveryOTP
+        from app.core.config import settings as app_settings
+        pickup_record = await DeliveryOTP.find_one(
+            DeliveryOTP.request_id == request.id,
+            DeliveryOTP.purpose == "PICKUP",
+            DeliveryOTP.is_consumed == True,
+            sort=[("consumed_at", -1)]
+        )
+        has_valid_pickup = bool(
+            pickup_record and (pickup_record.verified_by_user_id is not None or pickup_record.is_admin_override)
+        )
+        if app_settings.DELIVERY_OTP_REQUIRED and not has_valid_pickup:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Pickup verification required. Please verify customer Pickup OTP before starting transit."
+            )
+
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         request.status = DeliveryRequestStatus.IN_TRANSIT

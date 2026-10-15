@@ -18,6 +18,7 @@ else:
     _target_db_url = "mongodb://localhost:27017/cargox_test_db"
 
 settings.DATABASE_URL = _target_db_url
+settings.DELIVERY_OTP_REQUIRED = False
 
 @pytest.fixture(scope="session")
 def anyio_backend():
@@ -48,6 +49,7 @@ async def setup_db():
     from app.models.fleet import Vehicle, Driver, VehicleAssignment
     from app.models.pricing import PricingConfig, Quotation
     from app.models.delivery import DeliveryRequest, Trip, ProofOfDelivery, LocationHistory
+    from app.models.delivery_otp import DeliveryOTP
     from app.models.finance import Invoice, Payment, DriverSettlement
     from app.models.notifications import Notification
     from app.models.operations import TripExpense, VehicleMaintenance
@@ -58,7 +60,7 @@ async def setup_db():
         User,
         Vehicle, Driver, VehicleAssignment,
         PricingConfig, Quotation,
-        DeliveryRequest, Trip, ProofOfDelivery, LocationHistory,
+        DeliveryRequest, Trip, ProofOfDelivery, LocationHistory, DeliveryOTP,
         Invoice, Payment, DriverSettlement,
         Notification,
         TripExpense, VehicleMaintenance, SystemSettings,

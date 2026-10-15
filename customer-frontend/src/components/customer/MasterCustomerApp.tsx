@@ -168,11 +168,23 @@ export default function MasterCustomerApp() {
       });
   };
 
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | null>(null);
+
   useEffect(() => {
     if (isSignedIn) {
       loadCustomerBookings();
     }
   }, [isSignedIn, currentScreen]);
+
+  // If activeTrackingBookingId is not set yet, set it to the latest active or most recent booking
+  useEffect(() => {
+    if (!activeTrackingBookingId && activeBookingsList.length > 0) {
+      const active = activeBookingsList.find(b => b.status === "In Transit" || b.status === "Pending") || activeBookingsList[0];
+      if (active?.id) {
+        setActiveTrackingBookingId(active.id);
+      }
+    }
+  }, [activeBookingsList, activeTrackingBookingId]);
 
   // Bottom tab switcher handler
   const handleTabChange = (tab: TabType) => {
@@ -251,7 +263,7 @@ export default function MasterCustomerApp() {
   return (
     <div className="min-h-screen bg-[#070d1e] md:bg-slate-900 flex justify-center items-center overflow-x-hidden">
       {/* Mobile Shell Container: Responsive max-w-md on desktop with elegant bezel, full-bleed & full screen on mobile */}
-      <div className="relative w-full max-w-[430px] min-h-[100dvh] bg-white flex flex-col md:my-6 md:min-h-[844px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-slate-800">
+      <div className="relative w-full max-w-[430px] h-[100dvh] md:h-[844px] md:max-h-[92vh] bg-white flex flex-col md:my-6 md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-slate-800">
         
         {/* Screen 1: Welcome / Onboarding */}
         {currentScreen === "welcome" && (
@@ -278,6 +290,10 @@ export default function MasterCustomerApp() {
             onUseCurrentLocation={() => handleUseCurrentLocation(false)}
             onGetQuote={() => setCurrentScreen("cargo")}
             onQuickTrack={() => {
+              if (!activeTrackingBookingId && activeBookingsList.length > 0) {
+                const active = activeBookingsList.find(b => b.status === "In Transit" || b.status === "Pending") || activeBookingsList[0];
+                if (active?.id) setActiveTrackingBookingId(active.id);
+              }
               setActiveTab("track");
               setCurrentScreen("tracking");
             }}
@@ -408,6 +424,7 @@ export default function MasterCustomerApp() {
             bookingId={createdBooking.request_number || createdBooking.id || createdBooking._id || "—"}
             bookingData={createdBooking}
             onTrackShipment={() => {
+              setActiveTrackingBookingId(createdBooking.id || createdBooking._id);
               setActiveTab("track");
               setCurrentScreen("tracking");
             }}
@@ -429,8 +446,14 @@ export default function MasterCustomerApp() {
               setActiveTab("bookings");
               setCurrentScreen("bookings");
             }}
-            requestId={createdBooking?.id || createdBooking?._id}
-            bookingRef={createdBooking?.request_number || createdBooking?.id || ""}
+            requestId={activeTrackingBookingId || createdBooking?.id || createdBooking?._id || activeBookingsList[0]?.id}
+            bookingRef={
+              activeBookingsList.find(b => b.id === (activeTrackingBookingId || createdBooking?.id))?.ref ||
+              createdBooking?.request_number ||
+              createdBooking?.id ||
+              activeBookingsList[0]?.ref ||
+              ""
+            }
             vehicleModel={selectedVehicle.name}
             vehicleCapacity={selectedVehicle.capacity}
           />
@@ -447,11 +470,13 @@ export default function MasterCustomerApp() {
               setActiveTab("home");
               setCurrentScreen("home");
             }}
-            onLiveTracking={(_b) => {
+            onLiveTracking={(b) => {
+              setActiveTrackingBookingId(b.id);
               setActiveTab("track");
               setCurrentScreen("tracking");
             }}
-            onViewDetails={(_b) => {
+            onViewDetails={(b) => {
+              setActiveTrackingBookingId(b.id);
               setActiveTab("track");
               setCurrentScreen("tracking");
             }}

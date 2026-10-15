@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Clock3, FileCheck, MapPin, RefreshCw, Search, Truck, UserRound, X, ExternalLink, XCircle, AlertTriangle } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { AlertCircle, CheckCircle2, Clock3, FileCheck, MapPin, RefreshCw, Search, Truck, UserRound, X, ExternalLink, XCircle, AlertTriangle, ShieldCheck, ShieldAlert } from "lucide-react";
 import { api } from "../services/api";
 
 type Props = { trips: any[]; vehicles: any[]; drivers: any[]; isRefreshing: boolean; loadData: () => void; onMarkInTransit: (id: string) => void; onForceComplete: (id: string) => void };
@@ -34,6 +34,60 @@ function DetailPanel({ trip, vehicles, drivers, detail, locations, loading, erro
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Delivery and Pickup OTP State and Exception Override
+  const [pickupOtpStatus, setPickupOtpStatus] = useState<any>(null);
+  const [deliveryOtpStatus, setDeliveryOtpStatus] = useState<any>(null);
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overridePurpose, setOverridePurpose] = useState<"PICKUP" | "DELIVERY">("DELIVERY");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overridingOtp, setOverridingOtp] = useState(false);
+
+  const fetchBothOtpStatuses = async () => {
+    if (!trip?.id) return;
+    try {
+      const [pickupRes, deliveryRes] = await Promise.allSettled([
+        api.getTripOTPStatus(trip.id, "PICKUP"),
+        api.getTripOTPStatus(trip.id, "DELIVERY")
+      ]);
+      if (pickupRes.status === "fulfilled") setPickupOtpStatus(pickupRes.value);
+      if (deliveryRes.status === "fulfilled") setDeliveryOtpStatus(deliveryRes.value);
+    } catch (err: any) {
+      console.warn("Failed to fetch OTP statuses:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (trip?.id) {
+      fetchBothOtpStatuses();
+    }
+  }, [trip?.id, detail?.pod]);
+
+  const handleOverrideOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const reqId = trip.request_id || trip.request?.id;
+    if (!reqId) {
+      alert("Delivery request ID not found.");
+      return;
+    }
+    if (overrideReason.trim().length < 5) {
+      alert("A detailed justification reason (min 5 characters) is mandatory for admin override.");
+      return;
+    }
+    setOverridingOtp(true);
+    try {
+      const res = await api.overrideDeliveryOTP(reqId, overrideReason.trim(), overridePurpose);
+      alert(res.message || `${overridePurpose} OTP successfully bypassed by Admin.`);
+      setOverrideModalOpen(false);
+      setOverrideReason("");
+      await fetchBothOtpStatuses();
+      if (onRefreshTrip) await onRefreshTrip();
+    } catch (err: any) {
+      alert(`Failed to override OTP: ${err.message}`);
+    } finally {
+      setOverridingOtp(false);
+    }
+  };
 
   const handleVerifyPOD = async () => {
     if (!confirm("Confirm and verify Proof of Delivery for this shipment?")) return;
@@ -126,6 +180,86 @@ function DetailPanel({ trip, vehicles, drivers, detail, locations, loading, erro
       </div>
     )}
 
+    {/* Admin Delivery OTP Override Exception Modal */}
+    {overrideModalOpen && (
+      <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 p-4">
+        <div className="w-full max-w-md rounded-2xl border border-amber-500/30 bg-slate-950 p-6 shadow-2xl space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2 text-amber-400">
+              <ShieldAlert size={20} />
+              <h3 className="font-bold text-white text-base">Authorized Delivery OTP Override</h3>
+            </div>
+            <button onClick={() => setOverrideModalOpen(false)} className="text-slate-400 hover:text-white"><X size={18} /></button>
+          </div>
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-200">
+            <p className="font-bold mb-1">Security & Compliance Rule:</p>
+            This action creates an immutable audit record attributing this delivery handover bypass to your admin credentials. A specific reason is mandatory (e.g. recipient phone damaged, cellular network outage at remote warehouse).
+          </div>
+          <form onSubmit={handleOverrideOTP} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                Stage / Purpose <span className="text-rose-500">*</span>
+              </label>
+              <div className="flex gap-4 text-xs text-white">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="overridePurpose"
+                    value="DELIVERY"
+                    checked={overridePurpose === "DELIVERY"}
+                    onChange={() => setOverridePurpose("DELIVERY")}
+                    className="accent-amber-500"
+                  />
+                  Delivery Handover OTP
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="overridePurpose"
+                    value="PICKUP"
+                    checked={overridePurpose === "PICKUP"}
+                    onChange={() => setOverridePurpose("PICKUP")}
+                    className="accent-amber-500"
+                  />
+                  Pickup Handover OTP
+                </label>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                Override Justification Reason <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                required
+                value={overrideReason}
+                onChange={e => setOverrideReason(e.target.value)}
+                placeholder="e.g. Device offline at dock; verified identity manually via physical badge #EMP-9402"
+                className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-white outline-none focus:border-amber-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setOverrideModalOpen(false)}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={overridingOtp || overrideReason.trim().length < 5}
+                className="rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 px-4 py-2 text-xs font-bold text-white transition flex items-center gap-1.5"
+              >
+                <ShieldCheck size={14} />
+                {overridingOtp ? "Authorizing Override..." : "Authorize OTP Bypass"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+
     <div className="max-h-[92vh] w-full max-w-6xl overflow-auto rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
       <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-800 bg-slate-950/95 p-5 backdrop-blur">
         <div>
@@ -205,6 +339,103 @@ function DetailPanel({ trip, vehicles, drivers, detail, locations, loading, erro
 
             {pod ? (
               <div className="mt-3 space-y-3">
+                {/* Dual Stage OTP Verification Status (Pickup & Delivery) */}
+                <div className="space-y-2">
+                  {/* Pickup OTP Status */}
+                  <div className={`rounded-xl border p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+                    pickupOtpStatus?.is_verified
+                      ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
+                      : "bg-slate-900 border-slate-800 text-slate-400"
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className={`p-1.5 rounded-lg ${
+                        pickupOtpStatus?.is_verified ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"
+                      }`}>
+                        <ShieldCheck size={16} />
+                      </span>
+                      <div>
+                        <p className="font-bold text-white text-xs">
+                          {pickupOtpStatus?.is_verified
+                            ? (pickupOtpStatus?.is_admin_override
+                                ? "Pickup OTP Verified (Admin Override)"
+                                : "Pickup OTP Verified")
+                            : "Pickup OTP Pending / Not Verified"}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {pickupOtpStatus?.is_verified
+                            ? `Verified on ${pickupOtpStatus?.verified_at ? new Date(pickupOtpStatus.verified_at).toLocaleTimeString() : "pickup"}`
+                            : "Required before transit start"}
+                        </p>
+                        {pickupOtpStatus?.override_reason && (
+                          <p className="text-[11px] text-amber-300/90 italic mt-0.5">
+                            Override: {pickupOtpStatus.override_reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {!pickupOtpStatus?.is_verified && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverridePurpose("PICKUP");
+                          setOverrideModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <ShieldAlert size={12} />
+                        Override Pickup OTP
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Delivery OTP Status */}
+                  <div className={`rounded-xl border p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+                    (deliveryOtpStatus?.is_verified || pod?.otp_verified)
+                      ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
+                      : "bg-amber-950/20 border-amber-500/30 text-amber-300"
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className={`p-1.5 rounded-lg ${
+                        (deliveryOtpStatus?.is_verified || pod?.otp_verified) ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
+                      }`}>
+                        <ShieldCheck size={16} />
+                      </span>
+                      <div>
+                        <p className="font-bold text-white text-xs">
+                          {(deliveryOtpStatus?.is_verified || pod?.otp_verified)
+                            ? (deliveryOtpStatus?.is_admin_override || pod?.otp_is_override
+                                ? "Delivery Handover Verified (Admin Override)"
+                                : "Delivery Handover OTP Verified")
+                            : "Delivery Handover OTP Pending"}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {(deliveryOtpStatus?.is_verified || pod?.otp_verified)
+                            ? `Verified on ${deliveryOtpStatus?.verified_at ? new Date(deliveryOtpStatus.verified_at).toLocaleTimeString() : "arrival"}`
+                            : `Customer displays code upon driver arrival`}
+                        </p>
+                        {deliveryOtpStatus?.override_reason && (
+                          <p className="text-[11px] text-amber-300/90 italic mt-0.5">
+                            Override: {deliveryOtpStatus.override_reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {!deliveryOtpStatus?.is_verified && !pod?.otp_verified && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverridePurpose("DELIVERY");
+                          setOverrideModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <ShieldAlert size={12} />
+                        Override Delivery OTP
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="rounded-lg bg-slate-950/60 p-2.5">
                     <p className="text-[9px] uppercase tracking-wider text-slate-500">Recipient Name</p>

@@ -69,10 +69,42 @@ function DriverForm({ onDone }: { onDone: () => void }) {
   }} className="space-y-3">
     {error && <div className="flex gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><AlertCircle size={15} />{error}</div>}
     <div className="grid gap-3 sm:grid-cols-2">
-      <input name="name" required placeholder="Full name" className="fleet-input" /><input name="email" type="email" required placeholder="Email address" className="fleet-input" />
-      <input name="phone" required inputMode="numeric" maxLength={10} placeholder="Mobile number" className="fleet-input" /><input name="age" type="number" required min="18" max="75" placeholder="Age" className="fleet-input" />
-      <input name="license_number" required placeholder="License number" className="fleet-input" /><input name="aadhaar_number" required inputMode="numeric" maxLength={14} placeholder="Aadhaar number" className="fleet-input" />
-      <input name="username" placeholder="Login Username (Optional)" className="fleet-input" /><input name="password" type="text" placeholder="Login Password (Optional)" className="fleet-input" />
+      <input
+        name="name"
+        required
+        placeholder="Full name (alphabets only)"
+        className="fleet-input"
+        onInput={(e: React.FormEvent<HTMLInputElement>) => {
+          e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s]/g, "");
+        }}
+      />
+      <input name="email" type="email" required placeholder="Email address" className="fleet-input" />
+      <input
+        name="phone"
+        required
+        inputMode="numeric"
+        maxLength={10}
+        placeholder="Mobile number (10 digits)"
+        className="fleet-input font-mono"
+        onInput={(e: React.FormEvent<HTMLInputElement>) => {
+          e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 10);
+        }}
+      />
+      <input name="age" type="number" required min="18" max="75" placeholder="Age" className="fleet-input" />
+      <input name="license_number" required placeholder="License number" className="fleet-input" />
+      <input
+        name="aadhaar_number"
+        required
+        inputMode="numeric"
+        maxLength={12}
+        placeholder="Aadhaar number (12 digits)"
+        className="fleet-input font-mono"
+        onInput={(e: React.FormEvent<HTMLInputElement>) => {
+          e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 12);
+        }}
+      />
+      <input name="username" placeholder="Login Username (Optional)" className="fleet-input" />
+      <input name="password" type="text" placeholder="Login Password (Optional)" className="fleet-input" />
     </div>
     <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"><Plus size={16} />{saving ? "Adding driver..." : "Add driver"}</button>
   </form>;
@@ -111,7 +143,28 @@ function InlineEdit({ kind, record, onCancel, onSaved }: any) {
   }} className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
     <div className="mb-3 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-300">Edit {kind}</p><button type="button" onClick={onCancel}><X size={16} className="text-slate-500" /></button></div>
     {error && <p className="mb-2 text-xs text-red-300">{error}</p>}
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{fields.map((field) => <input key={field.name} {...field} required className="fleet-input" />)}{!isDriver && <select name="type" defaultValue={record.type} className="fleet-input"><option value="OPEN">OPEN</option><option value="CONTAINER">CONTAINER</option><option value="TRAILER">TRAILER</option></select>}<select name="status" defaultValue={record.status} className="fleet-input">{statuses.map((status) => <option key={status} value={status}>{status.replace(/_/g, " ")}</option>)}</select></div>
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      {fields.map((field) => (
+        <input
+          key={field.name}
+          {...field}
+          required
+          maxLength={field.name === "phone" ? 10 : field.name === "aadhaar_number" ? 12 : undefined}
+          onInput={(e: React.FormEvent<HTMLInputElement>) => {
+            if (field.name === "name") {
+              e.currentTarget.value = e.currentTarget.value.replace(/[^a-zA-Z\s]/g, "");
+            } else if (field.name === "phone") {
+              e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 10);
+            } else if (field.name === "aadhaar_number") {
+              e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 12);
+            }
+          }}
+          className="fleet-input"
+        />
+      ))}
+      {!isDriver && <select name="type" defaultValue={record.type} className="fleet-input"><option value="OPEN">OPEN</option><option value="CONTAINER">CONTAINER</option><option value="TRAILER">TRAILER</option></select>}
+      <select name="status" defaultValue={record.status} className="fleet-input">{statuses.map((status) => <option key={status} value={status}>{status.replace(/_/g, " ")}</option>)}</select>
+    </div>
     <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={onCancel} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400">Cancel</button><button className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white"><Save size={13} />Save changes</button></div>
   </form>;
 }

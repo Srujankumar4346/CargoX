@@ -7,7 +7,7 @@ export interface BookingItem {
   routeFrom: string;
   routeTo: string;
   date: string;
-  price: number;
+  price: number | null;
   status: "In Transit" | "Delivered" | "Cancelled" | "Pending";
   vehicleName: string;
   vehicleImage: string;
@@ -167,9 +167,9 @@ export default function MyBookingsScreen({
                       <span className="text-slate-400">→</span>
                       <span>{b.routeTo}</span>
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{b.date}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{b.date || "Date pending"}</p>
                     <p className="text-sm font-extrabold text-slate-900 mt-1">
-                      ₹{b.price.toLocaleString("en-IN")}
+                      {b.price != null ? `₹${Number(b.price).toLocaleString("en-IN")}` : "Quotation Pending"}
                     </p>
                   </div>
                 </div>

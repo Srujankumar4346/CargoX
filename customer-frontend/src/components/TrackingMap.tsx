@@ -1,6 +1,135 @@
-import { CheckCircle2, Circle, Truck, PackageCheck, Package, MapPin, Clock, Flag } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckCircle2, Circle, Truck, PackageCheck, Package, MapPin, Clock, Flag, ShieldCheck, KeyRound, RefreshCw } from "lucide-react";
+import { api } from "../services/api";
+
+function CustomerVerificationOtpCard({ requestId, tripStatus }: { requestId: string; tripStatus?: string }) {
+  const [otpData, setOtpData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+
+  const fetchOtp = async () => {
+    if (!requestId) return;
+    try {
+      setLoading(true);
+      const data = await api.getActiveOTP(requestId);
+      setOtpData(data);
+      if (data?.expires_in_seconds) {
+        setTimeLeft(data.expires_in_seconds);
+      }
+    } catch (e) {
+      // Not yet active or failed
+      setOtpData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOtp();
+    const interval = setInterval(fetchOtp, 15000); // Poll status periodically
+    return () => clearInterval(interval);
+  }, [requestId, tripStatus]);
+
+  // Expiry countdown timer
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          fetchOtp(); // refresh when timer expires
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  if (!otpData) return null;
+
+  // If stage verified
+  if (otpData.is_verified) {
+    return (
+      <div className="bg-emerald-950/40 rounded-xl border border-emerald-500/30 p-5 shadow-sm flex items-start gap-3.5">
+        <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+          <ShieldCheck size={24} />
+        </div>
+        <div>
+          <h4 className="text-sm font-bold text-emerald-300">{otpData.stage_label || "Handover Verified"}</h4>
+          <p className="text-xs text-slate-300 mt-0.5">{otpData.instruction}</p>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold">
+            <CheckCircle2 size={13} />
+            Verified Handover Complete
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If active code exists
+  if (otpData.has_active_otp && otpData.code) {
+    const isPickup = otpData.purpose === "PICKUP";
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    const formattedTimer = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+    return (
+      <div className="bg-linear-to-r from-slate-900 to-blue-950/60 rounded-xl border-2 border-blue-500/40 p-5 shadow-lg">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded-lg ${isPickup ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
+              <KeyRound size={18} />
+            </div>
+            <div>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isPickup ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {isPickup ? "Pickup Handover" : "Delivery Handover"}
+              </span>
+              <h4 className="text-sm font-extrabold text-white">
+                {isPickup ? "Pickup Verification Code" : "Delivery Verification Code"}
+              </h4>
+            </div>
+          </div>
+          <button
+            onClick={fetchOtp}
+            disabled={loading}
+            className="text-xs text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition flex items-center gap-1"
+            title="Refresh code"
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-slate-300">
+              {otpData.instruction}
+            </p>
+            <span className="text-[11px] text-slate-500 block mt-1">
+              Do not share this code until goods are physically inspected and handed over.
+            </span>
+          </div>
+
+          <div className="flex flex-col items-center sm:items-end shrink-0">
+            <div className="px-5 py-2.5 rounded-xl bg-slate-950 border border-blue-500/50 shadow-inner">
+              <span className="font-mono text-2xl font-black tracking-[0.3em] text-blue-400 pl-1">
+                {otpData.code}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-400 font-medium">
+              <Clock size={12} className={timeLeft < 60 ? "text-rose-400 animate-pulse" : "text-slate-400"} />
+              <span>Expires in <strong className={timeLeft < 60 ? "text-rose-400 font-mono" : "text-white font-mono"}>{formattedTimer}</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export default function TrackingMap({ trip, locations }: { trip: any, locations: any[] }) {
+
   if (!trip) return null;
 
   const normalizeStatus = (s: string) => (s || "").toUpperCase().replace(/ /g, "_");
@@ -86,6 +215,9 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
          )}
       </div>
 
+      {/* Customer-Displayed Verification Code Card (Pickup & Delivery) */}
+      <CustomerVerificationOtpCard requestId={trip.request_id || trip.id} tripStatus={trip.status} />
+
       {(trip.driver_name || trip.vehicle_registration) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-color)] p-5">
            <div>
@@ -131,12 +263,17 @@ export default function TrackingMap({ trip, locations }: { trip: any, locations:
             </div>
 
             <div className="p-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-color)]">
-              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)] block">Delivery Timestamp</span>
+              <span className="text-xs uppercase tracking-wider text-[var(--text-secondary)] block">Delivery Handover</span>
               <p className="mt-1 font-semibold text-[var(--text-primary)]">
                 {trip.pod.submitted_at ? formatDate(trip.pod.submitted_at) : "Recent"}
               </p>
-              <p className="text-xs text-emerald-500 mt-0.5 flex items-center gap-1">
-                <CheckCircle2 size={12} /> Handover Confirmed
+              <p className="text-xs text-emerald-500 mt-0.5 flex items-center gap-1 font-semibold">
+                <CheckCircle2 size={13} />
+                {trip.pod.otp_is_override
+                  ? "Handover Confirmed (Audited Authorization)"
+                  : trip.pod.otp_verified
+                  ? "Verified via Secure Recipient OTP"
+                  : "Handover Confirmed"}
               </p>
             </div>
           </div>

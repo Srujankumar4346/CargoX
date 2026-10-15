@@ -238,6 +238,29 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  getTripOTPStatus: async (tripId: string, purpose: string = "DELIVERY") => {
+    const res = await authFetch(`${API_URL}/admin/trips/${tripId}/otp-status?purpose=${encodeURIComponent(purpose)}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  overrideDeliveryOTP: async (requestId: string, reason: string, purpose: string = "DELIVERY") => {
+    const res = await authFetch(`${API_URL}/admin/requests/${requestId}/otp-override`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason, purpose }),
+    });
+    if (!res.ok) {
+      let err = "Failed to override OTP";
+      try {
+        const body = await res.json();
+        err = body.detail || err;
+      } catch (_) {
+        err = await res.text();
+      }
+      throw new Error(err);
+    }
+    return res.json();
+  },
   updateTripStatus: async (tripId: number, status: string) => {
     const res = await authFetch(`${API_URL}/trips/${tripId}/status?new_status=${encodeURIComponent(status)}`, { method: "PUT" });
     if (!res.ok) throw new Error(await res.text());

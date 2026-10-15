@@ -13,8 +13,14 @@ from app.models.enums import DeliveryRequestStatus, InvoiceStatus
 from app.schemas.dispatch import DispatchRequest, DispatchRead
 from app.schemas.delivery_request import DeliveryRequestRead, CancelRequestSchema
 from app.schemas.tracking_delivery import PODRead
+from app.schemas.delivery_otp import (
+    DeliveryOTPAdminOverrideRequest,
+    DeliveryOTPAdminOverrideResponse,
+    DeliveryOTPStatusResponse,
+)
 from app.services.dispatch_service import DispatchService
 from app.services.tracking_delivery_service import TrackingDeliveryService
+from app.services.delivery_otp_service import DeliveryOTPService
 
 router = APIRouter()
 
@@ -469,6 +475,33 @@ async def reject_pod(
     reason = (rejection or {}).get("rejection_reason", "Proof of delivery document rejected by admin.")
     return await TrackingDeliveryService.reject_pod(trip_id, reason, current_admin)
 
+@router.post("/requests/{request_id}/otp-override", response_model=DeliveryOTPAdminOverrideResponse)
+async def admin_override_delivery_otp(
+    request_id: uuid.UUID,
+    payload: DeliveryOTPAdminOverrideRequest,
+    current_admin: User = Depends(get_current_admin),
+):
+    """
+    Authorized Admin exception workflow for genuine situations where recipient
+    cannot provide verification code.
+    Requires explicit admin authorization, mandatory audit reason, and logs identity.
+    """
+    purpose = payload.purpose or "DELIVERY"
+    return await DeliveryOTPService.admin_override_otp(request_id, payload.reason, current_admin, purpose)
+
+@router.get("/trips/{trip_id}/otp-status", response_model=DeliveryOTPStatusResponse)
+async def admin_get_delivery_otp_status(
+    trip_id: uuid.UUID,
+    purpose: Optional[str] = None,
+    current_admin: User = Depends(get_current_admin),
+):
+    """
+    Inspects OTP verification status (PICKUP or DELIVERY) for admin audit.
+    Never exposes plain OTP codes.
+    """
+    return await DeliveryOTPService.get_otp_status(trip_id, current_admin, purpose)
+
+
 @router.post("/trips/{trip_id}/complete")
 async def complete_trip(
     trip_id: uuid.UUID,
@@ -487,23 +520,26 @@ async def complete_trip(
         "status": "COMPLETED"
     }
 
+from app.schemas.delivery_otp import AdminEmergencyTransitionRequest, AdminForceCompleteRequest
+
 @router.post("/trips/{trip_id}/admin-force-complete")
 async def admin_force_complete(
     trip_id: uuid.UUID,
+    payload: Optional[AdminForceCompleteRequest] = None,
     current_admin: User = Depends(get_current_admin),
-    ):
+):
     """
-    Admin-only: Force-completes any active trip regardless of current status.
-    Sets all missing timestamps, releases resources, and auto-generates invoice.
-    Bypasses POD requirement for admin convenience.
+    Admin emergency exception completion:
+    Requires explicit admin authorization and a mandatory justification reason if bypassing delivery OTP
+    or POD verification. Does not permit silent un-audited completion.
+    Creates an immutable audit record and preserves invoicing / resource release invariants.
     """
     from app.models.finance import Invoice
-    from app.models.pricing import Quotation
-    from app.models.enums import QuotationStatus, InvoiceStatus
+    from app.models.enums import InvoiceStatus
     from app.schemas.invoice import InvoiceCreate
     from app.services.invoice_service import InvoiceService
-    from decimal import Decimal
-    import random
+    from app.models.delivery_otp import DeliveryOTP
+    from app.core.config import settings as app_settings
 
     trip = await Trip.find_one(Trip.id == trip_id)
     if not trip:
@@ -513,13 +549,42 @@ async def admin_force_complete(
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
-    # Skip if already completed
     if request.status == DeliveryRequestStatus.COMPLETED:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trip is already completed")
 
+    # Check delivery OTP verification status
+    deliv_otp = await DeliveryOTP.find_one(
+        DeliveryOTP.request_id == request.id,
+        DeliveryOTP.purpose == "DELIVERY",
+        DeliveryOTP.is_consumed == True,
+        sort=[("consumed_at", -1)]
+    )
+    has_valid_delivery_otp = bool(deliv_otp and (deliv_otp.verified_by_user_id or deliv_otp.is_admin_override))
+
+    # Check POD status
+    from app.models.delivery import ProofOfDelivery
+    pod = await ProofOfDelivery.find_one(ProofOfDelivery.trip_id == trip.id)
+    has_valid_pod = bool(pod and pod.status in ["SUBMITTED", "VERIFIED"])
+
+    # If delivery OTP or POD missing, enforce that an audited override reason was explicitly provided
+    override_reason = payload.override_reason.strip() if (payload and payload.override_reason) else None
+    if app_settings.DELIVERY_OTP_REQUIRED and not has_valid_delivery_otp:
+        if not override_reason or len(override_reason) < 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Delivery OTP verification required. To perform an emergency admin completion, a mandatory justification reason (min 5 characters) must be provided in override_reason."
+            )
+        # Record durable audit override record via DeliveryOTPService
+        await DeliveryOTPService.admin_override_otp(
+            request_id=request.id,
+            reason=f"[Force Complete Exception] {override_reason}",
+            admin_user=current_admin,
+            purpose="DELIVERY"
+        )
+
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    # Set all missing timestamps so tracking timeline shows correctly
+    # Set timestamps
     if not trip.started_at:
         trip.started_at = now
     if not trip.arrived_at:
@@ -528,15 +593,13 @@ async def admin_force_complete(
         trip.delivered_at = now
     trip.completed_at = now
 
-    # Mark request as COMPLETED
     request.status = DeliveryRequestStatus.COMPLETED
     await trip.save()
     await request.save()
 
     # Release vehicle and driver
-    from app.models.fleet import VehicleAssignment
+    from app.models.fleet import VehicleAssignment, Vehicle, Driver
     from app.models.enums import VehicleStatus, DriverStatus
-    from app.models.fleet import Vehicle, Driver
     assignment = await VehicleAssignment.find_one(
         VehicleAssignment.trip_id == trip.id,
         VehicleAssignment.released_at == None
@@ -553,28 +616,34 @@ async def admin_force_complete(
             driver.status = DriverStatus.AVAILABLE
             await driver.save()
 
-    # Auto-generate invoice from the immutable accepted quotation
-    try:
-        await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), current_admin)
-    except Exception as e:
-        import logging
-        logging.getLogger("cargox").error(f"[admin-force-complete] Invoice generation error for trip {trip.id}: {e}")
+    # Auto-generate invoice from the immutable accepted quotation if not already generated
+    existing_inv = await Invoice.find_one(Invoice.request_id == request.id)
+    if not existing_inv:
+        try:
+            await InvoiceService.generate_invoice(trip.id, InvoiceCreate(), current_admin)
+        except Exception as e:
+            import logging
+            logging.getLogger("cargox").error(f"[admin-force-complete] Invoice generation error for trip {trip.id}: {e}")
 
     return {
         "id": trip.id,
         "request_id": request.id,
         "status": "COMPLETED",
         "completed_at": trip.completed_at,
-        "message": "Trip completed and invoice generated successfully"
+        "is_override": bool(override_reason),
+        "message": "Trip completed successfully with audited compliance record."
     }
 
 @router.post("/trips/{trip_id}/mark-in-transit")
 async def mark_in_transit(
     trip_id: uuid.UUID,
+    payload: Optional[AdminEmergencyTransitionRequest] = None,
     current_admin: User = Depends(get_current_admin),
-    ):
+):
     """
-    Admin: Advance trip status to IN_TRANSIT and set started_at timestamp.
+    Admin: Advance trip status to IN_TRANSIT.
+    Requires Pickup OTP verification. If bypassing in an emergency, requires a mandatory justification
+    reason (min 5 characters) and records an immutable audit record.
     """
     trip = await Trip.find_one(Trip.id == trip_id)
     if not trip:
@@ -584,8 +653,40 @@ async def mark_in_transit(
     if not request:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery request not found")
 
+    from app.models.delivery_otp import DeliveryOTP
+    from app.core.config import settings as app_settings
+
+    # Verify Pickup OTP status
+    pickup_record = await DeliveryOTP.find_one(
+        DeliveryOTP.request_id == request.id,
+        DeliveryOTP.purpose == "PICKUP",
+        DeliveryOTP.is_consumed == True,
+        sort=[("consumed_at", -1)]
+    )
+    has_valid_pickup = bool(
+        pickup_record and (pickup_record.verified_by_user_id is not None or pickup_record.is_admin_override)
+    )
+
+    override_reason = payload.override_reason.strip() if (payload and payload.override_reason) else None
+
+    if app_settings.DELIVERY_OTP_REQUIRED and not has_valid_pickup:
+        if not override_reason or len(override_reason) < 5:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Pickup OTP verification required before marking in transit. For emergency admin override, specify a mandatory justification reason (min 5 characters) in override_reason."
+            )
+        # Record durable audit override record via DeliveryOTPService
+        await DeliveryOTPService.admin_override_otp(
+            request_id=request.id,
+            reason=f"[Mark In Transit Exception] {override_reason}",
+            admin_user=current_admin,
+            purpose="PICKUP"
+        )
+
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     trip.started_at = now
+    if not trip.picked_up_at:
+        trip.picked_up_at = now
     request.status = DeliveryRequestStatus.IN_TRANSIT
     await trip.save()
     await request.save()

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Share2, MoreVertical, Phone, MessageSquare } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Share2, MoreVertical, Phone, MessageSquare, KeyRound, ShieldCheck, Clock, RefreshCw, CheckCircle2 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Polyline } from "react-leaflet";
 import L from "leaflet";
 
@@ -10,7 +10,6 @@ const truckIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-import { useEffect } from "react";
 import { api } from "../../services/api";
 
 interface LiveTrackingScreenProps {
@@ -46,39 +45,144 @@ export default function LiveTrackingScreen({
   const [isLoading, setIsLoading] = useState<boolean>(Boolean(requestId));
   const [truckPos, setTruckPos] = useState<[number, number] | null>(null);
   const [routeCoords, setRouteCoords] = useState<[number, number][]>([]);
+  const [roadPolyline, setRoadPolyline] = useState<[number, number][]>([]);
+  const [trackingStatusText, setTrackingStatusText] = useState<string>("Locating...");
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (requestId) {
-      let isMounted = true;
-      setIsLoading(true);
-      api.getTracking(requestId)
-        .then((res) => {
-          if (isMounted && res) {
-            setLiveData(res);
-            if (res.current_lat && res.current_lng) {
-              setTruckPos([res.current_lat, res.current_lng]);
-            } else {
-              setTruckPos(null);
-            }
-            if (Array.isArray(res.breadcrumbs) && res.breadcrumbs.length > 0) {
-              const pts: [number, number][] = res.breadcrumbs.map((b: any) => [b.lat, b.lng]);
-              setRouteCoords(pts);
-            } else {
-              setRouteCoords([]);
-            }
-          }
-        })
-        .catch((err) => {
-          console.warn("Could not load tracking:", err);
-        })
-        .finally(() => {
-          if (isMounted) setIsLoading(false);
-        });
-      return () => { isMounted = false; };
-    } else {
-      setIsLoading(false);
+  // Delivery / Pickup OTP State
+  const [otpData, setOtpData] = useState<any>(null);
+  const [isOtpLoading, setIsOtpLoading] = useState(false);
+  const [otpTimeLeft, setOtpTimeLeft] = useState<number>(0);
+  const [otpError, setOtpError] = useState<string | null>(null);
+
+  const fetchOtp = async () => {
+    if (!requestId) return;
+    try {
+      setIsOtpLoading(true);
+      setOtpError(null);
+      const data = await api.getActiveOTP(requestId);
+      setOtpData(data);
+      if (data?.expires_in_seconds) {
+        setOtpTimeLeft(data.expires_in_seconds);
+      }
+    } catch (err: any) {
+      console.warn("Could not load OTP:", err);
+      const msg = err?.message || "";
+      if (msg.includes("403") || msg.includes("401")) {
+        setOtpError("Authorization error fetching verification code.");
+      } else if (!msg.includes("404")) {
+        setOtpError("Unable to load verification code. Please retry.");
+      }
+      setOtpData(null);
+    } finally {
+      setIsOtpLoading(false);
     }
+  };
+
+  // Continuous Tracking Refresh Loop (every 6 seconds while active)
+  useEffect(() => {
+    if (!requestId) {
+      setIsLoading(false);
+      setOtpData(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchTracking = async (isInitial = false) => {
+      if (isInitial) setIsLoading(true);
+      try {
+        const res = await api.getTracking(requestId);
+        if (!isMounted || !res) return;
+
+        setLiveData(res);
+
+        // Update live truck position
+        if (res.current_lat && res.current_lng) {
+          setTruckPos([res.current_lat, res.current_lng]);
+          setLastUpdatedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        }
+
+        // Breadcrumbs history (traveled path)
+        if (Array.isArray(res.breadcrumbs) && res.breadcrumbs.length > 0) {
+          const pts: [number, number][] = res.breadcrumbs.map((b: any) => [b.lat, b.lng]);
+          setRouteCoords(pts);
+        }
+
+        // Determine status display text
+        const normStatus = (res.status || "").toUpperCase();
+        if (normStatus === "COMPLETED") {
+          setTrackingStatusText("Delivery Completed");
+        } else if (res.is_live && res.current_lat) {
+          setTrackingStatusText("Live GPS Signal");
+        } else if (res.current_lat) {
+          setTrackingStatusText("Last Known Location");
+        } else if (["DRIVER_ASSIGNED", "ASSIGNED"].includes(normStatus)) {
+          setTrackingStatusText("Driver Assigned (Awaiting GPS)");
+        } else {
+          setTrackingStatusText("Connecting to Vehicle...");
+        }
+
+        // Fetch planned road geometry from OSRM if pickup and destination coordinates exist
+        if (res.pickup_lat && res.pickup_lng && res.destination_lat && res.destination_lng && roadPolyline.length === 0) {
+          fetch(`https://router.project-osrm.org/route/v1/driving/${res.pickup_lng},${res.pickup_lat};${res.destination_lng},${res.destination_lat}?overview=full&geometries=geojson`)
+            .then((r) => r.json())
+            .then((routeData) => {
+              if (isMounted && routeData?.routes?.[0]?.geometry?.coordinates) {
+                const geoPts: [number, number][] = routeData.routes[0].geometry.coordinates.map(
+                  (c: [number, number]) => [c[1], c[0]]
+                );
+                setRoadPolyline(geoPts);
+              }
+            })
+            .catch((osrmErr) => {
+              console.warn("Road routing API fallback:", osrmErr);
+            });
+        }
+      } catch (err: any) {
+        console.warn("Could not poll tracking:", err);
+        if (isMounted) {
+          setTrackingStatusText("Connection interrupted");
+        }
+      } finally {
+        if (isMounted && isInitial) setIsLoading(false);
+      }
+    };
+
+    // Initial fetch
+    fetchTracking(true);
+    fetchOtp();
+
+    // 6-second polling interval for real-time location streaming
+    const trackingInterval = setInterval(() => {
+      fetchTracking(false);
+    }, 6000);
+
+    const otpInterval = setInterval(() => {
+      fetchOtp();
+    }, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(trackingInterval);
+      clearInterval(otpInterval);
+    };
   }, [requestId]);
+
+  // Countdown timer for active OTP
+  useEffect(() => {
+    if (otpTimeLeft <= 0) return;
+    const timer = setInterval(() => {
+      setOtpTimeLeft((prev) => {
+        if (prev <= 1) {
+          fetchOtp();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpTimeLeft]);
 
   const activeDriverName = liveData?.driver_name || driverName || null;
   const activeDriverPhone = liveData?.driver_phone || driverPhone || null;
@@ -92,7 +196,7 @@ export default function LiveTrackingScreen({
   const hasLiveGps = Boolean(truckPos);
 
   return (
-    <div className="relative min-h-screen w-full bg-slate-50 flex flex-col justify-between overflow-hidden select-none">
+    <div className="relative h-full w-full bg-slate-50 flex flex-col justify-between overflow-hidden select-none">
       {/* Top Header matching Screen 10 */}
       <div className="absolute top-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">
         <button
@@ -141,7 +245,7 @@ export default function LiveTrackingScreen({
       <div className="absolute inset-0 z-0">
         <MapContainer
           center={truckPos ? truckPos : [17.3850, 78.4867]}
-          zoom={truckPos ? 12 : 7}
+          zoom={truckPos ? 13 : 8}
           zoomControl={false}
           className="w-full h-full"
         >
@@ -153,30 +257,45 @@ export default function LiveTrackingScreen({
                 : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             }
           />
-          {truckPos && <Marker position={truckPos} icon={truckIcon} />}
-          {routeCoords.length > 1 && (
-            <Polyline positions={routeCoords} color="#1e60ff" weight={4} opacity={0.85} />
+
+          {/* Planned Road Route (Dark Blue Dashed) */}
+          {roadPolyline.length > 1 && (
+            <Polyline positions={roadPolyline} color="#0f172a" weight={4} dashArray="6, 8" opacity={0.65} />
           )}
+
+          {/* Actual GPS Breadcrumbs (Traveled Path - Bright Blue) */}
+          {routeCoords.length > 1 && (
+            <Polyline positions={routeCoords} color="#1e60ff" weight={5} opacity={0.9} />
+          )}
+
+          {/* Authoritative Live Driver Marker */}
+          {truckPos && <Marker position={truckPos} icon={truckIcon} />}
         </MapContainer>
       </div>
 
       {/* GPS Status Notice Pill */}
-      <div className="absolute top-[32%] right-4 z-10">
+      <div className="absolute top-[28%] right-4 z-10">
         {hasLiveGps ? (
-          <div className="bg-[#0b1329] text-white px-3 py-2 rounded-xl shadow-xl border border-white/10 text-center">
-            <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">Live Signal</p>
-            <p className="text-xs font-black tracking-tight mt-0.5">{speedKmH ? `${speedKmH} km/h` : "Active"}</p>
+          <div className="bg-[#0b1329]/95 backdrop-blur-md text-white px-3 py-2 rounded-xl shadow-xl border border-white/10 text-center">
+            <div className="flex items-center justify-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">{trackingStatusText}</p>
+            </div>
+            <p className="text-xs font-black tracking-tight mt-0.5">{speedKmH ? `${speedKmH} km/h` : "Live Active"}</p>
+            {lastUpdatedTime && (
+              <p className="text-[9px] text-slate-400 mt-0.5">Updated: {lastUpdatedTime}</p>
+            )}
           </div>
         ) : (
           <div className="bg-[#0b1329]/90 backdrop-blur-md text-white px-3 py-2 rounded-xl shadow-xl border border-white/10 text-center max-w-[160px]">
-            <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">Location Status</p>
-            <p className="text-[10px] text-slate-300 font-medium mt-0.5 leading-tight">Live location is not available yet.</p>
+            <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">{trackingStatusText}</p>
+            <p className="text-[10px] text-slate-300 font-medium mt-0.5 leading-tight">Live location will appear when driver starts journey.</p>
           </div>
         )}
       </div>
 
       {/* Bottom Live Tracking Details Panel */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] p-5 pb-[max(env(safe-area-inset-bottom,20px),20px)] border-t border-slate-100 max-w-md mx-auto">
+      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] p-5 pb-24 border-t border-slate-100 max-w-md mx-auto max-h-[62vh] overflow-y-auto">
         {/* Operational Status Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
@@ -264,6 +383,93 @@ export default function LiveTrackingScreen({
                 Driver will be assigned by CargoX operations after route review.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Customer Verification OTP Section: Positioned below Driver & Vehicle info, above Trip Schedule */}
+        {/* Hide active OTP during IN_TRANSIT and only show relevant stage */}
+        {isOtpLoading && !otpData && (
+          <div className="py-3 border-b border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#1e60ff]" />
+            <span>Loading verification code...</span>
+          </div>
+        )}
+
+        {otpError && !otpData && (
+          <div className="py-2.5 border-b border-slate-100">
+            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between text-xs text-amber-800">
+              <span>{otpError}</span>
+              <button
+                onClick={fetchOtp}
+                className="px-2 py-1 text-[11px] font-bold text-[#1e60ff] bg-white rounded-md border border-slate-200 shadow-2xs"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {otpData && (
+          <div className="py-2.5 border-b border-slate-100">
+            {otpData.is_verified ? (
+              <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-emerald-900">{otpData.stage_label || "Handover Verified"}</p>
+                    <p className="text-[10px] text-emerald-700 font-medium">{otpData.instruction}</p>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Verified
+                </span>
+              </div>
+            ) : otpData.has_active_otp && otpData.code && operationalStatus !== "IN_TRANSIT" ? (
+              <div className="bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200/90 rounded-2xl p-3 shadow-xs">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-lg bg-[#1e60ff]/10 text-[#1e60ff] flex items-center justify-center">
+                      <KeyRound className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#1e60ff]">
+                      {otpData.purpose === "PICKUP" ? "PICKUP VERIFICATION OTP" : "DELIVERY VERIFICATION OTP"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold bg-white/70 px-2 py-0.5 rounded-md border border-slate-200/60">
+                      <Clock className={`w-3 h-3 ${otpTimeLeft < 60 ? "text-rose-500 animate-pulse" : "text-slate-400"}`} />
+                      <span className={otpTimeLeft < 60 ? "text-rose-600 font-mono font-bold" : "text-slate-700 font-mono font-bold"}>
+                        {Math.floor(otpTimeLeft / 60)}:{(otpTimeLeft % 60) < 10 ? "0" : ""}{otpTimeLeft % 60}
+                      </span>
+                    </div>
+                    <button
+                      onClick={fetchOtp}
+                      disabled={isOtpLoading}
+                      title="Refresh code"
+                      className="p-1 rounded-md hover:bg-white text-slate-500 hover:text-slate-800 transition"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isOtpLoading ? "animate-spin" : ""}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 mt-2">
+                  <p className="text-xs text-slate-600 font-medium leading-snug">
+                    {otpData.purpose === "PICKUP"
+                      ? "Share this code with your driver at pickup."
+                      : "Share this code with your driver to confirm delivery."}
+                  </p>
+                  <div className="bg-white border-2 border-[#1e60ff]/50 rounded-xl px-3.5 py-1.5 shadow-sm shrink-0">
+                    <span className="font-mono text-xl font-black tracking-[0.25em] text-[#1e60ff] pl-1">
+                      {otpData.code}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
 

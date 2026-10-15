@@ -48,6 +48,25 @@ class TrackingDeliveryService:
                 detail=f"Cannot submit POD for request in status '{request.status if request else 'None'}'. Must be in ARRIVED status."
             )
 
+        # Enforce Secure Delivery Handover OTP Verification (or Admin override)
+        from app.models.delivery_otp import DeliveryOTP
+        from app.core.config import settings as app_settings
+        otp_record = await DeliveryOTP.find_one(
+            DeliveryOTP.request_id == request.id,
+            DeliveryOTP.purpose == "DELIVERY",
+            DeliveryOTP.is_consumed == True,
+            sort=[("consumed_at", -1)]
+        )
+        has_valid_handover = bool(
+            otp_record and (otp_record.verified_by_user_id is not None or otp_record.is_admin_override)
+        )
+
+        if app_settings.DELIVERY_OTP_REQUIRED and not has_valid_handover:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Delivery handover OTP verification required. Please verify recipient OTP before submitting Proof of Delivery (POD)."
+            )
+
         # Coerce AnyHttpUrl to str (Pydantic v2 AnyHttpUrl is not a plain str)
         pod_photo = str(pod_in.pod_photo_url) if pod_in.pod_photo_url else None
         pod_sig = str(pod_in.pod_signature_url) if pod_in.pod_signature_url else None
@@ -78,6 +97,10 @@ class TrackingDeliveryService:
             pod.submitted_by = driver_user.id
             pod.verified_at = None
             pod.verified_by = None
+            pod.otp_verified = True
+            pod.otp_verified_at = otp_record.consumed_at if otp_record else now_ts
+            pod.otp_is_override = getattr(otp_record, "is_admin_override", False)
+            pod.otp_override_reason = getattr(otp_record, "override_reason", None)
             await pod.save()
         else:
             pod = ProofOfDelivery(
@@ -89,7 +112,11 @@ class TrackingDeliveryService:
                 status="SUBMITTED",
                 notes=pod_in.notes,
                 submitted_at=now_ts,
-                submitted_by=driver_user.id
+                submitted_by=driver_user.id,
+                otp_verified=True,
+                otp_verified_at=otp_record.consumed_at if otp_record else now_ts,
+                otp_is_override=getattr(otp_record, "is_admin_override", False),
+                otp_override_reason=getattr(otp_record, "override_reason", None),
             )
             await pod.insert()
 
@@ -317,7 +344,9 @@ class TrackingDeliveryService:
             DeliveryRequestStatus.DRIVER_ASSIGNED.value,
             DeliveryRequestStatus.PICKUP_IN_PROGRESS.value,
             DeliveryRequestStatus.IN_TRANSIT.value,
-            DeliveryRequestStatus.ARRIVED.value
+            DeliveryRequestStatus.ARRIVED.value,
+            DeliveryRequestStatus.POD_SUBMITTED.value,
+            DeliveryRequestStatus.DELIVERED.value,
         ]
         is_live = request.status in live_statuses
 
@@ -375,6 +404,9 @@ class TrackingDeliveryService:
                     pod_photo_url=pod.file_url if "sig" not in pod.file_url else None,
                     submitted_at=pod.submitted_at,
                     verified_at=getattr(pod, "verified_at", None),
+                    otp_verified=getattr(pod, "otp_verified", False),
+                    otp_verified_at=getattr(pod, "otp_verified_at", None),
+                    otp_is_override=getattr(pod, "otp_is_override", False),
                 )
 
         return CustomerTrackingRead(
@@ -383,6 +415,10 @@ class TrackingDeliveryService:
             status=request.status.value if hasattr(request.status, 'value') else str(request.status),
             origin_address=request.pickup_address,
             destination_address=request.destination_address,
+            pickup_lat=request.pickup_lat,
+            pickup_lng=request.pickup_lng,
+            destination_lat=request.destination_lat,
+            destination_lng=request.destination_lng,
             current_lat=trip.current_lat if trip else None,
             current_lng=trip.current_lng if trip else None,
             last_location_update=last_loc,

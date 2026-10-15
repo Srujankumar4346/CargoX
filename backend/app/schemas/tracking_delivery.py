@@ -44,6 +44,10 @@ class PODRead(BaseModel):
     submitted_by_name: Optional[str] = None
     verified_at: Optional[datetime] = None
     verified_by: Optional[uuid.UUID] = None
+    otp_verified: bool = False
+    otp_verified_at: Optional[datetime] = None
+    otp_is_override: bool = False
+    otp_override_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,6 +74,9 @@ class CustomerPODRead(BaseModel):
     pod_photo_url: Optional[str] = None
     submitted_at: datetime
     verified_at: Optional[datetime] = None
+    otp_verified: bool = False
+    otp_verified_at: Optional[datetime] = None
+    otp_is_override: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -87,6 +94,10 @@ class CustomerTrackingRead(BaseModel):
     status: str
     origin_address: str
     destination_address: str
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
+    destination_lat: Optional[float] = None
+    destination_lng: Optional[float] = None
     current_lat: Optional[float] = None
     current_lng: Optional[float] = None
     last_location_update: Optional[datetime] = None

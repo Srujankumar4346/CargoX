@@ -516,3 +516,104 @@ async def test_customer_pod_visibility_and_cross_company_isolation(async_client:
     assert idor_resp.status_code == 404  # Tenant isolation enforced
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_continuous_gps_tracking_through_handover_and_rejection_at_completion(async_client: AsyncClient, admin_user, customer_user, driver_user):
+    """
+    Verifies that:
+    1. Driver can submit continuous GPS location updates across:
+       DRIVER_ASSIGNED -> PICKUP_IN_PROGRESS -> IN_TRANSIT -> ARRIVED -> POD_SUBMITTED -> DELIVERED.
+    2. Customer tracking reflects live status (is_live=True) and latest coordinates throughout all handover states.
+    3. Location updates are rejected (HTTP 400) once trip reaches COMPLETED terminal state.
+    4. Unassigned driver cannot submit location updates (HTTP 404/403).
+    """
+    ctx = await setup_full_trip(async_client, admin_user, customer_user, driver_user)
+    trip_id = ctx["trip_id"]
+    req_id = ctx["request_id"]
+
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+
+    # 1. Location update during DRIVER_ASSIGNED
+    r_loc1 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.3850, "lng": 78.4867})
+    assert r_loc1.status_code == 200
+    track1 = (await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")).json()
+    assert track1["is_live"] is True
+    assert track1["current_lat"] == 17.3850
+
+    # 2. Location update during PICKUP_IN_PROGRESS
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-pickup")
+    r_loc2 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.3900, "lng": 78.4900})
+    assert r_loc2.status_code == 200
+    track2 = (await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")).json()
+    assert track2["is_live"] is True
+    assert track2["current_lat"] == 17.3900
+
+    # 3. Location update during IN_TRANSIT
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/start-transit")
+    r_loc3 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.4100, "lng": 78.5100})
+    assert r_loc3.status_code == 200
+
+    # 4. Location update during ARRIVED (at destination, OTP pending)
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/arrive")
+    r_loc4 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.4350, "lng": 78.5350})
+    assert r_loc4.status_code == 200
+    track4 = (await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")).json()
+    assert track4["is_live"] is True
+    assert track4["current_lat"] == 17.4350
+
+    # 5. Location update during POD_SUBMITTED (handover done, admin review pending)
+    await async_client.post(f"/api/v1/driver/trips/{trip_id}/pod", json={
+        "receiver_name": "Warehouse Lead",
+        "pod_photo_url": "https://storage.cargox.com/photos/cargo_arrived.jpg"
+    })
+    r_loc5 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.4355, "lng": 78.5355})
+    assert r_loc5.status_code == 200
+    track5 = (await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")).json()
+    assert track5["is_live"] is True
+    assert track5["current_lat"] == 17.4355
+
+    # 6. Location update during DELIVERED (admin verified POD, awaiting settlement)
+    await async_client.post(f"/api/v1/admin/trips/{trip_id}/verify-pod")
+    r_loc6 = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.4360, "lng": 78.5360})
+    assert r_loc6.status_code == 200
+    track6 = (await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")).json()
+    assert track6["is_live"] is True
+    assert track6["current_lat"] == 17.4360
+
+    # Unassigned rogue driver cannot update location
+    rogue_driver = User(id=uuid.uuid4(), email="rogue_gps@cargox.com", role=UserRole.DRIVER, is_active=True)
+    await rogue_driver.insert()
+    app.dependency_overrides[get_current_driver] = lambda: rogue_driver
+    rogue_loc = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.44, "lng": 78.54})
+    assert rogue_loc.status_code in [403, 404]
+
+    # Settle invoice (auto-completes trip upon full settlement)
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+    invoice_resp = await async_client.get("/api/v1/customer/invoices")
+    invoice = next(item for item in invoice_resp.json() if item["request_id"] == req_id)
+    pay_resp = await async_client.post(f"/api/v1/admin/invoices/{invoice['id']}/payments", json={
+        "amount": str(invoice["total_amount"]),
+        "method": "CASH",
+        "reference_number": "CASH-FULL-GPS"
+    })
+    assert pay_resp.status_code == 201
+    completed_req = await DeliveryRequest.find_one(DeliveryRequest.id == uuid.UUID(req_id))
+    assert completed_req.status == DeliveryRequestStatus.COMPLETED
+
+    # 7. COMPLETED terminal trip stops accepting location updates
+    app.dependency_overrides[get_current_driver] = lambda: driver_user
+    term_loc = await async_client.post(f"/api/v1/driver/trips/{trip_id}/location", json={"lat": 17.45, "lng": 78.55})
+    assert term_loc.status_code == 400
+    assert "cannot update location for request in status 'completed'" in term_loc.json()["detail"].lower()
+
+    # Customer tracking shows is_live=False, final coordinates retained
+    final_track = (await async_client.get(f"/api/v1/customer/requests/{req_id}/tracking")).json()
+    assert final_track["is_live"] is False
+    assert final_track["current_lat"] == 17.4360
+    assert final_track["status"] == "COMPLETED"
+
+    app.dependency_overrides.clear()
+

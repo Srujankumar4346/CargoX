@@ -63,8 +63,17 @@ class DriverTripRead(BaseModel):
     gateway_order_id: Optional[str] = None
     gateway_key_id: Optional[str] = None
     payment_instructions: Optional[str] = None
+    
+    # Handover OTP Verification (Never expose raw OTP)
+    otp_verified: bool = False
+    otp_verified_at: Optional[datetime] = None
+    otp_is_override: bool = False
+    pickup_otp_verified: bool = False
+    delivery_otp_verified: bool = False
+    recipient_masked_phone: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class DriverCollectionCreate(BaseModel):

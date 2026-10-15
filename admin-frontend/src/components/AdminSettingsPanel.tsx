@@ -27,7 +27,14 @@ export default function AdminSettingsPanel() {
   const [saved, setSaved] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   useEffect(() => { try { const stored = JSON.parse(localStorage.getItem(storageKey) || "{}"); setValues({ ...defaults, ...stored.values }); setNotifications({ ...notificationDefaults, ...stored.notifications }); } catch { /* use defaults */ } }, []);
-  const update = (key: string, value: any) => { setSaved(false); setValues((current) => ({ ...current, [key]: value })); };
+  const update = (key: string, value: any) => {
+    let sanitized = value;
+    if (key === "phone" && typeof value === "string") {
+      sanitized = value.replace(/\D/g, "").slice(0, 10);
+    }
+    setSaved(false);
+    setValues((current) => ({ ...current, [key]: sanitized }));
+  };
   const save = () => { localStorage.setItem(storageKey, JSON.stringify({ values, notifications })); setSaved(true); setTimeout(() => setSaved(false), 3000); };
   const current = sections.find((item) => item.id === section)!;
   const field = (label: string, key: string, placeholder = "") => <label className="block text-sm font-medium text-slate-300">{label}<input value={values[key]} onChange={(event) => update(key, event.target.value)} placeholder={placeholder} className="settings-input mt-2" /></label>;

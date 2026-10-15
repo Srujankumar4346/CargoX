@@ -53,6 +53,21 @@ class Settings(BaseSettings):
     RAZORPAY_WEBHOOK_SECRET: str | None = None
     RAZORPAY_WEBHOOK_URL: str | None = None
     
+    # SMS Provider Configuration (e.g. Twilio, Fast2SMS, MSG91, or sandbox)
+    SMS_PROVIDER: str = "sandbox"  # "sandbox", "twilio", "fast2sms"
+    SMS_ENABLED: bool = False
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_FROM_NUMBER: str | None = None
+    FAST2SMS_API_KEY: str | None = None
+    
+    # OTP Configuration
+    DELIVERY_OTP_REQUIRED: bool = True
+    DELIVERY_OTP_EXPIRY_SECONDS: int = 300  # 5 minutes
+    DELIVERY_OTP_MAX_ATTEMPTS: int = 5
+    DELIVERY_OTP_RESEND_COOLDOWN_SECONDS: int = 60
+    DELIVERY_OTP_MAX_RESENDS: int = 3
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

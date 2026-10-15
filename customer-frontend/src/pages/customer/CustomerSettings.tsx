@@ -12,7 +12,16 @@ const sections = [{ id: "company", label: "Company profile", icon: Building2 }, 
 export default function CustomerSettings() {
   const { isLoaded, isSignedIn } = useAuth(); const { user } = useUser(); const [section, setSection] = useState("company"); const [values, setValues] = useState(defaults); const [notifications, setNotifications] = useState(notificationDefaults); const [saved, setSaved] = useState(false);
   useEffect(() => { try { const data = JSON.parse(localStorage.getItem(key) || "{}"); setValues({ ...defaults, ...data.values }); setNotifications({ ...notificationDefaults, ...data.notifications }); } catch { /* defaults */ } }, []);
-  const update = (name: string, value: string) => { setSaved(false); setValues((current) => ({ ...current, [name]: value })); };
+  const update = (name: string, value: string) => {
+    let sanitized = value;
+    if (name === "phone") {
+      sanitized = value.replace(/\D/g, "").slice(0, 10);
+    } else if (name === "contactPerson") {
+      sanitized = value.replace(/[^a-zA-Z\s]/g, "");
+    }
+    setSaved(false);
+    setValues((current) => ({ ...current, [name]: sanitized }));
+  };
   const save = () => { localStorage.setItem(key, JSON.stringify({ values, notifications })); setSaved(true); setTimeout(() => setSaved(false), 3000); };
   const input = (label: string, name: string, placeholder = "") => <label className="block text-sm font-medium text-slate-300">{label}<input value={values[name]} onChange={(event) => update(name, event.target.value)} placeholder={placeholder} className="customer-settings-input mt-2" /></label>;
   if (!isLoaded) return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-400">Connecting to CargoX...</div>;

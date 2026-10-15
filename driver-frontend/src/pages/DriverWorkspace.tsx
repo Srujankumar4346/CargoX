@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle } from "lucide-react";
+import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle, ShieldCheck, KeyRound, Smartphone, ShieldAlert } from "lucide-react";
 import { useAuth, UserButton, useUser } from "@clerk/react";
 import { api } from "../services/api";
 import NotificationDropdown from "../components/NotificationDropdown";
@@ -79,9 +79,135 @@ export default function DriverWorkspace() {
   const [checkingStatus, setCheckingStatus] = useState(false);
 
   const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [gpsTrackingActive, setGpsTrackingActive] = useState(false);
+  const [gpsStatusText, setGpsStatusText] = useState<string>("Initializing GPS...");
+  const [gpsLastCoords, setGpsLastCoords] = useState<{ lat: number; lng: number; time: string } | null>(null);
 
-  // Dedicated Proof of Delivery Modal state
-  const [podModalOpen, setPodModalOpen] = useState(false);
+  // Automated Real-Time GPS Tracking Loop with Bounded Offline Queue
+  useEffect(() => {
+    if (!activeTrip) {
+      setGpsTrackingActive(false);
+      setGpsStatusText("No active trip");
+      return;
+    }
+
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    const status = normalizeStatus(activeTrip.status);
+    const activeTrackingStatuses = [
+      "DRIVER_ASSIGNED",
+      "ASSIGNED",
+      "PICKUP_IN_PROGRESS",
+      "IN_TRANSIT",
+      "ARRIVED",
+      "POD_SUBMITTED",
+      "DELIVERED",
+    ];
+
+    if (!activeTrackingStatuses.includes(status)) {
+      setGpsTrackingActive(false);
+      setGpsStatusText("Trip completed/inactive");
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setGpsTrackingActive(false);
+      setGpsStatusText("Geolocation unsupported");
+      return;
+    }
+
+    let isSubscribed = true;
+    let watchId: number | null = null;
+    let intervalId: any = null;
+    let lastUploadedTimestamp = 0;
+    const offlineQueue: { lat: number; lng: number; timestamp: number }[] = [];
+
+    const sendGpsUpdate = async (latitude: number, longitude: number, timestamp: number) => {
+      if (!isSubscribed) return;
+
+      // Rate limit to at most once per 4 seconds while moving
+      if (timestamp - lastUploadedTimestamp < 4000) return;
+
+      // Offline queue bounded replay (max 20 stored)
+      if (offlineQueue.length > 0 && navigator.onLine) {
+        const queuedBatch = offlineQueue.splice(0, 10);
+        for (const item of queuedBatch) {
+          try {
+            await api.updateDriverLocation(targetTripId, item.lat, item.lng);
+          } catch (e) {
+            console.warn("Error uploading buffered GPS update:", e);
+          }
+        }
+      }
+
+      try {
+        if (!navigator.onLine) {
+          if (offlineQueue.length < 20) {
+            offlineQueue.push({ lat: latitude, lng: longitude, timestamp });
+          }
+          setGpsStatusText("Offline: Location queued");
+          return;
+        }
+
+        await api.updateDriverLocation(targetTripId, latitude, longitude);
+        lastUploadedTimestamp = timestamp;
+        if (isSubscribed) {
+          setGpsTrackingActive(true);
+          setGpsStatusText("Live GPS Active");
+          setGpsLastCoords({
+            lat: latitude,
+            lng: longitude,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          });
+        }
+      } catch (err: any) {
+        console.warn("Failed to transmit GPS coordinates:", err);
+        if (isSubscribed) {
+          setGpsStatusText("Connection interrupted");
+          if (offlineQueue.length < 20) {
+            offlineQueue.push({ lat: latitude, lng: longitude, timestamp });
+          }
+        }
+      }
+    };
+
+    // Watch position for instantaneous movement
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        sendGpsUpdate(pos.coords.latitude, pos.coords.longitude, pos.timestamp || Date.now());
+      },
+      (err) => {
+        console.warn("GPS watch error:", err.message);
+        if (isSubscribed) {
+          if (err.code === err.PERMISSION_DENIED) {
+            setGpsStatusText("Location permission denied");
+            setGpsTrackingActive(false);
+          } else {
+            setGpsStatusText("Signal interrupted");
+          }
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+
+    // Periodic 8s fallback interval ensuring updates continue even during stationary dwell at destination
+    intervalId = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          sendGpsUpdate(pos.coords.latitude, pos.coords.longitude, pos.timestamp || Date.now());
+        },
+        (err) => {
+          console.warn("Periodic GPS check error:", err.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
+    }, 8000);
+
+    return () => {
+      isSubscribed = false;
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (intervalId !== null) clearInterval(intervalId);
+    };
+  }, [activeTrip?.trip_id, activeTrip?.id, activeTrip?.status]);
 
   const handleUpdateLocation = async () => {
     if (!activeTrip) return;
@@ -95,6 +221,13 @@ export default function DriverWorkspace() {
       async (pos) => {
         try {
           await api.updateDriverLocation(targetTripId, pos.coords.latitude, pos.coords.longitude);
+          setGpsTrackingActive(true);
+          setGpsStatusText("Live GPS Active");
+          setGpsLastCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          });
           alert(`Location updated: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`);
         } catch (err: any) {
           alert(`Failed to upload location: ${err.message}`);
@@ -109,11 +242,90 @@ export default function DriverWorkspace() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
+
+  // Dedicated Proof of Delivery Modal state
+  const [podModalOpen, setPodModalOpen] = useState(false);
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [deliveryConfirmed, setDeliveryConfirmed] = useState(true);
   const [deliveryNotes, setDeliveryNotes] = useState("");
   const [submittingPod, setSubmittingPod] = useState(false);
+
+  // Dual-Stage OTP Verification State (Pickup & Delivery)
+  const [pickupOtpInput, setPickupOtpInput] = useState("");
+  const [verifyingPickupOtp, setVerifyingPickupOtp] = useState(false);
+  const [pickupOtpStatus, setPickupOtpStatus] = useState<any>(null);
+  const [pickupOtpError, setPickupOtpError] = useState<string | null>(null);
+  const [pickupOtpSuccess, setPickupOtpSuccess] = useState<string | null>(null);
+
+  const [deliveryOtpInput, setDeliveryOtpInput] = useState("");
+  const [verifyingDeliveryOtp, setVerifyingDeliveryOtp] = useState(false);
+  const [deliveryOtpStatus, setDeliveryOtpStatus] = useState<any>(null);
+  const [deliveryOtpError, setDeliveryOtpError] = useState<string | null>(null);
+  const [deliveryOtpSuccess, setDeliveryOtpSuccess] = useState<string | null>(null);
+
+  // Poll / refresh OTP status when activeTrip changes
+  useEffect(() => {
+    if (!activeTrip) return;
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    const status = normalizeStatus(activeTrip.status);
+
+    if (["DRIVER_ASSIGNED", "ASSIGNED", "PICKUP_IN_PROGRESS"].includes(status)) {
+      api.getDeliveryOTPStatus(targetTripId, "PICKUP")
+        .then((res: any) => setPickupOtpStatus(res))
+        .catch((err: any) => console.warn("Failed to load pickup OTP status:", err));
+    }
+
+    if (["ARRIVED", "POD_SUBMITTED", "DELIVERED"].includes(status)) {
+      api.getDeliveryOTPStatus(targetTripId, "DELIVERY")
+        .then((res: any) => setDeliveryOtpStatus(res))
+        .catch((err: any) => console.warn("Failed to load delivery OTP status:", err));
+    }
+  }, [activeTrip?.status, activeTrip?.trip_id, activeTrip?.id]);
+
+  const handleVerifyPickupOTP = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeTrip || verifyingPickupOtp || pickupOtpInput.trim().length !== 6) return;
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    setVerifyingPickupOtp(true);
+    setPickupOtpError(null);
+    setPickupOtpSuccess(null);
+    try {
+      const res = await api.verifyDeliveryOTP(targetTripId, pickupOtpInput.trim(), "PICKUP");
+      setPickupOtpSuccess(res.message);
+      setPickupOtpInput("");
+      const updatedTrip = await api.getDriverActiveTrip();
+      if (updatedTrip) setActiveTrip(updatedTrip);
+      const updatedStatus = await api.getDeliveryOTPStatus(targetTripId, "PICKUP");
+      setPickupOtpStatus(updatedStatus);
+    } catch (err: any) {
+      setPickupOtpError(err.message || "Invalid Pickup OTP. Please ask customer to read the OTP from their screen.");
+    } finally {
+      setVerifyingPickupOtp(false);
+    }
+  };
+
+  const handleVerifyDeliveryOTP = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!activeTrip || verifyingDeliveryOtp || deliveryOtpInput.trim().length !== 6) return;
+    const targetTripId = activeTrip.trip_id || activeTrip.id;
+    setVerifyingDeliveryOtp(true);
+    setDeliveryOtpError(null);
+    setDeliveryOtpSuccess(null);
+    try {
+      const res = await api.verifyDeliveryOTP(targetTripId, deliveryOtpInput.trim(), "DELIVERY");
+      setDeliveryOtpSuccess(res.message);
+      setDeliveryOtpInput("");
+      const updatedTrip = await api.getDriverActiveTrip();
+      if (updatedTrip) setActiveTrip(updatedTrip);
+      const updatedStatus = await api.getDeliveryOTPStatus(targetTripId, "DELIVERY");
+      setDeliveryOtpStatus(updatedStatus);
+    } catch (err: any) {
+      setDeliveryOtpError(err.message || "Invalid Delivery OTP. Please ask recipient to read the OTP from their screen.");
+    } finally {
+      setVerifyingDeliveryOtp(false);
+    }
+  };
 
   const handlePayCargoXNow = async (e?: React.MouseEvent) => {
     if (e) {
@@ -506,34 +718,77 @@ export default function DriverWorkspace() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-3 mt-2">
+                <div className="flex flex-wrap items-center gap-3 mt-2">
+                  <div className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-2 ${
+                    gpsTrackingActive 
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
+                      : gpsStatusText.includes("denied") || gpsStatusText.includes("unsupported")
+                      ? "bg-red-500/10 border-red-500/30 text-red-400"
+                      : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${gpsTrackingActive ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                    <span>{gpsStatusText}</span>
+                    {gpsLastCoords && (
+                      <span className="text-[10px] text-slate-400 font-mono ml-1">
+                        ({gpsLastCoords.lat.toFixed(4)}, {gpsLastCoords.lng.toFixed(4)}) · {gpsLastCoords.time}
+                      </span>
+                    )}
+                  </div>
+
                   <button 
                     type="button"
                     disabled={updatingLocation}
                     onClick={handleUpdateLocation} 
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 transition flex items-center gap-2 cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
                   >
-                     <Navigation size={14} className={updatingLocation ? "animate-spin text-blue-400" : ""} />
-                     {updatingLocation ? "Updating Location..." : "Update Location"}
+                     <Navigation size={13} className={updatingLocation ? "animate-spin text-blue-400" : ""} />
+                     {updatingLocation ? "Sending..." : "Sync GPS Now"}
                   </button>
                   {["DRIVER_ASSIGNED", "ASSIGNED"].includes(normalizeStatus(activeTrip.status)) && (
-                    <button onClick={() => handleAction("start-pickup")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2">
+                    <button onClick={() => handleAction("start-pickup")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2 cursor-pointer">
                        Start Pickup
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "PICKUP_IN_PROGRESS" && (
-                    <button onClick={() => handleAction("start-transit")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2">
-                       Start Transit
+                    <button 
+                      onClick={() => {
+                        if (!activeTrip.pickup_otp_verified && !pickupOtpStatus?.is_verified) {
+                          alert("Customer Pickup OTP verification is required before starting transit. Please ask the customer for the 6-digit OTP displayed on their screen.");
+                          return;
+                        }
+                        handleAction("start-transit");
+                      }} 
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition flex items-center gap-2 cursor-pointer ${
+                        (activeTrip.pickup_otp_verified || pickupOtpStatus?.is_verified)
+                          ? "bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-950/40"
+                          : "bg-slate-700 hover:bg-slate-600 border border-slate-600 opacity-90"
+                      }`}
+                    >
+                       {(activeTrip.pickup_otp_verified || pickupOtpStatus?.is_verified) ? "Start Transit" : "Verify Pickup OTP to Start Transit"}
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "IN_TRANSIT" && (
-                    <button onClick={() => handleAction("arrive")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2">
+                    <button onClick={() => handleAction("arrive")} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition flex items-center gap-2 cursor-pointer">
                        <MapPin size={14}/> Arrive at Destination
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "ARRIVED" && (
-                    <button onClick={handleOpenPodModal} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/40">
-                       <ClipboardList size={14}/> Submit Proof of Delivery (POD)
+                    <button 
+                      onClick={() => {
+                        if (!activeTrip.delivery_otp_verified && !activeTrip.otp_verified && !deliveryOtpStatus?.is_verified) {
+                          alert("Recipient Delivery OTP verification is required before submitting Proof of Delivery (POD). Please verify the 6-digit OTP displayed on customer/recipient screen.");
+                          return;
+                        }
+                        handleOpenPodModal();
+                      }} 
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition flex items-center gap-2 cursor-pointer shadow-lg ${
+                        (activeTrip.delivery_otp_verified || activeTrip.otp_verified || deliveryOtpStatus?.is_verified)
+                          ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950/40"
+                          : "bg-slate-700 hover:bg-slate-600 border border-slate-600 opacity-90"
+                      }`}
+                    >
+                       <ClipboardList size={14}/> 
+                       {(activeTrip.delivery_otp_verified || activeTrip.otp_verified || deliveryOtpStatus?.is_verified) ? "Submit Proof of Delivery (POD)" : "Verify Delivery OTP to Submit POD"}
                     </button>
                   )}
                   {normalizeStatus(activeTrip.status) === "POD_SUBMITTED" && (
@@ -559,6 +814,271 @@ export default function DriverWorkspace() {
                       {activeTrip.pod_rejection_reason}
                       <p className="mt-1 text-slate-300">Please verify details with receiver and resubmit POD above.</p>
                     </div>
+                  </div>
+                )}
+
+                {/* SECURE PICKUP OTP HANDOVER VERIFICATION */}
+                {["DRIVER_ASSIGNED", "ASSIGNED", "PICKUP_IN_PROGRESS"].includes(normalizeStatus(activeTrip.status)) && (
+                  <div className={`mt-6 rounded-xl border-2 p-5 shadow-2xl relative overflow-hidden transition-all ${
+                    (pickupOtpStatus?.is_verified || activeTrip.pickup_otp_verified)
+                      ? "border-emerald-500/40 bg-gradient-to-b from-emerald-950/20 to-slate-950"
+                      : "border-blue-500/40 bg-gradient-to-b from-slate-900 to-slate-950"
+                  }`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`p-1.5 rounded-lg ${
+                            (pickupOtpStatus?.is_verified || activeTrip.pickup_otp_verified)
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-blue-500/20 text-blue-400"
+                          }`}>
+                            <ShieldCheck size={18} />
+                          </span>
+                          <h3 className="text-base font-bold text-white tracking-wide uppercase">
+                            Pickup Verification (OTP)
+                          </h3>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Ask the shipper/customer for the 6-digit Pickup OTP displayed on their screen before loading cargo.
+                        </p>
+                      </div>
+
+                      {/* Pickup Status Badge */}
+                      <div>
+                        {(pickupOtpStatus?.is_verified || activeTrip.pickup_otp_verified) ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                            <CheckCircle2 size={13} className="text-emerald-400" />
+                            {pickupOtpStatus?.is_admin_override
+                              ? "Pickup Verified (Admin Override)"
+                              : "Pickup OTP Confirmed"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                            <KeyRound size={13} className="text-amber-400" />
+                            Pickup OTP Pending
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Customer Info */}
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800/80">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Pickup Contact
+                        </span>
+                        <p className="text-sm font-bold text-white mt-0.5">
+                          {activeTrip.pickup_company_name || activeTrip.request?.customer_name || "Pickup Contact"}
+                        </p>
+                        <p className="text-xs text-blue-400 font-mono mt-1 flex items-center gap-1.5">
+                          <Smartphone size={13} />
+                          {pickupOtpStatus?.recipient_masked_phone || "Phone on file"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800/80">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Pickup Location
+                        </span>
+                        <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">
+                          {activeTrip.pickup_address || "Pickup address"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Success or Input */}
+                    {(pickupOtpStatus?.is_verified || activeTrip.pickup_otp_verified) ? (
+                      <div className="mt-4 p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <CheckCircle2 size={22} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-emerald-200">
+                            Pickup Verified Successfully
+                          </p>
+                          <p className="text-[11px] text-emerald-400/80 mt-0.5">
+                            Cargo pickup verified. You can now start transit.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {pickupOtpError && (
+                          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 text-xs">
+                            <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+                            <span>{pickupOtpError}</span>
+                          </div>
+                        )}
+
+                        {pickupOtpSuccess && (
+                          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2 text-emerald-300 text-xs">
+                            <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-emerald-400" />
+                            <span>{pickupOtpSuccess}</span>
+                          </div>
+                        )}
+
+                        <form onSubmit={handleVerifyPickupOTP} className="flex gap-2">
+                          <input
+                            type="text"
+                            maxLength={6}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={pickupOtpInput}
+                            onChange={(e) => setPickupOtpInput(e.target.value.replace(/\D/g, ""))}
+                            placeholder="Enter 6-digit Pickup OTP from customer screen"
+                            className="flex-1 px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-center tracking-[0.25em] text-base placeholder:tracking-normal placeholder:font-sans placeholder:text-xs placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                          />
+                          <button
+                            type="submit"
+                            disabled={verifyingPickupOtp || pickupOtpInput.trim().length !== 6}
+                            className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-extrabold shadow-lg shadow-blue-950/50 flex items-center justify-center gap-1.5 transition active:scale-[0.98] cursor-pointer"
+                          >
+                            <ShieldCheck size={16} />
+                            {verifyingPickupOtp ? "Verifying..." : "Verify Pickup OTP"}
+                          </button>
+                        </form>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                          <span>Ask customer to read the 6-digit code shown on their tracking page.</span>
+                          {pickupOtpStatus?.attempts_remaining !== undefined && (
+                            <span>{pickupOtpStatus.attempts_remaining} attempt(s) remaining</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SECURE DELIVERY OTP HANDOVER VERIFICATION */}
+                {["ARRIVED", "POD_SUBMITTED", "DELIVERED"].includes(normalizeStatus(activeTrip.status)) && (
+                  <div className={`mt-6 rounded-xl border-2 p-5 shadow-2xl relative overflow-hidden transition-all ${
+                    (deliveryOtpStatus?.is_verified || activeTrip.delivery_otp_verified || activeTrip.otp_verified)
+                      ? "border-emerald-500/40 bg-gradient-to-b from-emerald-950/20 to-slate-950"
+                      : "border-blue-500/40 bg-gradient-to-b from-slate-900 to-slate-950"
+                  }`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`p-1.5 rounded-lg ${
+                            (deliveryOtpStatus?.is_verified || activeTrip.delivery_otp_verified || activeTrip.otp_verified)
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-blue-500/20 text-blue-400"
+                          }`}>
+                            <ShieldCheck size={18} />
+                          </span>
+                          <h3 className="text-base font-bold text-white tracking-wide uppercase">
+                            Recipient Delivery Verification (OTP)
+                          </h3>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Ask recipient to read the 6-digit Delivery OTP displayed on their screen to confirm cargo handover.
+                        </p>
+                      </div>
+
+                      {/* Handover Status Badge */}
+                      <div>
+                        {(deliveryOtpStatus?.is_verified || activeTrip.delivery_otp_verified || activeTrip.otp_verified) ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                            <CheckCircle2 size={13} className="text-emerald-400" />
+                            {deliveryOtpStatus?.is_admin_override || activeTrip.otp_is_override
+                              ? "Handover Verified (Admin Override)"
+                              : "Handover OTP Confirmed"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                            <KeyRound size={13} className="text-amber-400" />
+                            Delivery OTP Pending
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Masked Recipient Phone & Destination Reference */}
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800/80">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Authorized Recipient
+                        </span>
+                        <p className="text-sm font-bold text-white mt-0.5">
+                          {activeTrip.destination_contact_person || activeTrip.destination_company_name || "Authorized Receiver"}
+                        </p>
+                        <p className="text-xs text-blue-400 font-mono mt-1 flex items-center gap-1.5">
+                          <Smartphone size={13} />
+                          {deliveryOtpStatus?.recipient_masked_phone || "Phone on file"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-slate-950/70 p-3 border border-slate-800/80">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Destination Address
+                        </span>
+                        <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">
+                          {activeTrip.destination_address || "Delivery destination"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Success banner if verified */}
+                    {(deliveryOtpStatus?.is_verified || activeTrip.delivery_otp_verified || activeTrip.otp_verified) ? (
+                      <div className="mt-4 p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/30 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                          <CheckCircle2 size={22} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-emerald-200">
+                            Delivery Handover Verified Successfully
+                          </p>
+                          <p className="text-[11px] text-emerald-400/80 mt-0.5">
+                            Handover verified on {deliveryOtpStatus?.verified_at ? new Date(deliveryOtpStatus.verified_at).toLocaleTimeString() : "arrival"}. You can now proceed to submit Proof of Delivery (POD).
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Verification Input */
+                      <div className="mt-4 space-y-3">
+                        {deliveryOtpError && (
+                          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2 text-rose-300 text-xs">
+                            <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+                            <span>{deliveryOtpError}</span>
+                          </div>
+                        )}
+
+                        {deliveryOtpSuccess && (
+                          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2 text-emerald-300 text-xs">
+                            <CheckCircle2 size={15} className="shrink-0 mt-0.5 text-emerald-400" />
+                            <span>{deliveryOtpSuccess}</span>
+                          </div>
+                        )}
+
+                        <form onSubmit={handleVerifyDeliveryOTP} className="flex gap-2">
+                          <input
+                            type="text"
+                            maxLength={6}
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={deliveryOtpInput}
+                            onChange={(e) => setDeliveryOtpInput(e.target.value.replace(/\D/g, ""))}
+                            placeholder="Enter 6-digit Delivery OTP from recipient"
+                            className="flex-1 px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-center tracking-[0.25em] text-base placeholder:tracking-normal placeholder:font-sans placeholder:text-xs placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                          />
+                          <button
+                            type="submit"
+                            disabled={verifyingDeliveryOtp || deliveryOtpInput.trim().length !== 6}
+                            className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-extrabold shadow-lg shadow-blue-950/50 flex items-center justify-center gap-1.5 transition active:scale-[0.98] cursor-pointer"
+                          >
+                            <ShieldCheck size={16} />
+                            {verifyingDeliveryOtp ? "Verifying..." : "Verify Delivery OTP"}
+                          </button>
+                        </form>
+
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                          <span>Ask recipient to read the 6-digit code shown on their tracking page.</span>
+                          {deliveryOtpStatus?.attempts_remaining !== undefined && (
+                            <span>{deliveryOtpStatus.attempts_remaining} attempt(s) remaining</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1196,11 +1716,11 @@ export default function DriverWorkspace() {
                   type="text"
                   required
                   value={recipientName}
-                  onChange={(e) => setRecipientName(e.target.value)}
+                  onChange={(e) => setRecipientName(e.target.value.replace(/[^a-zA-Z\s]/g, ""))}
                   placeholder="Person who physically received goods (e.g. Ramesh Sharma)"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
                 />
-                <span className="text-[11px] text-slate-500 mt-1 block">Full legal name of the receiver at destination.</span>
+                <span className="text-[11px] text-slate-500 mt-1 block">Full legal name of the receiver at destination (alphabets only).</span>
               </div>
 
               <div>
@@ -1209,11 +1729,17 @@ export default function DriverWorkspace() {
                 </label>
                 <input
                   type="tel"
+                  maxLength={10}
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
                   value={recipientPhone}
-                  onChange={(e) => setRecipientPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
+                  onChange={(e) => setRecipientPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="10-digit mobile (e.g. 9876543210)"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500 font-mono"
                 />
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  {recipientPhone.length}/10 digits entered
+                </span>
               </div>
 
               <div className="flex items-start gap-3 p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20">

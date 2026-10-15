@@ -91,6 +91,12 @@ class ProofOfDelivery(Document):
     submitted_at: datetime
     submitted_by: uuid.UUID
     
+    # Secure Handover OTP Verification Audit
+    otp_verified: bool = False
+    otp_verified_at: Optional[datetime] = None
+    otp_is_override: bool = False
+    otp_override_reason: Optional[str] = None
+    
     class Settings:
         name = "proof_of_deliveries"
         indexes = [

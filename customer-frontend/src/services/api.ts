@@ -123,6 +123,11 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  getActiveOTP: async (requestId: string) => {
+    const res = await authFetch(`${API_URL}/customer/requests/${requestId}/otp`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
 
   // Vehicles
   getVehicles: async () => {

@@ -147,15 +147,18 @@ export default function BookingFlow({ data, setData, step, setStep, onSubmit, on
               />
               <input
                 value={data.pickup_contact}
-                onChange={(event) => set({ pickup_contact: event.target.value })}
-                placeholder="Contact person (optional)"
+                onChange={(event) => set({ pickup_contact: event.target.value.replace(/[^a-zA-Z\s]/g, "") })}
+                placeholder="Contact person (alphabets only)"
                 className="customer-input mt-3"
               />
               <input
+                type="tel"
+                maxLength={10}
+                inputMode="numeric"
                 value={data.pickup_phone}
-                onChange={(event) => set({ pickup_phone: event.target.value })}
-                placeholder="Contact phone (optional)"
-                className="customer-input mt-3"
+                onChange={(event) => set({ pickup_phone: event.target.value.replace(/\D/g, "").slice(0, 10) })}
+                placeholder="Contact phone (10-digit mobile)"
+                className="customer-input mt-3 font-mono"
               />
             </div>
             <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-4">
@@ -168,15 +171,18 @@ export default function BookingFlow({ data, setData, step, setStep, onSubmit, on
               />
               <input
                 value={data.drop_contact}
-                onChange={(event) => set({ drop_contact: event.target.value })}
-                placeholder="Contact person (optional)"
+                onChange={(event) => set({ drop_contact: event.target.value.replace(/[^a-zA-Z\s]/g, "") })}
+                placeholder="Contact person (alphabets only)"
                 className="customer-input mt-3"
               />
               <input
+                type="tel"
+                maxLength={10}
+                inputMode="numeric"
                 value={data.drop_phone}
-                onChange={(event) => set({ drop_phone: event.target.value })}
-                placeholder="Contact phone (optional)"
-                className="customer-input mt-3"
+                onChange={(event) => set({ drop_phone: event.target.value.replace(/\D/g, "").slice(0, 10) })}
+                placeholder="Contact phone (10-digit mobile)"
+                className="customer-input mt-3 font-mono"
               />
             </div>
           </div>

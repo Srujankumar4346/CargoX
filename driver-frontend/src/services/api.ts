@@ -94,11 +94,11 @@ export const api = {
     return res.json();
   },
 
-  updateDriverLocation: async (tripId: number, lat: number, lng: number) => {
+  updateDriverLocation: async (tripId: string | number, lat: number, lng: number) => {
     const res = await authFetch(`${API_URL}/driver/trips/${tripId}/location`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ latitude: lat, longitude: lng }),
+      body: JSON.stringify({ lat, lng }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -122,13 +122,66 @@ export const api = {
     return res.json();
   },
 
-  driverSubmitPOD: async (tripId: number, data: any) => {
+  // Handover Delivery OTP verification
+  sendDeliveryOTP: async (tripId: string) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/otp/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      let errDetail = "Failed to dispatch OTP";
+      try {
+        const body = await res.json();
+        errDetail = body.detail || body.message || errDetail;
+      } catch (_) {
+        errDetail = await res.text();
+      }
+      throw new Error(errDetail);
+    }
+    return res.json();
+  },
+
+  verifyDeliveryOTP: async (tripId: string, otp: string, purpose: string = "DELIVERY") => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/otp/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ otp, purpose }),
+    });
+    if (!res.ok) {
+      let errDetail = "Verification failed";
+      try {
+        const body = await res.json();
+        errDetail = body.detail || body.message || errDetail;
+      } catch (_) {
+        errDetail = await res.text();
+      }
+      throw new Error(errDetail);
+    }
+    return res.json();
+  },
+
+  getDeliveryOTPStatus: async (tripId: string, purpose: string = "DELIVERY") => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/otp/status?purpose=${encodeURIComponent(purpose)}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  driverSubmitPOD: async (tripId: string, data: any) => {
     const res = await authFetch(`${API_URL}/driver/trips/${tripId}/pod`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      let errDetail = "Failed to submit POD";
+      try {
+        const body = await res.json();
+        errDetail = body.detail || body.message || errDetail;
+      } catch (_) {
+        errDetail = await res.text();
+      }
+      throw new Error(errDetail);
+    }
     return res.json();
   },
 

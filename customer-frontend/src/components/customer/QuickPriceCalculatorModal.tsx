@@ -92,7 +92,7 @@ export default function QuickPriceCalculatorModal({
   defaultDistanceKm
 }: QuickPriceCalculatorModalProps) {
   const [distanceKm, setDistanceKm] = useState<number>(defaultDistanceKm && defaultDistanceKm > 0 ? defaultDistanceKm : 45);
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleOption>(VEHICLE_PRESETS[2]); // Bolero default
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleOption | null>(null);
   const [cargoWeightTons, setCargoWeightTons] = useState<number>(1.5);
   const [specialHandling, setSpecialHandling] = useState<string>("None");
 
@@ -102,6 +102,13 @@ export default function QuickPriceCalculatorModal({
   // Recalculate price estimate on inputs change
   useEffect(() => {
     if (!isOpen) return;
+
+    if (!selectedVehicle) {
+      setEstimateData(null);
+      setIsLoading(false);
+      return;
+    }
+
     let isMounted = true;
 
     const calculatePrice = async () => {
@@ -151,7 +158,7 @@ export default function QuickPriceCalculatorModal({
 
   if (!isOpen) return null;
 
-  const isOverweight = selectedVehicle.maxPayloadTons ? cargoWeightTons > selectedVehicle.maxPayloadTons : false;
+  const isOverweight = selectedVehicle?.maxPayloadTons ? cargoWeightTons > selectedVehicle.maxPayloadTons : false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-200">
@@ -220,7 +227,7 @@ export default function QuickPriceCalculatorModal({
             </label>
             <div className="grid grid-cols-2 gap-2">
               {VEHICLE_PRESETS.map((v) => {
-                const isSelected = selectedVehicle.id === v.id;
+                const isSelected = selectedVehicle?.id === v.id;
                 return (
                   <button
                     key={v.id}
@@ -228,8 +235,8 @@ export default function QuickPriceCalculatorModal({
                     onClick={() => setSelectedVehicle(v)}
                     className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
                       isSelected
-                        ? "border-[#1e60ff] bg-blue-50/40 shadow-xs"
-                        : "border-slate-200 bg-white hover:border-slate-300"
+                        ? "border-[#1e60ff] bg-blue-50/40 shadow-xs ring-1 ring-[#1e60ff]"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
                     }`}
                   >
                     <img src={v.image} alt={v.name} className="w-9 h-7 object-contain shrink-0" />
@@ -281,7 +288,7 @@ export default function QuickPriceCalculatorModal({
           </div>
 
           {/* Overweight warning */}
-          {isOverweight && (
+          {isOverweight && selectedVehicle && (
             <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 flex items-center gap-2 text-amber-800">
               <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
               <p className="text-[10px] font-medium leading-tight">
@@ -298,7 +305,9 @@ export default function QuickPriceCalculatorModal({
                 <p className="text-[10px] text-slate-400 font-medium">Includes fuel surcharge & toll estimates</p>
               </div>
               <div className="text-right">
-                {isLoading ? (
+                {!selectedVehicle ? (
+                  <span className="text-xs font-semibold text-amber-300">Select a vehicle</span>
+                ) : isLoading ? (
                   <div className="flex items-center gap-1 text-slate-300">
                     <RefreshCw className="w-4 h-4 animate-spin text-[#1e60ff]" />
                     <span className="text-xs">Computing...</span>
@@ -311,8 +320,14 @@ export default function QuickPriceCalculatorModal({
               </div>
             </div>
 
-            {/* Breakdown line items */}
-            {estimateData && !isLoading && (
+            {/* Breakdown line items or prompt to select vehicle */}
+            {!selectedVehicle ? (
+              <div className="pt-3 pb-1 text-center">
+                <p className="text-xs text-slate-400 font-medium">
+                  Please tap a commercial vehicle above to calculate your exact trip tariff.
+                </p>
+              </div>
+            ) : estimateData && !isLoading ? (
               <div className="pt-2.5 space-y-1 text-[11px] text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Base Freight:</span>
@@ -335,7 +350,7 @@ export default function QuickPriceCalculatorModal({
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -350,15 +365,21 @@ export default function QuickPriceCalculatorModal({
           </button>
           <button
             type="button"
+            disabled={!selectedVehicle}
             onClick={() => {
+              if (!selectedVehicle) return;
               onClose();
               if (onProceedToBook) {
                 onProceedToBook(distanceKm, selectedVehicle, cargoWeightTons);
               }
             }}
-            className="w-2/3 py-2.5 rounded-xl bg-[#1e60ff] text-white text-xs font-extrabold hover:bg-blue-600 transition-colors shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+            className={`w-2/3 py-2.5 rounded-xl text-xs font-extrabold transition-colors shadow-sm flex items-center justify-center gap-1.5 ${
+              selectedVehicle
+                ? "bg-[#1e60ff] text-white hover:bg-blue-600 cursor-pointer"
+                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+            }`}
           >
-            <span>Book This Vehicle</span>
+            <span>{selectedVehicle ? "Book This Vehicle" : "Choose Vehicle First"}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

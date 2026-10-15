@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Share2, MoreVertical, Phone, MessageSquare, KeyRound, ShieldCheck, Clock, RefreshCw, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Share2, MoreVertical, Phone, MessageSquare, KeyRound, ShieldCheck, Clock, RefreshCw, CheckCircle2, X, Copy, ExternalLink, HelpCircle, FileText, Check } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Polyline } from "react-leaflet";
 import L from "leaflet";
 
@@ -49,11 +49,67 @@ export default function LiveTrackingScreen({
   const [trackingStatusText, setTrackingStatusText] = useState<string>("Locating...");
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string | null>(null);
 
-  // Delivery / Pickup OTP State
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const [copiedPhone, setCopiedPhone] = useState(false);
+  const [driverContactModalOpen, setDriverContactModalOpen] = useState<"call" | "message" | null>(null);
+
+  // OTP State
   const [otpData, setOtpData] = useState<any>(null);
-  const [isOtpLoading, setIsOtpLoading] = useState(false);
-  const [otpTimeLeft, setOtpTimeLeft] = useState<number>(0);
+  const [isOtpLoading, setIsOtpLoading] = useState<boolean>(false);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpTimeLeft, setOtpTimeLeft] = useState<number>(0);
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: `CargoX Live Tracking - ${liveData?.tracking_number || requestId || "Shipment"}`,
+        text: `Track my CargoX delivery live in real-time. Status: ${liveData?.status || "In Transit"}`,
+        url: window.location.href,
+      }).catch(() => {
+        setShareModalOpen(true);
+      });
+    } else {
+      setShareModalOpen(true);
+    }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleCallDriver = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (activeDriverPhone) {
+      // Trigger native phone dialer protocol
+      window.location.href = `tel:${activeDriverPhone}`;
+      // Also open fallback modal with copy/number display in case browser/desktop does not handle tel:
+      setTimeout(() => {
+        setDriverContactModalOpen("call");
+      }, 300);
+    } else {
+      setDriverContactModalOpen("call");
+    }
+  };
+
+  const handleMessageDriver = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (activeDriverPhone) {
+      // Trigger native SMS protocol
+      window.location.href = `sms:${activeDriverPhone}`;
+      // Also open fallback modal with direct WhatsApp and SMS options
+      setTimeout(() => {
+        setDriverContactModalOpen("message");
+      }, 300);
+    } else {
+      setDriverContactModalOpen("message");
+    }
+  };
 
   const fetchOtp = async () => {
     if (!requestId) return;
@@ -202,20 +258,75 @@ export default function LiveTrackingScreen({
         <button
           onClick={onBack}
           className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition-colors"
+          title="Back"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-base font-bold text-slate-900">Live Tracking</h1>
-        <div className="flex items-center gap-1">
+        <div className="relative flex items-center gap-1">
           {isLoading && (
             <div className="w-4 h-4 border-2 border-[#1e60ff] border-t-transparent rounded-full animate-spin mr-1" />
           )}
-          <button className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700">
+          <button 
+            onClick={handleShare}
+            title="Share Tracking Link"
+            className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition cursor-pointer"
+          >
             <Share2 className="w-4 h-4" />
           </button>
-          <button className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700">
+          <button 
+            onClick={() => setMenuOpen(!menuOpen)}
+            title="Tracking Options"
+            className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition cursor-pointer"
+          >
             <MoreVertical className="w-4 h-4" />
           </button>
+
+          {/* 3-Dots Dropdown Menu */}
+          {menuOpen && (
+            <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-xl border border-slate-100 py-1.5 z-50 text-xs">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  setDetailsModalOpen(true);
+                }}
+                className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span>Trip Details</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleShare();
+                }}
+                className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Share Shipment</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleCallDriver();
+                }}
+                className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+              >
+                <Phone className="w-3.5 h-3.5 text-amber-600" />
+                <span>Call Driver</span>
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  alert("CargoX Operations Support Helpline: 1800-CARGO-X (24/7 Toll-Free)\nEmail: support@cargox.com");
+                }}
+                className="w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-100"
+              >
+                <HelpCircle className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Emergency Support</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -334,24 +445,24 @@ export default function LiveTrackingScreen({
               </div>
 
               {/* Call and Message buttons */}
-              {activeDriverPhone && (
-                <div className="flex items-center gap-2">
-                  <a
-                    href={`tel:${activeDriverPhone}`}
-                    className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-700 hover:text-emerald-600 hover:border-emerald-200 flex items-center justify-center transition-colors"
-                    title="Call Driver"
-                  >
-                    <Phone className="w-4 h-4" />
-                  </a>
-                  <a
-                    href={`sms:${activeDriverPhone}`}
-                    className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-200 flex items-center justify-center transition-colors"
-                    title="Message Driver"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                  </a>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCallDriver}
+                  className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-700 hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50/50 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                  title={activeDriverPhone ? `Call Driver (${activeDriverPhone})` : "Driver Contact"}
+                >
+                  <Phone className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleMessageDriver}
+                  className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-700 hover:text-[#1e60ff] hover:border-blue-200 hover:bg-blue-50/50 flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+                  title={activeDriverPhone ? `Message Driver (${activeDriverPhone})` : "Send Message"}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Vehicle Registration & Details */}
@@ -493,13 +604,278 @@ export default function LiveTrackingScreen({
           </div>
 
           <button
-            onClick={onViewDetails}
-            className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+            type="button"
+            onClick={() => setDetailsModalOpen(true)}
+            className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-2xs cursor-pointer active:scale-95"
           >
             View Details
           </button>
         </div>
       </div>
+
+      {/* Share Modal Dialog */}
+      {shareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#1e60ff] flex items-center justify-center">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm">Share Tracking</h3>
+              </div>
+              <button
+                onClick={() => setShareModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+              Anyone with this link can track this shipment live on the interactive map:
+            </p>
+
+            <div className="mt-3 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2">
+              <input
+                type="text"
+                readOnly
+                value={window.location.href}
+                className="bg-transparent text-xs text-slate-700 font-mono w-full outline-hidden truncate"
+              />
+              <button
+                onClick={handleCopyLink}
+                className="px-2.5 py-1.5 bg-[#1e60ff] text-white rounded-lg text-xs font-bold hover:bg-blue-600 transition flex items-center gap-1 shrink-0"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedLink ? "Copied" : "Copy"}</span>
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <a
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Track my CargoX shipment in real-time: ${window.location.href}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 font-bold text-xs hover:bg-emerald-100 transition"
+              >
+                <span>WhatsApp</span>
+              </a>
+              <a
+                href={`sms:?body=${encodeURIComponent(`Track my CargoX delivery: ${window.location.href}`)}`}
+                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 font-bold text-xs hover:bg-slate-100 transition"
+              >
+                <span>SMS</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Driver Contact & Emergency Support Modal */}
+      {driverContactModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  driverContactModalOpen === "call" ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-[#1e60ff]"
+                }`}>
+                  {driverContactModalOpen === "call" ? <Phone className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm">
+                  {driverContactModalOpen === "call" ? "Call Carrier" : "Message Carrier"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setDriverContactModalOpen(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-3">
+              <p className="text-xs text-slate-500 font-medium">Assigned Driver:</p>
+              <p className="text-sm font-bold text-slate-900 mt-0.5">{activeDriverName || "Verified CargoX Driver"}</p>
+              
+              {activeDriverPhone ? (
+                <>
+                  <p className="text-xs text-slate-500 mt-3 font-medium">Direct Mobile Number:</p>
+                  <div className="mt-1 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                    <span className="font-mono text-sm font-bold text-slate-800">{activeDriverPhone}</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(activeDriverPhone);
+                        setCopiedPhone(true);
+                        setTimeout(() => setCopiedPhone(false), 2000);
+                      }}
+                      className="text-xs text-[#1e60ff] font-bold hover:underline flex items-center gap-1"
+                    >
+                      {copiedPhone ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedPhone ? "Copied" : "Copy"}</span>
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2">
+                    <a
+                      href={`tel:${activeDriverPhone}`}
+                      className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Dial Now ({activeDriverPhone})</span>
+                    </a>
+                    <a
+                      href={`https://api.whatsapp.com/send?phone=${encodeURIComponent(activeDriverPhone.replace(/[^0-9+]/g, ""))}&text=${encodeURIComponent(`Hi, regarding CargoX delivery ${liveData?.tracking_number || requestId || ""}`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold hover:bg-emerald-100 transition flex items-center justify-center gap-2"
+                    >
+                      <span>Chat on WhatsApp</span>
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800">
+                  <p className="font-bold">Driver Phone Pending</p>
+                  <p className="mt-1 text-slate-600">The driver's direct contact will become available once operations dispatch confirms the cellular SIM linking.</p>
+                </div>
+              )}
+
+              {/* 24/7 Operations Support Helpline Fallback */}
+              <div className="mt-4 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-semibold">24/7 CargoX Helpline:</span>
+                  <a href="tel:1800227469" className="font-bold text-[#1e60ff] hover:underline">1800-CARGO-X</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comprehensive Trip Details Modal */}
+      {detailsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#1e60ff] flex items-center justify-center font-bold">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Trip & Cargo Details</h3>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    Ref: {liveData?.tracking_number || requestId?.slice(0, 8) || "N/A"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDetailsModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 overflow-y-auto space-y-3.5 text-xs">
+              {/* Route section */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-2">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Pickup Location</p>
+                  <p className="text-xs font-semibold text-slate-800 mt-0.5">
+                    {liveData?.origin_address || "Customer Specified Origin"}
+                  </p>
+                </div>
+                <div className="border-t border-slate-200/60 pt-2">
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Drop Location</p>
+                  <p className="text-xs font-semibold text-slate-800 mt-0.5">
+                    {liveData?.destination_address || "Customer Specified Destination"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Vehicle & Carrier */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">Vehicle Type</p>
+                  <p className="font-bold text-slate-800 mt-0.5">{activeVehicleType || "Freight Truck"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">Registration</p>
+                  <p className="font-mono font-bold text-slate-800 mt-0.5">{activePlate || "Assigned by Fleet"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">Capacity</p>
+                  <p className="font-bold text-slate-800 mt-0.5">{activeCapacity || "Standard"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 font-semibold">Assigned Driver</p>
+                  <p className="font-bold text-slate-800 mt-0.5">{activeDriverName || "Pending"}</p>
+                </div>
+              </div>
+
+              {/* Status and Milestones */}
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-semibold">Shipment Status:</span>
+                  <span className="font-bold text-[#1e60ff]">{operationalStatus.replace(/_/g, " ")}</span>
+                </div>
+                {liveData?.submitted_at && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Booked At:</span>
+                    <span className="text-slate-700 font-medium">
+                      {new Date(liveData.submitted_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </div>
+                )}
+                {liveData?.picked_up_at && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Picked Up At:</span>
+                    <span className="text-slate-700 font-medium">
+                      {new Date(liveData.picked_up_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </div>
+                )}
+                {liveData?.delivered_at && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Delivered At:</span>
+                    <span className="text-slate-700 font-medium">
+                      {new Date(liveData.delivered_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-100 bg-white flex items-center justify-end gap-2">
+              {onViewDetails && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDetailsModalOpen(false);
+                    onViewDetails();
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-[#1e60ff] text-white font-bold text-xs hover:bg-blue-600 transition flex items-center gap-1.5"
+                >
+                  <span>Go to My Bookings</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setDetailsModalOpen(false)}
+                className="px-3 py-2 rounded-xl border border-slate-200 font-bold text-xs text-slate-700 hover:bg-slate-50 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

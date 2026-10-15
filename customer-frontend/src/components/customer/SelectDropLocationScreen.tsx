@@ -366,7 +366,7 @@ export default function SelectDropLocationScreen({
       </div>
 
       {/* Bottom Confirmation Card matching Screen 4 */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] p-5 border-t border-slate-100">
+      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] p-5 pb-[max(env(safe-area-inset-bottom,20px),20px)] border-t border-slate-100">
         <div className="flex items-start gap-3 mb-4">
           <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0 mt-0.5">
             <span className="w-2.5 h-2.5 rounded-full bg-red-600" />

@@ -131,11 +131,26 @@ export default function BookingSummaryScreen({
                 </span>
               </div>
             </div>
+
+            {/* Clear Toll & Statutory Disclaimer matching Part 7 */}
+            <div className="mt-3 p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-[10px] text-amber-900 leading-relaxed font-medium">
+              <strong>Statutory Charges Notice:</strong> Delivery price only. Toll charges, applicable taxes, permits, parking, and other statutory or route-related charges are excluded unless explicitly listed in this quotation. Additional applicable charges may be payable separately.
+            </div>
           </div>
 
-          {/* Payment Method Selector matching Screen 8 (UPI, Card, Net Banking, Wallet) */}
+          {/* Payment Terms — Pay After Delivery policy matching Part 6 */}
           <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-xs">
-            <h2 className="text-xs font-bold text-slate-900 mb-3">Payment Method</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xs font-bold text-slate-900">Payment Policy</h2>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
+                Pay After Delivery
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              No advance payment is required to create this booking. You can review and settle your verified invoice via UPI, Card, Net Banking, or Driver POD after delivery is completed and verified.
+            </p>
+
+            <h3 className="text-xs font-bold text-slate-800 mt-3 mb-2">Preferred Settlement Method</h3>
             <div className="grid grid-cols-4 gap-2">
               {paymentOptions.map((opt) => (
                 <button
@@ -164,13 +179,13 @@ export default function BookingSummaryScreen({
               className="w-4 h-4 rounded text-[#1e60ff] focus:ring-[#1e60ff] border-slate-300 cursor-pointer"
             />
             <label htmlFor="terms" className="text-xs text-slate-600 cursor-pointer">
-              I agree to the <span className="text-[#1e60ff] font-semibold underline">Terms & Conditions</span>
+              I agree to the <span className="text-[#1e60ff] font-semibold underline">Terms & Conditions</span> and Pay-After-Delivery Policy
             </label>
           </div>
         </div>
       </div>
 
-      {/* Confirm & Pay Button */}
+      {/* Submit Booking Request Button matching Part 6 */}
       <div className="px-5 mt-2">
         <button
           disabled={!agreed || isLoading}
@@ -180,10 +195,10 @@ export default function BookingSummaryScreen({
           }`}
         >
           {isLoading ? (
-            <span>Processing Booking...</span>
+            <span>Submitting Request...</span>
           ) : (
             <>
-              <span>Confirm & Pay</span>
+              <span>Submit Booking Request</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}

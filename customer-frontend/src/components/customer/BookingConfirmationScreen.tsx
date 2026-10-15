@@ -68,9 +68,9 @@ export default function BookingConfirmationScreen({
           </div>
         </div>
 
-        <h1 className="text-xl font-black text-slate-900 mt-2">Booking Confirmed!</h1>
-        <p className="text-xs text-slate-500 mt-1 max-w-[240px]">
-          Your transport request has been successfully booked.
+        <h1 className="text-xl font-black text-slate-900 mt-2">Booking Request Submitted!</h1>
+        <p className="text-xs text-slate-500 mt-1 max-w-[280px]">
+          Your transport request has been sent to CargoX Operations for review and dispatch. No payment is due until delivery.
         </p>
 
         {/* Booking ID Box with Copy Button matching Screen 9 */}

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { useAuth, useUser } from "@clerk/react";
 import MasterCustomerApp from "./components/customer/MasterCustomerApp";
 import CustomerSettings from "./pages/customer/CustomerSettings";
+import WelcomePreview from "./components/WelcomePreview";
 import { setTokenGetter, setUserEmailGetter } from "./services/api";
 
 function App() {
@@ -22,11 +23,15 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<MasterCustomerApp />} />
+        {/* Root URL http://localhost:5173/ opens with the 5-second Welcome preview, then transitions to /customer */}
+        <Route path="/" element={<WelcomePreview />} />
+        <Route path="/welcome" element={<WelcomePreview />} />
         <Route path="/login" element={<MasterCustomerApp />} />
         <Route path="/register" element={<MasterCustomerApp />} />
         <Route path="/customer" element={<MasterCustomerApp />} />
         <Route path="/customer/settings" element={<CustomerSettings />} />
+        {/* Direct preview route */}
+        <Route path="/preview-welcome" element={<WelcomePreview />} />
         {/* If user navigates to /admin on customer-frontend, redirect or route cleanly */}
         <Route path="/admin" element={
           <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">

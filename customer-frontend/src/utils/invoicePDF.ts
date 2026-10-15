@@ -476,7 +476,7 @@ export function generateInvoicePDF(inv: any, booking?: any, autoPrint: boolean =
     </div>
 
     <div class="footer">
-      <p><strong>Terms & Conditions:</strong> Payment is due according to agreed credit terms. All freight operations are conducted subject to standard carriage contracts.</p>
+      <p><strong>Terms & Conditions:</strong> Payment is due according to agreed post-delivery terms. Delivery price only. Toll charges, applicable statutory taxes, permits, and route parking charges are excluded unless explicitly itemized on this invoice.</p>
       <p style="margin-top:4px;">Thank you for choosing <strong>CargoX Transport Services</strong>.</p>
       <p style="margin-top:2px; font-size:10px; color:#94a3b8;">This is a computer-generated tax invoice and requires no physical signature.</p>
     </div>

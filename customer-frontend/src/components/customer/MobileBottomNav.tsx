@@ -17,8 +17,8 @@ export default function MobileBottomNav({ activeTab, onChangeTab }: MobileBottom
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-100 px-6 py-2 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] max-w-md mx-auto sm:max-w-xl md:max-w-md">
-      <div className="flex items-center justify-between">
+    <nav className="fixed md:absolute bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-4 pt-2 pb-[max(env(safe-area-inset-bottom,16px),16px)] shadow-[0_-4px_25px_rgba(0,0,0,0.08)] max-w-[430px] mx-auto">
+      <div className="flex items-center justify-around">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (

@@ -77,14 +77,21 @@ export default function MasterCustomerApp() {
   const [totalCalculatedPrice, setTotalCalculatedPrice] = useState<number | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
-  // Automatically start on Home screen if signed in or onboarding already completed
+  // Check if welcome preview is requested via URL (?welcome or ?preview)
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const forceWelcome = urlParams.has("welcome") || urlParams.has("preview");
+    if (forceWelcome) {
+      setCurrentScreen("welcome");
+      return;
+    }
+
     const onboardingDone = localStorage.getItem("cargox_onboarding_completed") === "true";
-    if ((isSignedIn || onboardingDone) && currentScreen === "welcome") {
+    if (onboardingDone && currentScreen === "welcome") {
       setCurrentScreen("home");
       setActiveTab("home");
     }
-  }, [isSignedIn, currentScreen]);
+  }, [currentScreen]);
 
   // Handle GPS detection directly from home screen or automatically on load
   const handleUseCurrentLocation = (silent = false) => {
@@ -242,9 +249,9 @@ export default function MasterCustomerApp() {
   const showBottomNav = ["home", "bookings", "track", "profile"].includes(currentScreen);
 
   return (
-    <div className="min-h-screen bg-[#070d1e] md:bg-slate-900 flex justify-center items-center">
-      {/* Mobile Shell Container: Responsive max-w-md on desktop with elegant bezel, full-bleed on mobile */}
-      <div className="relative w-full max-w-[430px] min-h-screen bg-white md:my-6 md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-slate-800 flex flex-col justify-between">
+    <div className="min-h-screen bg-[#070d1e] md:bg-slate-900 flex justify-center items-center overflow-x-hidden">
+      {/* Mobile Shell Container: Responsive max-w-md on desktop with elegant bezel, full-bleed & full screen on mobile */}
+      <div className="relative w-full max-w-[430px] min-h-[100dvh] bg-white flex flex-col md:my-6 md:min-h-[844px] md:rounded-3xl md:overflow-hidden md:shadow-2xl md:border md:border-slate-800">
         
         {/* Screen 1: Welcome / Onboarding */}
         {currentScreen === "welcome" && (
@@ -462,6 +469,10 @@ export default function MasterCustomerApp() {
             onOpenHelpSupport={() => alert("Contact CargoX Support: support@cargox.com")}
             onOpenReferEarn={() => alert("Refer CargoX to get ₹500 discount on your next booking!")}
             onOpenSettings={() => alert("CargoX Customer Profile Settings")}
+            onReplayWelcome={() => {
+              try { localStorage.removeItem("cargox_onboarding_completed"); } catch {}
+              setCurrentScreen("welcome");
+            }}
           />
         )}
 

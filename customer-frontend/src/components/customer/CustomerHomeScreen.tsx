@@ -75,9 +75,9 @@ export default function CustomerHomeScreen({
   ];
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-28 select-none">
-      {/* Top Header Bar */}
-      <header className="px-5 pt-4 pb-2 flex items-center justify-between">
+    <div className="min-h-full flex-1 bg-[#f8fafc] text-slate-900 pb-28 select-none overflow-y-auto">
+      {/* Top Header Bar with Safe Area Top Padding */}
+      <header className="px-5 pt-[max(env(safe-area-inset-top),16px)] pb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="text-2xl font-black text-slate-900 tracking-tight font-display">Cargo</span>
           <span className="text-2xl font-black text-[#1e60ff] tracking-tight font-display">X</span>
@@ -98,7 +98,7 @@ export default function CustomerHomeScreen({
         </div>
       </header>
 
-      {/* Hero Welcome Banner matching Screenshot 2 */}
+      {/* Hero Welcome Banner */}
       <section className="px-5 mt-2">
         <div className="relative overflow-hidden bg-gradient-to-r from-blue-50/90 to-indigo-50/50 rounded-2xl p-4 flex items-center justify-between border border-blue-100/70 shadow-xs">
           <div className="z-10 max-w-[62%]">
@@ -113,8 +113,8 @@ export default function CustomerHomeScreen({
             </p>
           </div>
           
-          {/* Blue Indian cargo truck banner image matching Screen 2 */}
-          <div className="relative w-36 h-24 flex items-center justify-end shrink-0">
+          {/* Blue cargo truck banner image */}
+          <div className="relative w-32 sm:w-36 h-24 flex items-center justify-end shrink-0">
             <img
               src="/images/hero/home-blue-truck.png"
               alt="CargoX Commercial Heavy Truck"

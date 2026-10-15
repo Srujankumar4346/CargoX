@@ -220,6 +220,11 @@ export default function ChooseVehicleScreen({
           ))}
         </div>
 
+        {/* Statutory Pricing Notice */}
+        <div className="mx-4 mb-2 p-2.5 rounded-xl bg-blue-50/60 border border-blue-100 text-[10px] text-slate-600 leading-tight">
+          ℹ️ <strong>Standard Freight Rates:</strong> Vehicle quotes cover transport haulage. Toll charges, statutory taxes, and state border permits are excluded unless explicitly itemized.
+        </div>
+
         {/* Empty State: When no vehicle can carry the cargo weight */}
         {eligibleVehicles.length === 0 ? (
           <div className="px-6 py-12 flex flex-col items-center text-center">

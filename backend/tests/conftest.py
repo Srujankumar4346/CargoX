@@ -11,16 +11,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 _db_base_url = os.getenv("DATABASE_URL", settings.DATABASE_URL)
 if "mongodb+srv://" in _db_base_url or "mongodb://" in _db_base_url:
     # Use cargox_test_db database
-    if "?" in _db_base_url:
-        _prefix, _query = _db_base_url.split("?", 1)
-        _base = _prefix.rstrip("/")
-        if not _base.endswith("/cargox_test_db"):
-            _target_db_url = f"{_base}/cargox_test_db?{_query}"
-        else:
-            _target_db_url = _db_base_url
-    else:
-        _base = _db_base_url.rstrip("/")
-        _target_db_url = f"{_base}/cargox_test_db"
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(_db_base_url)
+    _target_db_url = urlunparse((parsed.scheme, parsed.netloc, "/cargox_test_db", parsed.params, parsed.query, parsed.fragment))
 else:
     _target_db_url = "mongodb://localhost:27017/cargox_test_db"
 

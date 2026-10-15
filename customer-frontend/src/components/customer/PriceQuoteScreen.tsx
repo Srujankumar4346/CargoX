@@ -38,8 +38,6 @@ export default function PriceQuoteScreen({
   const [estimatedPrice, setEstimatedPrice] = useState<number | null>(null);
   const [baseFare, setBaseFare] = useState<number | null>(null);
   const [distanceCharges, setDistanceCharges] = useState<number | null>(null);
-  const [tollTax, setTollTax] = useState<number | null>(null);
-  const [driverAllowance, setDriverAllowance] = useState<number | null>(null);
   const [capacitySurcharge, setCapacitySurcharge] = useState(0);
   const [handlingSurcharge, setHandlingSurcharge] = useState(0);
 
@@ -67,14 +65,10 @@ export default function PriceQuoteScreen({
         if (res && res.estimated_total) {
           const total = Math.round(Number(res.estimated_total));
           setEstimatedPrice(total);
-          if (res.breakdown) {
-            setBaseFare(Math.round(Number(res.breakdown.base_fare ?? null)));
-            setDistanceCharges(Math.round(Number(res.breakdown.distance_charge ?? null)));
-            setTollTax(res.breakdown.toll_tax != null ? Math.round(Number(res.breakdown.toll_tax)) : null);
-            setDriverAllowance(res.breakdown.driver_allowance != null ? Math.round(Number(res.breakdown.driver_allowance)) : null);
-            setCapacitySurcharge(Math.round(Number(res.breakdown.capacity_surcharge || 0)));
-            setHandlingSurcharge(Math.round(Number(res.breakdown.handling_surcharge || 0)));
-          }
+          setBaseFare(res.base_fare != null ? Math.round(Number(res.base_fare)) : null);
+          setDistanceCharges(res.distance_charge != null ? Math.round(Number(res.distance_charge)) : null);
+          setCapacitySurcharge(Math.round(Number(res.capacity_surcharge || 0)));
+          setHandlingSurcharge(Math.round(Number(res.handling_surcharge || 0)));
         } else {
           setPricingError("Pricing data unavailable. Please go back and retry.");
         }
@@ -242,25 +236,17 @@ export default function PriceQuoteScreen({
                   </div>
                 )}
 
-                {tollTax !== null && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Toll &amp; State Tax</span>
-                    <span className="font-semibold text-slate-800">₹{tollTax.toLocaleString("en-IN")}</span>
-                  </div>
-                )}
-                {driverAllowance !== null && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Driver Allowance</span>
-                    <span className="font-semibold text-slate-800">₹{driverAllowance.toLocaleString("en-IN")}</span>
-                  </div>
-                )}
-
                 {/* Total */}
                 <div className="mt-4 bg-emerald-50 rounded-xl p-3 flex items-center justify-between border border-emerald-100">
                   <span className="text-xs font-bold text-emerald-800">Total Estimated Price</span>
                   <span className="text-base font-extrabold text-emerald-600">
                     ₹{estimatedPrice.toLocaleString("en-IN")}
                   </span>
+                </div>
+
+                {/* Statutory Disclaimer matching Part 7 */}
+                <div className="mt-3 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60 text-[10px] text-amber-900 leading-relaxed font-medium">
+                  <strong>Notice:</strong> Delivery price only. Toll charges, applicable taxes, permits, parking, and other statutory or route-related charges are excluded unless explicitly listed in this quotation. Additional applicable charges may be payable separately.
                 </div>
               </div>
             )}

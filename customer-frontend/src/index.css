@@ -25,13 +25,21 @@
     --primary-hover: #164ed9;
   }
 
+  html {
+    background-color: #070d1e;
+    margin: 0;
+    padding: 0;
+  }
+
   body {
     background-color: #f1f5f9;
     color: #0f172a;
     font-family: var(--font-sans);
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
     margin: 0;
     padding: 0;
+    /* Onboarding mounts before body bg is relevant; html bg covers the flash */
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -68,6 +76,22 @@
   }
 }
 
+/* Safe area support for iOS / Android gestures & notches */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 12px);
+}
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 16px);
+}
+.pb-safe-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+}
+
+/* Touch feedback and mobile smoothness */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
 /* Hide scrollbar for clean horizontal vehicle/tab scrollers */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -76,3 +100,4 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+

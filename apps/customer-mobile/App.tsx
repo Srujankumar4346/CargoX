@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-const CUSTOMER_URL = 'https://cargox-frontend.onrender.com/';
+// Mobile app targets the development machine IP on the local Wi-Fi network
+const CUSTOMER_URL = 'http://192.168.0.9:5173/';
 
 export default function App() {
   const webViewRef = useRef<WebView>(null);
@@ -35,6 +36,9 @@ export default function App() {
   const handleShouldStartLoadWithRequest = (request: { url: string }) => {
     const { url } = request;
     if (
+      url.startsWith('http://127.0.0.1') ||
+      url.startsWith('http://localhost') ||
+      url.startsWith('http://192.168.') ||
       url.startsWith('https://cargox-frontend.onrender.com') ||
       url.startsWith('https://cargox-admin.onrender.com') ||
       url.startsWith('https://cargox-drivers.onrender.com') ||

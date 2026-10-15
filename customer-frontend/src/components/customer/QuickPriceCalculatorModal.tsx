@@ -314,7 +314,12 @@ export default function QuickPriceCalculatorModal({
                   </div>
                 ) : (
                   <span className="text-2xl font-black tracking-tight text-white">
-                    ₹{estimateData?.estimated_price?.toLocaleString("en-IN") || "—"}
+                    ₹{(
+                      Number(estimateData?.estimated_total) || 
+                      Number(estimateData?.estimated_price) || 
+                      Number(estimateData?.total_price) || 
+                      0
+                    ).toLocaleString("en-IN")}
                   </span>
                 )}
               </div>
@@ -331,22 +336,22 @@ export default function QuickPriceCalculatorModal({
               <div className="pt-2.5 space-y-1 text-[11px] text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Base Freight:</span>
-                  <span>₹{estimateData.base_fare?.toLocaleString("en-IN") || 1500}</span>
+                  <span>₹{Number(estimateData.base_fare ?? 500).toLocaleString("en-IN")}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Distance Charges ({distanceKm} km):</span>
-                  <span>₹{estimateData.distance_charges?.toLocaleString("en-IN") || Math.round(distanceKm * 28)}</span>
+                  <span>₹{Number(estimateData.distance_charge ?? estimateData.distance_charges ?? Math.round(distanceKm * 28)).toLocaleString("en-IN")}</span>
                 </div>
-                {estimateData.weight_surcharge > 0 && (
+                {(Number(estimateData.capacity_surcharge) > 0 || Number(estimateData.weight_surcharge) > 0) && (
                   <div className="flex justify-between text-amber-300">
-                    <span>Overweight Surcharge:</span>
-                    <span>+₹{estimateData.weight_surcharge}</span>
+                    <span>Capacity / Weight Surcharge:</span>
+                    <span>+₹{Number(estimateData.capacity_surcharge || estimateData.weight_surcharge).toLocaleString("en-IN")}</span>
                   </div>
                 )}
-                {estimateData.special_handling_surcharge > 0 && (
+                {(Number(estimateData.handling_surcharge) > 0 || Number(estimateData.special_handling_surcharge) > 0) && (
                   <div className="flex justify-between text-indigo-300">
                     <span>Handling Fee ({specialHandling}):</span>
-                    <span>+₹{estimateData.special_handling_surcharge}</span>
+                    <span>+₹{Number(estimateData.handling_surcharge || estimateData.special_handling_surcharge).toLocaleString("en-IN")}</span>
                   </div>
                 )}
               </div>

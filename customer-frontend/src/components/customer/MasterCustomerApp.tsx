@@ -142,20 +142,32 @@ export default function MasterCustomerApp() {
     api.getBookings()
       .then((res) => {
         if (Array.isArray(res)) {
-          const mapped: BookingItem[] = res.map((b: any) => ({
-            id: b.id || b._id || "",
-            ref: b.request_number || b.id || "",
-            routeFrom: b.pickup_address?.split(",")[0] || b.pickup_address || "",
-            routeTo: b.destination_address?.split(",")[0] || b.destination_address || "",
-            date: b.created_at
-              ? new Date(b.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
-              : "",
-            price: b.final_price ?? b.estimated_price ?? null,
-            status: b.status === "DELIVERED" ? "Delivered" : b.status === "CANCELLED" ? "Cancelled" : "In Transit",
-            vehicleName: b.assigned_vehicle_type || b.assigned_vehicle_model || "",
-            vehicleImage: "/images/vehicles/mahindra-bolero-pikup.png",
-            hasInvoice: !!b.final_price
-          }));
+          const mapped: BookingItem[] = res.map((b: any) => {
+            const rawStatus = (b.status || "").toUpperCase();
+            let displayStatus: "In Transit" | "Delivered" | "Cancelled" | "Pending" = "In Transit";
+            if (rawStatus === "DELIVERED" || rawStatus === "COMPLETED") {
+              displayStatus = "Delivered";
+            } else if (rawStatus === "CANCELLED" || rawStatus === "CUSTOMER_CANCELLED" || rawStatus === "REJECTED") {
+              displayStatus = "Cancelled";
+            } else if (rawStatus === "REQUESTED" || rawStatus === "SUBMITTED" || rawStatus === "UNDER_REVIEW") {
+              displayStatus = "Pending";
+            }
+
+            return {
+              id: b.id || b._id || "",
+              ref: b.request_number || b.id || "",
+              routeFrom: b.pickup_address?.split(",")[0] || b.pickup_address || "Pickup",
+              routeTo: b.destination_address?.split(",")[0] || b.destination_address || "Destination",
+              date: b.created_at
+                ? new Date(b.created_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+                : "Recent",
+              price: b.final_price ?? b.estimated_price ?? null,
+              status: displayStatus,
+              vehicleName: b.assigned_vehicle_type || b.assigned_vehicle_model || "Commercial Truck",
+              vehicleImage: "/images/vehicles/mahindra-bolero-pikup.png",
+              hasInvoice: !!b.final_price
+            };
+          });
           setActiveBookingsList(mapped);
         }
       })

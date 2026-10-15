@@ -51,7 +51,7 @@ export default function MyBookingsScreen({
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-28 select-none">
+    <div className="min-h-full flex-1 bg-[#f8fafc] text-slate-800 flex flex-col justify-between pb-28 select-none overflow-y-auto">
       <div>
         {/* Header matching CargoX Design */}
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">

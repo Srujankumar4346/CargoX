@@ -114,11 +114,11 @@ export default function CustomerHomeScreen({
           </div>
           
           {/* Blue cargo truck banner image */}
-          <div className="relative w-32 sm:w-36 h-24 flex items-center justify-end shrink-0">
+          <div className="relative w-36 sm:w-40 h-24 flex items-center justify-end shrink-0">
             <img
               src="/images/hero/home-blue-truck.png"
               alt="CargoX Commercial Heavy Truck"
-              className="max-h-24 w-auto object-contain drop-shadow-sm rounded-xl"
+              className="h-full w-full object-cover object-center drop-shadow-md rounded-xl"
             />
           </div>
         </div>

@@ -13,6 +13,7 @@ import LiveTrackingScreen from "./LiveTrackingScreen";
 import MyBookingsScreen, { type BookingItem } from "./MyBookingsScreen";
 import ProfileSettingsScreen from "./ProfileSettingsScreen";
 import MobileBottomNav, { type TabType } from "./MobileBottomNav";
+import QuickPriceCalculatorModal from "./QuickPriceCalculatorModal";
 import { api } from "../../services/api";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
 
@@ -76,6 +77,7 @@ export default function MasterCustomerApp() {
 
   const [totalCalculatedPrice, setTotalCalculatedPrice] = useState<number | null>(null);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [isPriceCalculatorOpen, setIsPriceCalculatorOpen] = useState(false);
 
   // Check if welcome preview is requested via URL (?welcome or ?preview)
   useEffect(() => {
@@ -313,8 +315,8 @@ export default function MasterCustomerApp() {
               setActiveTab("bookings");
               setCurrentScreen("bookings");
             }}
-            onQuickCalculator={() => setCurrentScreen("quote")}
-            onQuickSupport={() => alert("CargoX 24/7 Support: support@cargox.com | Toll-Free: 1800-CARGO-X")}
+            onQuickCalculator={() => setIsPriceCalculatorOpen(true)}
+            onQuickSupport={() => alert("CargoX 24/7 Operations Support:\n• Email: support@cargox.com\n• Helpline: 1800-CARGO-X (1800-227469)\n• Direct WhatsApp & Chat available in Live Tracking")}
             onSelectVehicleCategory={(vName) => {
               const match = [
                 { id: "bolero", name: "Mahindra Bolero Pik-Up", category: "Pickup Trucks" as const, capacity: "2.0 Ton (2,000 kg)", maxPayloadTons: 2.0, maxPayloadKg: 2000, dimensions: "10 x 5.5 ft", description: "Best for general cargo", price: 7850, image: "/images/vehicles/mahindra-bolero-pikup.png" },
@@ -517,6 +519,19 @@ export default function MasterCustomerApp() {
         {showBottomNav && (
           <MobileBottomNav activeTab={activeTab} onChangeTab={handleTabChange} />
         )}
+
+        {/* Global Quick Price Calculator Modal */}
+        <QuickPriceCalculatorModal
+          isOpen={isPriceCalculatorOpen}
+          onClose={() => setIsPriceCalculatorOpen(false)}
+          defaultDistanceKm={distanceKm}
+          onProceedToBook={(dist, veh, weight) => {
+            setDistanceKm(dist);
+            setSelectedVehicle(veh);
+            setCargoData(prev => ({ ...prev, weightTons: weight }));
+            setCurrentScreen("cargo");
+          }}
+        />
       </div>
     </div>
   );

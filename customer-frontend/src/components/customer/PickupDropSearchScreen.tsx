@@ -23,15 +23,14 @@ export default function PickupDropSearchScreen({
   const [activeField, setActiveField] = useState<"pickup" | "drop">("drop");
   const [query, setQuery] = useState(dropAddress || "");
   const [suggestions, setSuggestions] = useState<Array<{ title: string; subtitle: string; lat: number; lng: number }>>([]);
-
-  // Curated Recent Indian Locations matching Screen 3 in reference image
-  const recentLocations = [
-    { title: "Vijayawada", subtitle: "Andhra Pradesh, India", lat: 16.5062, lng: 80.6480 },
-    { title: "Vijayapura", subtitle: "Karnataka, India", lat: 16.8302, lng: 75.7100 },
-    { title: "Vijayawada bus stand", subtitle: "PN Bus Stand Road, Arrival Block, Pandit Nehru...", lat: 16.5165, lng: 80.6288 },
-    { title: "Vijaya Nagar Colony", subtitle: "Hyderabad, Telangana, India", lat: 17.3916, lng: 78.4552 },
-    { title: "Vijayanagar", subtitle: "Bengaluru, Karnataka, India", lat: 12.9698, lng: 77.5360 },
-  ];
+  const [recentLocations] = useState<Array<{ title: string; subtitle: string; lat: number; lng: number }>>(() => {
+    try {
+      const saved = localStorage.getItem("cargox_recent_locations");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Dynamic search with India bias & live Photon/OSM geocoding
   useEffect(() => {
@@ -82,6 +81,14 @@ export default function PickupDropSearchScreen({
     } else {
       onChangePickupAddress(fullText);
     }
+    // Save to user history
+    try {
+      const saved = localStorage.getItem("cargox_recent_locations");
+      const list = saved ? JSON.parse(saved) : [];
+      const updated = [place, ...list.filter((x: any) => x.title !== place.title)].slice(0, 5);
+      localStorage.setItem("cargox_recent_locations", JSON.stringify(updated));
+    } catch {}
+
     onSelectSuggestion?.(fullText, { lat: place.lat, lng: place.lng });
   };
 
@@ -176,34 +183,64 @@ export default function PickupDropSearchScreen({
           </div>
         </div>
 
-        {/* Location List: Live Search Results OR Recent Locations matching Screen 3 */}
+        {/* Location List: Live Search Results OR Recent Locations */}
         <div className="px-4">
           <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-2">
-            {suggestions.length > 0 ? "Suggestions" : "Recent Locations"}
+            {suggestions.length > 0 ? "Suggestions" : recentLocations.length > 0 ? "Recent Locations" : "Search Locations"}
           </p>
 
           <div className="divide-y divide-slate-100">
-            {(suggestions.length > 0 ? suggestions : recentLocations).map((loc, idx) => (
-              <div
-                key={idx}
-                onClick={() => handleSelectPlace(loc)}
-                role="button"
-                tabIndex={0}
-                className="py-3 flex items-start gap-3 cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition-colors group"
-              >
-                <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-blue-50 text-slate-500 group-hover:text-[#0866F5] flex items-center justify-center shrink-0 mt-0.5">
-                  <MapPin className="w-4 h-4" />
+            {suggestions.length > 0 ? (
+              suggestions.map((loc, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => handleSelectPlace(loc)}
+                  role="button"
+                  tabIndex={0}
+                  className="py-3 flex items-start gap-3 cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-blue-50 text-slate-500 group-hover:text-[#0866F5] flex items-center justify-center shrink-0 mt-0.5">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-slate-900 group-hover:text-[#0866F5] transition-colors">
+                      {loc.title}
+                    </p>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">
+                      {loc.subtitle}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black text-slate-900 group-hover:text-[#0866F5] transition-colors">
-                    {loc.title}
-                  </p>
-                  <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">
-                    {loc.subtitle}
-                  </p>
+              ))
+            ) : recentLocations.length > 0 ? (
+              recentLocations.map((loc, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => handleSelectPlace(loc)}
+                  role="button"
+                  tabIndex={0}
+                  className="py-3 flex items-start gap-3 cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition-colors group"
+                >
+                  <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-blue-50 text-slate-500 group-hover:text-[#0866F5] flex items-center justify-center shrink-0 mt-0.5">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-slate-900 group-hover:text-[#0866F5] transition-colors">
+                      {loc.title}
+                    </p>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5 font-medium">
+                      {loc.subtitle}
+                    </p>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="py-8 text-center text-slate-400">
+                <MapPin className="w-6 h-6 mx-auto mb-2 text-slate-300" />
+                <p className="text-xs font-bold text-slate-600">Type above to search any city, locality or address</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Search across India with live GPS coordinates</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

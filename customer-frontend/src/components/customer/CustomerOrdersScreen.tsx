@@ -29,25 +29,8 @@ export default function CustomerOrdersScreen({
   isLoading = false,
 }: CustomerOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState<"Ongoing" | "Completed" | "Cancelled">("Ongoing");
-
-  // Fallback sample order matching Screen 7 reference if no active backend orders exist
-  const defaultSampleOrders: CustomerOrderRecord[] = [
-    {
-      id: "ord-part-load-1",
-      ref: "REQ-PL-9821",
-      serviceType: "Part Load",
-      routeFrom: "Hyderabad",
-      routeTo: "Vijayawada",
-      dateTimeStr: "18 Oct, 09:00 AM",
-      weightKg: 200,
-      paymentType: "Cash",
-      status: "Ongoing",
-      fare: 2811,
-      image: "/images/vehicles/ashok-leyland-dost.png",
-    },
-  ];
-
-  const displayedList = ordersList.length > 0 ? ordersList : defaultSampleOrders;
+  // Show only real backend orders or clean empty state
+  const displayedList = ordersList;
 
   const filteredOrders = displayedList.filter((o) => {
     if (activeTab === "Ongoing") {

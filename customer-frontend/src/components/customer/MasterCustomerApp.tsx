@@ -43,12 +43,12 @@ export default function MasterCustomerApp() {
   // Selected operational city
   const [selectedCity, setSelectedCity] = useState("Hyderabad, Telangana");
 
-  // Booking Flow Data
-  const [pickupAddress, setPickupAddress] = useState("sai deekshitha apartment, 7,165/3, Vinayak Nagar, Hyderabad");
-  const [pickupCoords, setPickupCoords] = useState({ lat: 17.5375, lng: 78.4735 });
-  const [dropAddress, setDropAddress] = useState("Vijayawada, Andhra Pradesh, India");
-  const [dropCoords, setDropCoords] = useState({ lat: 16.5062, lng: 80.6480 });
-  const [distanceKm, setDistanceKm] = useState<number | null>(275);
+  // Booking Flow Data — clean initial states without hardcoded demo strings
+  const [pickupAddress, setPickupAddress] = useState("");
+  const [pickupCoords, setPickupCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [dropAddress, setDropAddress] = useState("");
+  const [dropCoords, setDropCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
 
   const [cargoWeightKg, setCargoWeightKg] = useState<number>(200);
 
@@ -65,8 +65,8 @@ export default function MasterCustomerApp() {
   });
 
   const [recipientDetails, setRecipientDetails] = useState({
-    receiverName: "Srujan Kumar Sangepu",
-    receiverPhone: "8919271456",
+    receiverName: "",
+    receiverPhone: "",
     saveAs: "Home",
   });
 
@@ -184,13 +184,13 @@ export default function MasterCustomerApp() {
         selected_vehicle_id: selectedVehicle.id,
         vehicle_capacity_tons: selectedVehicle.maxPayloadTons,
         pickup_company_name: user?.fullName || "Valued Customer",
-        pickup_address: pickupAddress,
-        pickup_lat: pickupCoords.lat,
-        pickup_lng: pickupCoords.lng,
+        pickup_address: pickupAddress || "Pickup Point",
+        pickup_lat: pickupCoords?.lat ?? 17.3850,
+        pickup_lng: pickupCoords?.lng ?? 78.4867,
         destination_company_name: recipientDetails.receiverName || "Receiver Site",
-        destination_address: dropAddress,
-        destination_lat: dropCoords.lat,
-        destination_lng: dropCoords.lng,
+        destination_address: dropAddress || "Destination Point",
+        destination_lat: dropCoords?.lat ?? 17.3850,
+        destination_lng: dropCoords?.lng ?? 78.4867,
       };
 
       const result = await api.createBooking(payload);
@@ -295,7 +295,8 @@ export default function MasterCustomerApp() {
           <MapDropRecipientScreen
             onBack={() => setCurrentScreen("search")}
             dropAddress={dropAddress}
-            dropCoords={dropCoords}
+            dropCoords={dropCoords || { lat: 17.3850, lng: 78.4867 }}
+            userPhone={user?.primaryPhoneNumber?.phoneNumber || ""}
             onChangeLocation={() => setCurrentScreen("search")}
             onProceed={(details) => {
               setRecipientDetails(details);

@@ -30,8 +30,8 @@ export default function CustomerAccountScreen({
   const [companyName, setCompanyName] = useState("");
   const [savedGST, setSavedGST] = useState<string | null>(null);
 
-  const displayName = user?.fullName || "Srujan Kumar Sangepu";
-  const displayEmail = user?.primaryEmailAddress?.emailAddress || "srujankumar4346@gmail.com";
+  const displayName = user?.fullName || user?.firstName || "Customer Account";
+  const displayEmail = user?.primaryEmailAddress?.emailAddress || "Verified Account";
 
   const handleSaveGST = () => {
     if (!gstin.trim() || gstin.length < 15) {

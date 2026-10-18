@@ -29,7 +29,7 @@ export default function MapDropRecipientScreen({
   dropCoords,
   onChangeLocation,
   onProceed,
-  userPhone = "8919271456",
+  userPhone = "",
 }: MapDropRecipientScreenProps) {
   const [receiverName, setReceiverName] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
@@ -118,10 +118,10 @@ export default function MapDropRecipientScreen({
             </div>
             <div>
               <p className="text-sm font-black text-slate-900 leading-snug">
-                {dropAddress ? dropAddress.split(",")[0] : "Vijayawada"}
+                {dropAddress ? dropAddress.split(",")[0] : "Set Destination"}
               </p>
               <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
-                {dropAddress || "Vijayawada, Andhra Pradesh, India"}
+                {dropAddress || "Search or tap on the map to set delivery location"}
               </p>
             </div>
           </div>

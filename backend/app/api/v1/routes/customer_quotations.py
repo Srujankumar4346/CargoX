@@ -36,8 +36,29 @@ async def get_customer_pricing_estimate(
     customer_rate = base_rate + margin_rate
     dist = Decimal(str(distance_km))
 
-    base_flat = Decimal(str(getattr(active_config, "base_flat_fare", Decimal("500.00"))))
-    distance_charge = (dist * customer_rate).quantize(Decimal("0.01"))
+    base_flat = Decimal(str(getattr(active_config, "base_flat_fare", Decimal("200.00"))))
+
+    # Scale base fare and distance charge according to vehicle size/payload category:
+    # A 6-ton BharatBenz or 5-ton Eicher costs significantly more than a 1-ton Tata Ace.
+    # Default to 1.0 multiplier when vehicle_capacity_tons is not passed or <= 1.0 Ton.
+    cap_multiplier = Decimal("1.0")
+    if vehicle_capacity_tons:
+        v_cap = float(vehicle_capacity_tons)
+        if v_cap <= 1.0:
+            cap_multiplier = Decimal("1.0")
+        elif v_cap <= 1.5:
+            cap_multiplier = Decimal("1.25")
+        elif v_cap <= 2.0:
+            cap_multiplier = Decimal("1.50")
+        elif v_cap <= 2.5:
+            cap_multiplier = Decimal("1.80")
+        elif v_cap <= 5.0:
+            cap_multiplier = Decimal("2.60")
+        else:
+            cap_multiplier = Decimal("3.20")
+
+    base_flat = (base_flat * cap_multiplier).quantize(Decimal("0.01"))
+    distance_charge = (dist * customer_rate * cap_multiplier).quantize(Decimal("0.01"))
 
     # Surcharges
     capacity_surcharge = Decimal("0.00")
@@ -45,17 +66,17 @@ async def get_customer_pricing_estimate(
     cap_threshold_pct = float(getattr(active_config, "capacity_utilization_threshold_percent", Decimal("85.00")))
     if cap_enabled and vehicle_capacity_tons and weight_tons:
         if (float(weight_tons) / float(vehicle_capacity_tons) * 100.0) >= cap_threshold_pct:
-            capacity_surcharge = Decimal(str(getattr(active_config, "vehicle_max_capacity_surcharge", Decimal("600.00"))))
+            capacity_surcharge = Decimal(str(getattr(active_config, "vehicle_max_capacity_surcharge", Decimal("150.00"))))
 
     handling_surcharge = Decimal("0.00")
     if special_handling:
         h_str = special_handling.lower()
         if getattr(active_config, "fragile_surcharge_enabled", True) and ("fragile" in h_str or "delicate" in h_str or "handle with care" in h_str):
-            handling_surcharge = Decimal(str(getattr(active_config, "fragile_surcharge", Decimal("400.00"))))
+            handling_surcharge = Decimal(str(getattr(active_config, "fragile_surcharge", Decimal("100.00"))))
         elif getattr(active_config, "hazardous_surcharge_enabled", True) and ("hazardous" in h_str or "sensitive" in h_str):
-            handling_surcharge = Decimal(str(getattr(active_config, "hazardous_surcharge", Decimal("700.00"))))
+            handling_surcharge = Decimal(str(getattr(active_config, "hazardous_surcharge", Decimal("200.00"))))
         elif getattr(active_config, "refrigerated_surcharge_enabled", True) and ("refrigerated" in h_str or "cold" in h_str):
-            handling_surcharge = Decimal(str(getattr(active_config, "refrigerated_surcharge", Decimal("800.00"))))
+            handling_surcharge = Decimal(str(getattr(active_config, "refrigerated_surcharge", Decimal("250.00"))))
 
     estimated_total = (base_flat + distance_charge + capacity_surcharge + handling_surcharge).quantize(Decimal("0.01"))
 

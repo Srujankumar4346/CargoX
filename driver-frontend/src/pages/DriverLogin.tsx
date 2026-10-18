@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { Truck, AlertCircle, Mail, ArrowLeft } from "lucide-react";
+import { AlertCircle, Mail, ArrowLeft, LogIn } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import { SignInButton, useAuth } from "@clerk/react";
+import CargoExpressLogo from "../components/CargoExpressLogo";
+import DriverWelcomeScreen from "../components/DriverWelcomeScreen";
 
 export default function DriverLogin() {
+  const [showLoginForm, setShowLoginForm] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -44,16 +47,33 @@ export default function DriverLogin() {
     }
   };
 
+  // If user hasn't toggled to sign-in form, show Screen 1 Reference Splash / Welcome
+  if (!showLoginForm) {
+    return (
+      <DriverWelcomeScreen
+        onContinue={() => {
+          const hasLocalToken = !!localStorage.getItem("access_token");
+          if (hasLocalToken || isSignedIn) {
+            navigate("/", { replace: true });
+          } else {
+            setShowLoginForm(true);
+          }
+        }}
+        onOpenLoginModal={() => setShowLoginForm(true)}
+        isAuthenticated={isSignedIn || !!localStorage.getItem("access_token")}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#020b1a] flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full text-center mb-8">
-        <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-blue-500/30 bg-blue-500/10 mb-6">
-          <Truck className="h-8 w-8 text-blue-400" />
-        </div>
-        <h1 className="text-3xl font-bold text-slate-100 mb-2">Driver Portal</h1>
-        <p className="text-slate-400">Sign in to access your assigned deliveries and delivery tools.</p>
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 text-slate-900">
+      <div className="max-w-md w-full flex flex-col items-center text-center mb-6">
+        <CargoExpressLogo variant="full" size="md" showTagline={true} theme="light" />
+        <h1 className="text-2xl font-black text-slate-950 mt-4 mb-1">Driver Portal Sign In</h1>
+        <p className="text-slate-500 text-xs">Sign in with your driver credentials to access assigned fleet orders.</p>
       </div>
-      <div className="bg-[#071425] p-6 rounded-xl shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-slate-800 w-full max-w-sm">
+
+      <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-200/90 w-full max-w-sm">
         <form onSubmit={handleLogin} className="space-y-4">
           {error && (
             <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
@@ -62,55 +82,59 @@ export default function DriverLogin() {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Username or Email</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Username or Email</label>
             <input 
               required 
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" 
+              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm" 
               placeholder="Username or registered email" 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
             <input 
               required 
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none" 
+              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm" 
               placeholder="Enter your password" 
             />
           </div>
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-bold text-white transition hover:bg-blue-500 disabled:opacity-50 mt-4"
+            className="w-full rounded-xl bg-slate-900 hover:bg-black px-4 py-3 font-extrabold text-white text-sm transition disabled:opacity-50 mt-4 cursor-pointer shadow-md"
           >
             {loading ? "Signing in..." : "Sign In with Credentials"}
           </button>
         </form>
 
-        <div className="relative my-6 text-center">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-800"></div></div>
-          <span className="relative bg-[#071425] px-3 text-xs uppercase text-slate-500 tracking-wider">or sign in with email</span>
+        <div className="relative my-5 text-center">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div>
+          <span className="relative bg-white px-3 text-xs uppercase text-slate-400 tracking-wider">or sign in with email</span>
         </div>
 
         <SignInButton mode="modal">
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 hover:border-blue-500/50"
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-800 transition hover:bg-slate-100 cursor-pointer"
           >
-            <Mail size={16} className="text-blue-400" />
+            <Mail size={16} className="text-blue-600" />
             Sign in with Email / Google
           </button>
         </SignInButton>
 
-        <div className="mt-6 text-center">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition">
-            <ArrowLeft size={13} /> Back to CargoX Home
-          </Link>
+        <div className="mt-5 text-center flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setShowLoginForm(false)}
+            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+          >
+            <ArrowLeft size={13} /> Back to Welcome Screen
+          </button>
         </div>
       </div>
     </div>

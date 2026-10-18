@@ -87,7 +87,7 @@ function RoleGate({ children }: { children: React.ReactNode }) {
           </p>
           <p className="text-slate-400 text-xs leading-relaxed mb-6">
             {fetchError ? (
-              <span>Could not connect to CargoX backend API. Please verify server connectivity and retry.</span>
+              <span>Could not connect to CargoExpress backend API. Please verify server connectivity and retry.</span>
             ) : (
               <span>This account does not currently have <span className="font-semibold text-slate-300">DRIVER</span> privileges. If an administrator recently provisioned your driver account, please click Refresh.</span>
             )}

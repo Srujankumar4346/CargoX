@@ -52,8 +52,8 @@ export default function BookingConfirmationScreen({
   ];
 
   return (
-    <div className="min-h-screen bg-white text-slate-800 flex flex-col justify-between py-8 px-6 select-none animate-fade-in">
-      <div className="flex flex-col items-center text-center">
+    <div className="h-full bg-white text-slate-800 flex flex-col justify-between overflow-hidden select-none animate-fade-in">
+      <div className="flex-1 overflow-y-auto py-6 px-6 flex flex-col items-center text-center">
         {/* Celebration Confetti & Green Check Badge matching Screen 9 */}
         <div className="relative my-4 flex items-center justify-center">
           {/* Confetti specks */}
@@ -124,8 +124,8 @@ export default function BookingConfirmationScreen({
         </div>
       </div>
 
-      {/* Actions matching Screen 9 */}
-      <div className="space-y-3 mt-8">
+      {/* Actions pinned at bottom */}
+      <div className="shrink-0 p-5 bg-white border-t border-slate-100 shadow-[0_-4px_16px_rgba(0,0,0,0.04)] space-y-2.5 z-20">
         <button
           onClick={onTrackShipment}
           className="w-full bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.98] text-white py-3.5 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all"
@@ -136,7 +136,7 @@ export default function BookingConfirmationScreen({
 
         <button
           onClick={onGoHome}
-          className="w-full bg-transparent hover:bg-slate-50 text-slate-700 py-3.5 px-6 rounded-2xl font-bold text-sm border border-slate-200 transition-all text-center flex items-center justify-center gap-2"
+          className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 py-3 px-6 rounded-2xl font-bold text-xs border border-slate-200 transition-all text-center flex items-center justify-center gap-2"
         >
           <Home className="w-4 h-4" />
           <span>Go to Home</span>

@@ -146,8 +146,8 @@ export default function ChooseVehicleScreen({
   }, [calculatedDistanceKm, cargoWeightTons, specialHandling]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-8 select-none">
-      <div>
+    <div className="h-full bg-slate-50 text-slate-800 flex flex-col justify-between overflow-hidden select-none">
+      <div className="flex-1 overflow-y-auto pb-6">
         {/* Top Header */}
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">
           <button

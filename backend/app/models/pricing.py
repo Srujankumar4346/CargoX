@@ -65,6 +65,8 @@ class Quotation(Document):
     service_fee_percentage: Optional[DecimalType] = None
     service_fee_amount: Optional[DecimalType] = None
     driver_payable_amount: Optional[DecimalType] = None
+    vehicle_capacity_tons: Optional[DecimalType] = None
+    selected_vehicle_id: Optional[str] = None
     status: QuotationStatus = QuotationStatus.PENDING # type: ignore
     created_at: datetime
     accepted_at: Optional[datetime] = None

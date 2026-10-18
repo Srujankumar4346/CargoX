@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, MapPin, CreditCard, Wallet, Building2, Smartphone } from "lucide-react";
+import { ArrowLeft, ArrowRight, MapPin, CreditCard, Wallet, Building2, Smartphone, Banknote } from "lucide-react";
 import type { VehicleOption } from "./ChooseVehicleScreen";
 
 interface BookingSummaryScreenProps {
@@ -33,32 +33,33 @@ export default function BookingSummaryScreen({
   totalPrice = 7850,
   isLoading = false
 }: BookingSummaryScreenProps) {
-  const [paymentMethod, setPaymentMethod] = useState<"UPI" | "Card" | "Net Banking" | "Wallet">("UPI");
+  const [paymentMethod, setPaymentMethod] = useState<"Cash on Delivery" | "UPI" | "Card" | "Net Banking" | "Wallet">("Cash on Delivery");
   const [agreed, setAgreed] = useState(true);
 
   const paymentOptions = [
+    { id: "Cash on Delivery", label: "Cash on Delivery", sub: "Pay driver on POD", icon: <Banknote className="w-5 h-5 text-emerald-600" /> },
     { id: "UPI", label: "UPI", sub: "GPay, PhonePe", icon: <Smartphone className="w-5 h-5 text-indigo-600" /> },
     { id: "Card", label: "Card", sub: "Credit/Debit", icon: <CreditCard className="w-5 h-5 text-blue-600" /> },
-    { id: "Net Banking", label: "Net Banking", sub: "All Banks", icon: <Building2 className="w-5 h-5 text-emerald-600" /> },
+    { id: "Net Banking", label: "Net Banking", sub: "All Banks", icon: <Building2 className="w-5 h-5 text-cyan-600" /> },
     { id: "Wallet", label: "Wallet", sub: "Paytm, etc", icon: <Wallet className="w-5 h-5 text-amber-600" /> },
   ] as const;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-8 select-none">
-      <div>
-        {/* Top Header */}
-        <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">
-          <button
-            onClick={onBack}
-            className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-base font-bold text-slate-900">Booking Summary</h1>
-          <div className="w-6" />
-        </div>
+    <div className="h-full bg-slate-50 text-slate-800 flex flex-col justify-between overflow-hidden select-none">
+      {/* Top Header */}
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs shrink-0">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-base font-bold text-slate-900">Booking Summary</h1>
+        <div className="w-6" />
+      </div>
 
-        <div className="px-5 py-4 space-y-4">
+      {/* Scrollable Content Body */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {/* Pickup and Destination card with Edit buttons matching Screen 8 */}
           <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-xs">
             <div className="space-y-4 relative">
@@ -151,19 +152,21 @@ export default function BookingSummaryScreen({
             </p>
 
             <h3 className="text-xs font-bold text-slate-800 mt-3 mb-2">Preferred Settlement Method</h3>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {paymentOptions.map((opt) => (
                 <button
                   key={opt.id}
+                  type="button"
                   onClick={() => setPaymentMethod(opt.id)}
                   className={`p-2.5 rounded-xl border flex flex-col items-center justify-center transition-all ${
                     paymentMethod === opt.id
-                      ? "border-[#1e60ff] bg-blue-50/50 shadow-xs font-bold"
+                      ? "border-[#1e60ff] bg-blue-50/60 shadow-xs font-bold text-[#1e60ff]"
                       : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 font-medium"
                   }`}
                 >
                   <div className="mb-1">{opt.icon}</div>
-                  <span className="text-[10px] text-slate-800 text-center leading-tight">{opt.label}</span>
+                  <span className="text-[11px] font-semibold text-slate-900 text-center leading-tight">{opt.label}</span>
+                  <span className="text-[9px] text-slate-400 text-center leading-tight mt-0.5">{opt.sub}</span>
                 </button>
               ))}
             </div>
@@ -183,10 +186,9 @@ export default function BookingSummaryScreen({
             </label>
           </div>
         </div>
-      </div>
 
-      {/* Submit Booking Request Button matching Part 6 */}
-      <div className="px-5 mt-2">
+      {/* Submit Booking Request Button — always pinned to the bottom */}
+      <div className="shrink-0 p-4 bg-white border-t border-slate-100 shadow-[0_-4px_16px_rgba(0,0,0,0.04)] z-20">
         <button
           disabled={!agreed || isLoading}
           onClick={() => onConfirmAndPay(paymentMethod)}

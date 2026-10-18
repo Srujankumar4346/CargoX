@@ -79,33 +79,112 @@ export default function SelectPickupLocationScreen({
     }
   }, []);
 
-  // Debounced live location search using Nominatim
+  // Debounced live location search strictly for India
   useEffect(() => {
-    if (!searchQuery || searchQuery.trim().length < 3 || searchQuery === selectedAddress) {
+    const trimmed = searchQuery.trim();
+    if (!trimmed || trimmed.length < 2 || trimmed === selectedAddress) {
       setSearchResults([]);
       return;
     }
 
+    const abortController = new AbortController();
+
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const resp = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&addressdetails=1&limit=5&countrycodes=in`,
-          { headers: { "Accept-Language": "en" } }
-        );
-        if (resp.ok) {
-          const data = await resp.json();
-          setSearchResults(data);
+        const results: Array<{ display_name: string; lat: string; lon: string }> = [];
+        const seen = new Set<string>();
+
+        // 1. Photon search with India filter
+        const pQueries = [trimmed.toLowerCase().includes("india") ? trimmed : `${trimmed} India`, trimmed];
+        for (const pQuery of pQueries) {
+          if (abortController.signal.aborted) return;
+          try {
+            const pResp = await fetch(
+              `https://photon.komoot.io/api/?q=${encodeURIComponent(pQuery)}&limit=10`,
+              { signal: abortController.signal }
+            );
+            if (pResp.ok) {
+              const pData = await pResp.json();
+              if (Array.isArray(pData.features)) {
+                for (const f of pData.features) {
+                  const props = f.properties || {};
+                  const code = (props.countrycode || "").toUpperCase();
+                  const cName = (props.country || "").toLowerCase();
+                  if (code !== "IN" && cName !== "india") continue;
+
+                  const name = props.name || props.street || props.city || "";
+                  const city = props.city || props.district || "";
+                  const state = props.state || "";
+                  const parts = [name, city, state, "India"].filter(Boolean);
+                  const fullText = parts.join(", ");
+                  const coords = f.geometry?.coordinates;
+                  if (name && coords && coords.length >= 2 && !seen.has(fullText.toLowerCase())) {
+                    seen.add(fullText.toLowerCase());
+                    results.push({
+                      display_name: fullText,
+                      lat: String(coords[1]),
+                      lon: String(coords[0]),
+                    });
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            if (e?.name !== "AbortError") console.warn("Photon pickup search error:", e);
+          }
+          if (results.length >= 5) break;
+        }
+
+        // 2. Nominatim fallback with countrycodes=in
+        if (results.length < 5 && !abortController.signal.aborted) {
+          try {
+            const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+              trimmed
+            )}&format=json&addressdetails=1&limit=6&countrycodes=in`;
+            const nResp = await fetch(nomUrl, {
+              headers: { "Accept-Language": "en" },
+              signal: abortController.signal,
+            });
+            if (nResp.ok) {
+              const nData = await nResp.json();
+              if (Array.isArray(nData)) {
+                for (const item of nData) {
+                  const addr = item.address || {};
+                  const code = (addr.country_code || "").toUpperCase();
+                  if (code && code !== "IN") continue;
+                  const dName = item.display_name || item.name;
+                  if (dName && !seen.has(dName.toLowerCase())) {
+                    seen.add(dName.toLowerCase());
+                    results.push({
+                      display_name: dName,
+                      lat: item.lat,
+                      lon: item.lon,
+                    });
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            if (e?.name !== "AbortError") console.warn("Nominatim pickup search error:", e);
+          }
+        }
+
+        if (!abortController.signal.aborted) {
+          setSearchResults(results);
           setShowDropdown(true);
         }
-      } catch (err) {
-        console.warn("Location search error:", err);
+      } catch (err: any) {
+        if (err?.name !== "AbortError") console.warn("Location search error:", err);
       } finally {
-        setIsSearching(false);
+        if (!abortController.signal.aborted) setIsSearching(false);
       }
-    }, 400);
+    }, 280);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      abortController.abort();
+    };
   }, [searchQuery, selectedAddress]);
 
   // Reverse geocoding when user clicks/pins anywhere on the map
@@ -128,6 +207,92 @@ export default function SelectPickupLocationScreen({
     const fallback = `Pinned Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
     setSelectedAddress(fallback);
     setSearchQuery(fallback);
+  };
+
+  // Trigger immediate pickup search
+  const triggerPickupSearchNow = async () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    setIsSearching(true);
+    setShowDropdown(true);
+    try {
+      const results: Array<{ display_name: string; lat: string; lon: string }> = [];
+      const seen = new Set<string>();
+
+      const pQueries = [trimmed.toLowerCase().includes("india") ? trimmed : `${trimmed} India`, trimmed];
+      for (const pQuery of pQueries) {
+        try {
+          const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(pQuery)}&limit=15`;
+          const pResp = await fetch(photonUrl);
+          if (pResp.ok) {
+            const pData = await pResp.json();
+            if (Array.isArray(pData.features)) {
+              for (const f of pData.features) {
+                const props = f.properties || {};
+                const countryCode = (props.countrycode || "").toUpperCase();
+                const countryName = (props.country || "").toLowerCase();
+                if (countryCode !== "IN" && countryName !== "india") continue;
+
+                const name = props.name || props.street || props.city || "";
+                const state = props.state || "";
+                const city = props.city || props.district || "";
+                const parts = [props.street, city, state, "India"].filter(Boolean).filter((p) => p !== name);
+                const fullDisplay = parts.length > 0 ? `${name}, ${parts.join(", ")}` : name;
+                const coords = f.geometry?.coordinates;
+                if (name && Array.isArray(coords) && coords.length >= 2 && !seen.has(fullDisplay.toLowerCase())) {
+                  seen.add(fullDisplay.toLowerCase());
+                  results.push({
+                    display_name: fullDisplay,
+                    lat: String(coords[1]),
+                    lon: String(coords[0]),
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Photon search error:", e);
+        }
+        if (results.length >= 6) break;
+      }
+
+      if (results.length < 5) {
+        try {
+          const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+            trimmed
+          )}&format=json&addressdetails=1&limit=8&countrycodes=in`;
+          const nResp = await fetch(nomUrl, { headers: { "Accept-Language": "en" } });
+          if (nResp.ok) {
+            const nData = await nResp.json();
+            if (Array.isArray(nData)) {
+              for (const item of nData) {
+                const addr = item.address || {};
+                const code = (addr.country_code || "").toUpperCase();
+                if (code && code !== "IN") continue;
+                const dName = item.display_name || item.name;
+                if (dName && !seen.has(dName.toLowerCase())) {
+                  seen.add(dName.toLowerCase());
+                  results.push({
+                    display_name: dName,
+                    lat: item.lat,
+                    lon: item.lon,
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Nominatim search error:", e);
+        }
+      }
+
+      setSearchResults(results);
+      if (results.length > 0 && results[0]) {
+        handleSelectResult(results[0]);
+      }
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleGetCurrentLocation = () => {
@@ -169,7 +334,7 @@ export default function SelectPickupLocationScreen({
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-slate-50 flex flex-col justify-between overflow-hidden select-none">
+    <div className="relative h-full w-full bg-slate-50 flex flex-col justify-between overflow-hidden select-none">
       {/* Top Header */}
       <div className="absolute top-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">
         <button
@@ -195,9 +360,15 @@ export default function SelectPickupLocationScreen({
               setSearchQuery(e.target.value);
               setShowDropdown(true);
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                triggerPickupSearchNow();
+              }
+            }}
             onFocus={() => setShowDropdown(true)}
             placeholder="Type pickup address or landmark..."
-            className="w-full bg-transparent px-3 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 outline-none"
+            className="w-full bg-transparent px-2 py-2 text-xs font-semibold text-slate-800 placeholder:text-slate-400 outline-none"
           />
           {searchQuery && (
             <button
@@ -206,10 +377,20 @@ export default function SelectPickupLocationScreen({
                 setSearchResults([]);
               }}
               className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl mr-1 text-xs font-bold"
+              title="Clear text"
             >
               ✕
             </button>
           )}
+          <button
+            type="button"
+            onClick={triggerPickupSearchNow}
+            className="bg-[#1e60ff] hover:bg-[#164ed9] text-white px-2.5 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1 shadow-sm shrink-0 mr-1 active:scale-95 transition-all"
+            title="Search location"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Search</span>
+          </button>
           <button
             onClick={handleGetCurrentLocation}
             title="Detect GPS Current Location"

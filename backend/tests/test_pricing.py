@@ -442,3 +442,62 @@ async def test_disabled_surcharges_are_not_charged(async_client: AsyncClient, ad
     assert Decimal(str(q["handling_surcharge"])) == Decimal("0.00")
     # customer_total_charge = 500 (base_flat) + 2200 (distance_charge) = 2700.00
     assert Decimal(str(q["customer_total_charge"])) == Decimal("2700.00")
+
+@pytest.mark.anyio
+async def test_accept_quotation_rejects_overloaded_cargo(async_client: AsyncClient, customer_user_a, delivery_request_a, active_pricing_config):
+    """
+    Test: Customer cannot accept an overloaded quotation if cargo weight exceeds vehicle capacity.
+    """
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user_a
+
+    # Create quotation record directly where weight exceeds vehicle capacity
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    delivery_request_a.weight_tons = 1.5
+    delivery_request_a.vehicle_capacity_tons = 1.0
+    await delivery_request_a.save()
+
+    quotation = Quotation(
+        id=uuid.uuid4(),
+        request_id=delivery_request_a.id,
+        pricing_config_id=active_pricing_config.id,
+        distance_km=Decimal("100.00"),
+        base_rate_per_km=Decimal("20.00"),
+        margin_per_km=Decimal("2.00"),
+        internal_base_cost=Decimal("2000.00"),
+        cargox_margin=Decimal("200.00"),
+        base_flat_fare=Decimal("500.00"),
+        capacity_surcharge=Decimal("0.00"),
+        handling_surcharge=Decimal("0.00"),
+        subtotal=Decimal("2700.00"),
+        customer_total_charge=Decimal("2700.00"),
+        status=QuotationStatus.PENDING,
+        vehicle_capacity_tons=Decimal("1.0"),
+        created_at=now,
+        expires_at=now + timedelta(hours=24)
+    )
+    await quotation.insert()
+
+    resp = await async_client.post(f"/api/v1/customer/quotations/{quotation.id}/accept")
+    assert resp.status_code == 422
+    assert "exceeds vehicle capacity" in resp.json()["detail"]
+
+@pytest.mark.anyio
+async def test_delivery_request_create_rejects_overloaded_payload():
+    """
+    Test: DeliveryRequestCreate model validator rejects weight > vehicle_capacity_tons.
+    """
+    from app.schemas.delivery_request import DeliveryRequestCreate
+    with pytest.raises(ValueError) as excinfo:
+        DeliveryRequestCreate(
+            goods_type="Electronics",
+            weight_tons=1.5,
+            distance_km=Decimal("50.00"),
+            selected_vehicle_id="tata-ace",
+            vehicle_capacity_tons=1.0,
+            pickup_company_name="A",
+            pickup_address="B",
+            destination_company_name="C",
+            destination_address="D"
+        )
+    assert "exceeds vehicle maximum payload" in str(excinfo.value)
+

@@ -94,10 +94,44 @@ class DispatchService:
 
 
 
-        # 4. Atomic Execution
+        # 4. Authoritative Financial Allocation
+        # Taxable freight amount (excluding GST) is customer_total_charge
+        taxable_fare = Decimal(str(quotation.customer_total_charge))
+        
+        # Determine commission percentage: explicit input > quotation.service_fee_percentage > approved system setting
+        if dispatch_in.commission_percentage is not None:
+            comm_pct = Decimal(str(dispatch_in.commission_percentage))
+        elif quotation.service_fee_percentage is not None:
+            comm_pct = Decimal(str(quotation.service_fee_percentage))
+        else:
+            from app.services.settings_service import SettingsService
+            system_settings = await SettingsService.get_settings()
+            comm_pct = Decimal(str(system_settings.cargox_service_fee_percentage))
+
+        # Validate range 0.00 to 100.00
+        if comm_pct < Decimal("0.00") or comm_pct > Decimal("100.00"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Commission percentage must be between 0% and 100%. Given: {comm_pct}%"
+            )
+
+        # Authoritatively calculate monetary allocation using Decimal precision
+        comm_amount = (taxable_fare * (comm_pct / Decimal("100"))).quantize(Decimal("0.01"))
+        driver_payout = (taxable_fare - comm_amount).quantize(Decimal("0.01"))
+
+        # Keep Quotation synchronized with authoritative allocation
+        quotation.service_fee_percentage = comm_pct
+        quotation.service_fee_amount = comm_amount
+        quotation.driver_payable_amount = driver_payout
+        await quotation.save()
+
+        # 5. Atomic Execution
         trip = Trip(
             request_id=request_id,
-            assigned_at=now
+            assigned_at=now,
+            commission_percentage=comm_pct,
+            commission_amount=comm_amount,
+            driver_payout=driver_payout,
         )
         await trip.insert()
 

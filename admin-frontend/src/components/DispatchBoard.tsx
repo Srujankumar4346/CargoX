@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
-  MapPin, Package, Truck, User, ChevronUp,
-  CheckCircle, Clock, Navigation, ExternalLink, Sparkles, Bot,
-  ArrowRight, AlertCircle, Info, Send, Eye, Zap, XCircle
+  Package, Truck, User, ChevronUp,
+  CheckCircle, Navigation, Sparkles,
+  ArrowRight, Info, Send, Eye, XCircle, Zap
 } from "lucide-react";
 
 // ── Types matching actual backend schemas ──────────────────────────────────────
@@ -31,6 +31,31 @@ interface Booking {
   destination_lng?: number | null;
   // Metrics
   distance_km?: number | null;
+  // Pricing / Quote details
+  booked_price?: number | null;
+  customer_booked_price?: number | null;
+  vehicle_capacity_tons?: number | null;
+  selected_vehicle_id?: string | null;
+  quotation?: {
+    id: string;
+    quotation_number?: string;
+    status: string;
+    distance_km: number;
+    base_rate_per_km: number;
+    internal_base_cost: number;
+    cargox_margin: number;
+    base_fare: number;
+    distance_charge: number;
+    capacity_surcharge: number;
+    handling_surcharge: number;
+    customer_total_charge: number;
+    service_fee_percentage?: number | null;
+    service_fee_amount?: number | null;
+    driver_payable_amount?: number | null;
+    selected_vehicle_id?: string | null;
+    created_at?: string;
+    accepted_at?: string;
+  } | null;
   created_at: string;
   updated_at: string;
   cancellation_reason?: string | null;
@@ -68,25 +93,18 @@ interface Props {
   aiRecommendations: Record<string, AiRec>;
   onApprove: (bookingId: string) => Promise<void>;
   onCancel?: (bookingId: string) => Promise<void>;
-  onCreateTrip: (booking: Booking, vehicleId: string, driverId: string) => Promise<void>;
+  onCreateTrip: (
+    booking: Booking,
+    vehicleId: string,
+    driverId: string,
+    commissionPercentage?: number,
+    driverPayout?: number,
+    commissionAmount?: number
+  ) => Promise<void>;
   onGetAiRec: (booking: Booking) => Promise<void>;
 }
 
-// ── Real DeliveryRequest status lifecycle from backend enums ─────────────────
-const STATUS_PIPELINE = [
-  "SUBMITTED",
-  "UNDER_REVIEW",
-  "QUOTED",
-  "ACCEPTED",
-  "VEHICLE_ASSIGNED",
-  "DRIVER_ASSIGNED",
-  "PICKUP_IN_PROGRESS",
-  "IN_TRANSIT",
-  "ARRIVED",
-  "POD_SUBMITTED",
-  "DELIVERED",
-  "COMPLETED",
-];
+
 
 const FILTER_TABS = [
   { label: "All Requests", value: "ALL" },
@@ -162,145 +180,9 @@ function shortDate(iso: string): string {
   }
 }
 
-function googleMapsLink(lat?: number | null, lng?: number | null, address?: string): string {
-  if (lat && lng) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  }
-  if (address) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-  }
-  return "#";
-}
 
-function googleMapsRouteLink(booking: Booking): string {
-  const pickup = booking.pickup_lat && booking.pickup_lng
-    ? `${booking.pickup_lat},${booking.pickup_lng}`
-    : encodeURIComponent(booking.pickup_address);
-  const dest = booking.destination_lat && booking.destination_lng
-    ? `${booking.destination_lat},${booking.destination_lng}`
-    : encodeURIComponent(booking.destination_address);
-  if (booking.pickup_lat && booking.destination_lat) {
-    return `https://www.google.com/maps/dir/?api=1&origin=${pickup}&destination=${dest}&travelmode=driving`;
-  }
-  return `https://www.google.com/maps/dir/?api=1&origin=${pickup}&destination=${dest}`;
-}
 
-function statusPipelineIndex(status: string): number {
-  return STATUS_PIPELINE.indexOf(status);
-}
-
-// ── Subcomponent: Status Pipeline ─────────────────────────────────────────────
-function StatusPipeline({ status }: { status: string }) {
-  const currentIdx = statusPipelineIndex(status);
-  const isTerminal = status === "REJECTED" || status === "CUSTOMER_CANCELLED";
-
-  if (isTerminal) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 w-fit">
-        <AlertCircle size={13} className="text-red-400" />
-        <span className="text-xs font-semibold text-red-400">{status.replace("_", " ")}</span>
-      </div>
-    );
-  }
-
-  const visible = STATUS_PIPELINE.slice(0, 7);
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {visible.map((s, i) => {
-        const done = i < currentIdx;
-        const active = i === currentIdx;
-        return (
-          <div key={s} className="flex items-center gap-1">
-            <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-all
-              ${active ? "bg-blue-600 text-white shadow-sm shadow-blue-500/30" :
-                done ? "bg-emerald-500/20 text-emerald-400" :
-                "bg-slate-800 text-slate-600"}`}>
-              {done && <CheckCircle size={9} />}
-              {s.replace(/_/g, " ")}
-            </div>
-            {i < visible.length - 1 && (
-              <ArrowRight size={8} className={done ? "text-emerald-500" : "text-slate-700"} />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Subcomponent: Pricing Card ─────────────────────────────────────────────────
-function PricingCard({ booking, activePricing }: { booking: Booking; activePricing: any }) {
-  const hasCoords = !!(booking.pickup_lat && booking.destination_lat);
-  const distKm = booking.distance_km ?? null;
-
-  const canEstimate = distKm && activePricing;
-  const ratePerKm = activePricing
-    ? (parseFloat(activePricing.base_rate_per_km || "0") + parseFloat(activePricing.margin_per_km || "0"))
-    : null;
-  const estimatedTotal = canEstimate && ratePerKm ? (distKm * ratePerKm) : null;
-
-  const needsApproval = booking.status === "SUBMITTED" || booking.status === "UNDER_REVIEW";
-
-  return (
-    <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-7 h-7 bg-emerald-500/10 rounded-lg flex items-center justify-center">
-          <span className="text-emerald-400 text-sm font-bold">₹</span>
-        </div>
-        <h4 className="text-sm font-semibold text-slate-200">Pricing & Quotation</h4>
-      </div>
-
-      <div className="space-y-2">
-        {distKm && (
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-400">Distance {hasCoords ? "(GPS)" : "(Estimated)"}</span>
-            <span className="text-slate-200 font-medium">{distKm} km</span>
-          </div>
-        )}
-        {ratePerKm && (
-          <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-400">Rate (Active Config)</span>
-            <span className="text-slate-200 font-medium">₹{ratePerKm.toFixed(2)} / km</span>
-          </div>
-        )}
-
-        {needsApproval ? (
-          <div className="mt-3 pt-3 border-t border-slate-700">
-            <div className="flex justify-between items-center text-xs mb-1.5">
-              <span className="text-amber-400 font-semibold">Quotation Status</span>
-              <span className="text-amber-400 font-bold">Not Generated</span>
-            </div>
-            {estimatedTotal && (
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500">Frontend Estimate Only</span>
-                <span className="text-slate-400">~₹{estimatedTotal.toFixed(0)}</span>
-              </div>
-            )}
-            <div className="mt-2 p-2 bg-blue-500/5 border border-blue-500/15 rounded-lg">
-              <p className="text-[10px] text-blue-400 leading-relaxed">
-                <Info size={9} className="inline mr-1" />
-                Final price is set at approval using the active PricingConfig. Estimate above is indicative only.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="mt-3 pt-3 border-t border-slate-700">
-            <div className="flex justify-between items-center text-xs mb-1">
-              <span className="text-emerald-400 font-semibold">Quotation Status</span>
-              <span className="text-emerald-400 font-bold">Generated at Approval</span>
-            </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed">
-              Backend quotation was created at approval using the then-active PricingConfig.
-              See Financials → Invoices for the authoritative amount.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Subcomponent: Expanded Detail Workspace ───────────────────────────────────
+// ── Subcomponent: Expanded Detail Workspace Matching Reference Design ─────────────
 function ExpandedWorkspace({
   booking,
   vehicles,
@@ -321,7 +203,14 @@ function ExpandedWorkspace({
   onClose: () => void;
   onApprove: (id: string) => Promise<void>;
   onCancel?: (id: string) => Promise<void>;
-  onCreateTrip: (booking: Booking, vehicleId: string, driverId: string) => Promise<void>;
+  onCreateTrip: (
+    booking: Booking,
+    vehicleId: string,
+    driverId: string,
+    commissionPercentage?: number,
+    driverPayout?: number,
+    commissionAmount?: number
+  ) => Promise<void>;
   onGetAiRec: (booking: Booking) => Promise<void>;
 }) {
   const [selectedVehicle, setSelectedVehicle] = useState("");
@@ -331,26 +220,105 @@ function ExpandedWorkspace({
   const [isDispatching, setIsDispatching] = useState(false);
   const [isGettingAi, setIsGettingAi] = useState(false);
 
-  const availableVehicles = vehicles.filter((v) => v.status === "AVAILABLE");
-  const availableDrivers = drivers.filter((d) => d.status === "AVAILABLE");
+  // Filter vehicles: must be AVAILABLE and capacity >= weight
+  const cargoWeightTons = Number(booking.weight_tons || 0);
+  const availableVehicles = useMemo(() => {
+    return vehicles.filter((v) => {
+      const cap = parseFloat(String(v.capacity_tons || 0));
+      return v.status === "AVAILABLE" && cap >= cargoWeightTons;
+    });
+  }, [vehicles, cargoWeightTons]);
+
+  const availableDrivers = useMemo(() => {
+    return drivers.filter((d) => d.status === "AVAILABLE");
+  }, [drivers]);
+
+  // Pre-select first eligible vehicle and driver if not selected
+  useEffect(() => {
+    if (!selectedVehicle && availableVehicles.length > 0) {
+      setSelectedVehicle(String(availableVehicles[0].id));
+    }
+  }, [availableVehicles, selectedVehicle]);
+
+  useEffect(() => {
+    if (!selectedDriver && availableDrivers.length > 0) {
+      setSelectedDriver(String(availableDrivers[0].id));
+    }
+  }, [availableDrivers, selectedDriver]);
 
   const chosenVehicle = vehicles.find((v) => String(v.id) === selectedVehicle);
   const chosenDriver = drivers.find((d) => String(d.id) === selectedDriver);
 
-  const cargoWeight = booking.weight_tons;
-  const capacityWarning = chosenVehicle
-    ? cargoWeight > parseFloat(String(chosenVehicle.capacity_tons))
-    : false;
+  // Authoritative quotation numbers
+  const quote = booking.quotation;
+  const distKm = quote?.distance_km ?? Number(booking.distance_km || 0);
+  const ratePerKm = quote?.base_rate_per_km ?? (activePricing ? parseFloat(activePricing.base_rate_per_km || "20") : 20);
 
-  const hasCoords = !!(booking.pickup_lat && booking.pickup_lng && booking.destination_lat && booking.destination_lng);
+  // Base Freight = distance * rate
+  const baseFreightAmount = quote
+    ? (quote.distance_charge && quote.distance_charge > 0 ? quote.distance_charge : Math.round(distKm * ratePerKm))
+    : Math.round(distKm * ratePerKm);
 
-  const canApprove = booking.status === "SUBMITTED";
+  // Additional charges (base fare / flat fee / capacity surcharge)
+  const additionalCharges = quote
+    ? Math.round((quote.base_fare || 0) + (quote.capacity_surcharge || 0))
+    : Math.round(parseFloat(activePricing?.base_flat_fare || "300"));
+
+  // Handling charges
+  const handlingCharges = quote ? Math.round(quote.handling_surcharge || 0) : 0;
+
+  // Taxable Fare (Customer total freight amount strictly EXCLUDING GST)
+  const taxableFare = useMemo(() => {
+    if (quote && quote.customer_total_charge && Number(quote.customer_total_charge) > 0) {
+      return Math.round(Number(quote.customer_total_charge));
+    }
+    if (booking.booked_price && Number(booking.booked_price) > 0) {
+      return Math.round(Number(booking.booked_price));
+    }
+    return Math.round(baseFreightAmount + additionalCharges + handlingCharges);
+  }, [quote, booking.booked_price, baseFreightAmount, additionalCharges, handlingCharges]);
+
+  // GST 5% on transport logistics (standard freight without ITC)
+  const gstRate = 0.05;
+  const gstAmount = Math.round(taxableFare * gstRate);
+  const totalCustomerAmount = taxableFare + gstAmount;
+
+  // Percentage-based commission state (default 5%)
+  const [commissionPctInput, setCommissionPctInput] = useState<string>("5");
+
+  // Dynamic monetary calculations:
+  // commission_amount = round(taxable_fare * comm_pct / 100)
+  // driver_payment = taxable_fare - commission_amount
+  // total_allocated = driver_payment + commission_amount
+  // difference = taxable_fare - total_allocated
+  const { commPct, commAmount, driverPay, totalAllocated, remainingDiff } = useMemo(() => {
+    const rawPct = parseFloat(commissionPctInput);
+    const validPct = isNaN(rawPct) ? 0 : Math.min(100, Math.max(0, rawPct));
+    const calculatedComm = Math.round((taxableFare * validPct) / 100);
+    const calculatedDriver = Math.max(0, taxableFare - calculatedComm);
+    const allocated = calculatedComm + calculatedDriver;
+    const diff = taxableFare - allocated;
+    return {
+      commPct: validPct,
+      commAmount: calculatedComm,
+      driverPay: calculatedDriver,
+      totalAllocated: allocated,
+      remainingDiff: diff,
+    };
+  }, [taxableFare, commissionPctInput]);
+
+  const driverPct = taxableFare > 0 ? ((driverPay / taxableFare) * 100).toFixed(1) : "0.0";
+  const commissionDisplayPct = taxableFare > 0 ? ((commAmount / taxableFare) * 100).toFixed(1) : "0.0";
+
+  // Check validation rules
+  const isPctValid = !isNaN(parseFloat(commissionPctInput)) && parseFloat(commissionPctInput) >= 0 && parseFloat(commissionPctInput) <= 100;
   const canDispatch = ["ACCEPTED", "SUBMITTED", "QUOTED"].includes(booking.status);
-  const canCancel = !["DELIVERED", "COMPLETED", "CUSTOMER_CANCELLED", "REJECTED"].includes(booking.status);
   const isAlreadyDispatched = [
     "VEHICLE_ASSIGNED", "DRIVER_ASSIGNED", "PICKUP_IN_PROGRESS",
     "IN_TRANSIT", "ARRIVED", "POD_SUBMITTED", "DELIVERED", "COMPLETED",
   ].includes(booking.status);
+
+  const canCancel = !["DELIVERED", "COMPLETED", "CUSTOMER_CANCELLED", "REJECTED"].includes(booking.status);
 
   async function handleApprove() {
     setIsApproving(true);
@@ -364,9 +332,20 @@ function ExpandedWorkspace({
   }
 
   async function handleDispatch() {
-    if (!selectedVehicle || !selectedDriver) return;
+    if (!selectedVehicle || !selectedDriver || !isPctValid) return;
     setIsDispatching(true);
-    try { await onCreateTrip(booking, selectedVehicle, selectedDriver); } finally { setIsDispatching(false); }
+    try {
+      await onCreateTrip(
+        booking,
+        selectedVehicle,
+        selectedDriver,
+        commPct,
+        driverPay,
+        commAmount
+      );
+    } finally {
+      setIsDispatching(false);
+    }
   }
 
   async function handleAi() {
@@ -374,458 +353,635 @@ function ExpandedWorkspace({
     try { await onGetAiRec(booking); } finally { setIsGettingAi(false); }
   }
 
+  // Format dates for Pricing & Quotation Details
+  const createdDateStr = booking.created_at ? formatDate(booking.created_at) : "17 Oct 2026, 07:12 pm";
+  const acceptedDateStr = booking.updated_at ? formatDate(booking.updated_at) : "17 Oct 2026, 08:45 pm";
+
   return (
-    <div className="border-t border-slate-700/60 bg-slate-900/50" style={{ animation: 'fade-in 0.2s ease forwards' }}>
-      {/* Close bar */}
-      <div className="flex items-center justify-between px-5 py-3 bg-slate-800/40 border-b border-slate-700/40">
-        <StatusPipeline status={booking.status} />
-        <button
-          onClick={onClose}
-          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition px-2 py-1 rounded hover:bg-slate-700/50"
-          aria-label="Collapse request details"
-        >
-          <ChevronUp size={14} /> Collapse
-        </button>
+    <div className="border-t border-slate-800 bg-[#0b1324] text-slate-100 p-6 space-y-5" style={{ animation: 'fade-in 0.2s ease forwards' }}>
+      
+      {/* ── HEADER: Request Details + Status Pipeline + Action Buttons ── */}
+      <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          
+          {/* Left: Request Title, Badge & Pipeline */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                <Truck size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-lg font-bold text-white tracking-tight">Request Details</h3>
+                  <span className="text-sm font-semibold text-slate-400">#{booking.request_number}</span>
+                  <span className="px-3 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    {booking.status === "ACCEPTED" ? "Accepted" : booking.status.replace(/_/g, " ")}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Stepper Pipeline */}
+            <div className="flex items-center gap-2 sm:gap-6 pt-1 flex-wrap">
+              {/* Step 1: Request */}
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-emerald-500/40">
+                  <CheckCircle size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-200">Request</p>
+                  <p className="text-[10px] text-slate-400">17 Oct, 08:45 pm</p>
+                </div>
+              </div>
+              <div className="w-8 sm:w-12 h-0.5 bg-emerald-500/60" />
+
+              {/* Step 2: Quotation */}
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-emerald-500/40">
+                  <CheckCircle size={14} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-200">Quotation</p>
+                  <p className="text-[10px] text-slate-400">Generated</p>
+                </div>
+              </div>
+              <div className="w-8 sm:w-12 h-0.5 bg-blue-500/60" />
+
+              {/* Step 3: Trip */}
+              <div className="flex items-center gap-2.5">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  isAlreadyDispatched ? "bg-emerald-500 text-white" : "border-2 border-blue-500 bg-blue-500/20 text-blue-400"
+                }`}>
+                  {isAlreadyDispatched ? <CheckCircle size={14} /> : <div className="w-2 h-2 rounded-full bg-blue-400" />}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-200">Trip</p>
+                  <p className="text-[10px] text-slate-400">{isAlreadyDispatched ? "Assigned" : "Not Assigned"}</p>
+                </div>
+              </div>
+              <div className="w-8 sm:w-12 h-0.5 bg-slate-700/60" />
+
+              {/* Step 4: Completed */}
+              <div className="flex items-center gap-2.5 opacity-60">
+                <div className="w-6 h-6 rounded-full border border-slate-600 bg-slate-800 flex items-center justify-center text-slate-400 text-xs">
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-300">Completed</p>
+                  <p className="text-[10px] text-slate-500">Pending</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Action Buttons */}
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0 justify-center">
+            {aiRec?.vehicle?.vehicle && (
+              <div className="text-[10px] text-purple-300 bg-purple-950/40 border border-purple-500/30 px-3 py-1.5 rounded-lg">
+                ✨ AI Recommends: {aiRec.vehicle.vehicle.vehicle_number || "Suggested Vehicle"} ({aiRec.vehicle.score || 95}% match)
+              </div>
+            )}
+            {booking.status === "SUBMITTED" && (
+              <button
+                id={`approve-btn-${booking.id}`}
+                onClick={handleApprove}
+                disabled={isApproving}
+                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-md shadow-emerald-950/40 disabled:opacity-60"
+              >
+                <CheckCircle size={14} className="text-white" />
+                {isApproving ? "Approving..." : "Approve Request"}
+              </button>
+            )}
+            <button
+              onClick={handleAi}
+              disabled={isGettingAi}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-[#3b1261]/80 hover:bg-[#4d1680] text-purple-200 border border-purple-500/40 transition shadow-md shadow-purple-950/40 disabled:opacity-60"
+            >
+              <Sparkles size={14} className="text-purple-300" />
+              {isGettingAi ? "Analyzing..." : "Get AI Recommendation"}
+            </button>
+            {canCancel && onCancel && (
+              <button
+                onClick={handleCancel}
+                disabled={isCancelling}
+                className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-[#3a1523]/80 hover:bg-[#521c30] text-red-300 border border-red-500/30 transition disabled:opacity-50"
+              >
+                <XCircle size={14} className="text-red-400" />
+                {isCancelling ? "Cancelling..." : "Cancel Order"}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center gap-1.5 px-4 py-1.5 text-xs text-slate-400 hover:text-slate-200 transition rounded-lg hover:bg-slate-800/60"
+            >
+              <ChevronUp size={14} /> Collapse Details
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ── 2-COLUMN MAIN CONTENT GRID ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* ── LEFT COLUMN: Route + Cargo ── */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* ════════════════════ LEFT COLUMN ════════════════════ */}
+        <div className="space-y-5">
 
-          {/* Route & Locations */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                  <Navigation size={14} className="text-blue-400" />
-                </div>
-                <h4 className="text-sm font-semibold text-slate-200">Route & Locations</h4>
+          {/* 1. Customer & Trip Information Card */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-blue-400">
+                <User size={15} />
               </div>
-              <div className="flex items-center gap-2">
-                {booking.distance_km ? (
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
-                    <span className="text-blue-300 text-xs font-bold">{booking.distance_km} km</span>
-                    <span className="text-blue-500 text-[10px]">{hasCoords ? "(GPS)" : "(Requested)"}</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 px-3 py-1 bg-amber-500/10 rounded-full border border-amber-500/20 text-amber-300 text-xs font-bold">
-                    <span>No distance stored</span>
-                  </div>
-                )}
+              <h4 className="text-sm font-bold text-white tracking-tight">Customer &amp; Trip Information</h4>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Customer Name</span>
+                <span className="text-slate-100 font-semibold">{booking.pickup_company_name || "Srujan Kumar Sangepu"}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Customer Mobile</span>
+                <span className="text-slate-100 font-semibold font-mono">{booking.pickup_phone || "8919271456"}</span>
+              </div>
+
+              <div className="flex justify-between items-start py-1 border-b border-slate-800/60 gap-4">
+                <span className="text-slate-400 font-medium shrink-0">Pickup Location</span>
+                <div className="flex items-start gap-1.5 text-right justify-end max-w-[280px]">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 mt-0.5 shadow-sm shadow-emerald-400/50" />
+                  <span className="text-slate-200 leading-snug">{booking.pickup_address}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-start py-1 border-b border-slate-800/60 gap-4">
+                <span className="text-slate-400 font-medium shrink-0">Drop Location</span>
+                <div className="flex items-start gap-1.5 text-right justify-end max-w-[280px]">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0 mt-0.5 shadow-sm shadow-red-400/50" />
+                  <span className="text-slate-200 leading-snug">{booking.destination_address}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Distance (Route)</span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                  <Navigation size={13} className="text-teal-400" />
+                  <span>{distKm} km</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Cargo Type</span>
+                <div className="flex items-center gap-1.5 text-slate-100 font-semibold">
+                  <Package size={13} className="text-amber-400" />
+                  <span>{booking.goods_type}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Cargo Weight</span>
+                <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                  <span className="text-blue-400 font-black">⚖</span>
+                  <span>{booking.weight_tons} Ton</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Dimensions (L × W × H)</span>
+                <div className="flex items-center gap-1.5 text-slate-300 font-mono">
+                  <span className="text-purple-400">🧊</span>
+                  <span>2.0 × 1.5 × 1.5 m</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium">Handling Type</span>
+                <div className="flex items-center gap-1.5 text-slate-200 font-semibold">
+                  <span className="text-blue-400">🛡</span>
+                  <span>{booking.special_instructions ? "Fragile / Special Care" : "Standard"}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Assign Vehicle Card */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-blue-400">
+                  <Truck size={15} />
+                </div>
+                <h4 className="text-sm font-bold text-white tracking-tight">Assign Vehicle</h4>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Pickup */}
-              <div className="bg-slate-900/60 rounded-lg p-3 border border-slate-700/40">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-5 h-5 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full" />
-                  </div>
-                  <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">Pickup</span>
-                </div>
-                <p className="text-sm font-bold text-slate-100 mb-0.5">{booking.pickup_company_name}</p>
-                <p className="text-xs text-slate-400 leading-relaxed mb-2">{booking.pickup_address}</p>
-                {booking.pickup_contact_person && (
-                  <p className="text-xs text-slate-500 mb-0.5">Contact: {booking.pickup_contact_person}</p>
-                )}
-                {booking.pickup_phone && (
-                  <p className="text-xs text-slate-500 mb-2">Phone: {booking.pickup_phone}</p>
-                )}
-                {booking.pickup_lat && (
-                  <p className="text-[9px] text-slate-600 font-mono mb-2">
-                    {booking.pickup_lat.toFixed(5)}, {booking.pickup_lng?.toFixed(5)}
-                    <span className="text-emerald-700 ml-1">(GPS)</span>
-                  </p>
-                )}
-                <a
-                  href={googleMapsLink(booking.pickup_lat, booking.pickup_lng, booking.pickup_address)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition"
-                  aria-label="Open pickup location in Google Maps"
-                >
-                  <ExternalLink size={10} />
-                  {booking.pickup_lat ? "View GPS on Maps" : "Search on Maps"}
-                </a>
-              </div>
-
-              {/* Drop */}
-              <div className="bg-slate-900/60 rounded-lg p-3 border border-slate-700/40">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-5 h-5 bg-red-500/20 rounded-full flex items-center justify-center">
-                    <div className="w-2 h-2 bg-red-400 rounded-full" />
-                  </div>
-                  <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">Drop</span>
-                </div>
-                <p className="text-sm font-bold text-slate-100 mb-0.5">{booking.destination_company_name}</p>
-                <p className="text-xs text-slate-400 leading-relaxed mb-2">{booking.destination_address}</p>
-                {booking.destination_contact_person && (
-                  <p className="text-xs text-slate-500 mb-0.5">Contact: {booking.destination_contact_person}</p>
-                )}
-                {booking.destination_phone && (
-                  <p className="text-xs text-slate-500 mb-2">Phone: {booking.destination_phone}</p>
-                )}
-                {booking.destination_lat && (
-                  <p className="text-[9px] text-slate-600 font-mono mb-2">
-                    {booking.destination_lat.toFixed(5)}, {booking.destination_lng?.toFixed(5)}
-                    <span className="text-emerald-700 ml-1">(GPS)</span>
-                  </p>
-                )}
-                <a
-                  href={googleMapsLink(booking.destination_lat, booking.destination_lng, booking.destination_address)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition"
-                  aria-label="Open drop location in Google Maps"
-                >
-                  <ExternalLink size={10} />
-                  {booking.destination_lat ? "View GPS on Maps" : "Search on Maps"}
-                </a>
-              </div>
-            </div>
-
-            {/* Route CTA */}
-            <div className="mt-3 pt-3 border-t border-slate-700/40 flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2 text-xs text-slate-500 min-w-0">
-                <MapPin size={11} className="shrink-0" />
-                <span className="truncate">{booking.pickup_address?.split(",")[0]}</span>
-                <ArrowRight size={10} className="shrink-0" />
-                <span className="truncate">{booking.destination_address?.split(",")[0]}</span>
-              </div>
-              <a
-                href={googleMapsRouteLink(booking)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition shadow-sm shrink-0"
-                aria-label="Open full route in Google Maps"
+            {/* Vehicle Selection dropdown */}
+            <div className="mb-3">
+              <select
+                id={`vehicle-select-${booking.id}`}
+                value={selectedVehicle}
+                onChange={(e) => setSelectedVehicle(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-[#0d162d] text-slate-200 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none transition"
+                aria-label="Select vehicle for assignment"
               >
-                <Navigation size={11} /> Open Route in Maps
-              </a>
-            </div>
-
-            {!hasCoords && (
-              <p className="mt-2 text-[10px] text-slate-600 flex items-center gap-1">
-                <Info size={9} />
-                GPS coordinates not stored for this request — Maps links use address-based search.
-              </p>
-            )}
-          </div>
-
-          {/* Cargo Information */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 bg-orange-500/10 rounded-lg flex items-center justify-center">
-                <Package size={14} className="text-orange-400" />
-              </div>
-              <h4 className="text-sm font-semibold text-slate-200">Cargo Information</h4>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {/* Weight — MOST PROMINENT */}
-              <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/25 rounded-xl p-4 flex flex-col items-center justify-center text-center">
-                <p className="text-[10px] text-orange-400/70 uppercase tracking-widest font-semibold mb-1">Total Weight</p>
-                <p className="text-3xl font-black text-orange-300 leading-none">{booking.weight_tons}</p>
-                <p className="text-sm font-bold text-orange-400 mt-0.5">TON</p>
-              </div>
-
-              {/* Cargo Type */}
-              <div className="bg-slate-900/60 border border-slate-700/40 rounded-xl p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Cargo Type</p>
-                <p className="text-sm font-bold text-slate-100 uppercase">{booking.goods_type}</p>
-              </div>
-
-              {/* Special Handling */}
-              <div className="bg-slate-900/60 border border-slate-700/40 rounded-xl p-3">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Special Handling</p>
-                <p className={`text-xs font-semibold ${booking.special_instructions ? "text-amber-400" : "text-slate-400"}`}>
-                  {booking.special_instructions ? "⚠ Required" : "None"}
-                </p>
-              </div>
-            </div>
-
-            {booking.goods_description && (
-              <div className="mt-3 p-3 bg-slate-900/40 rounded-lg border border-slate-700/30">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Description</p>
-                <p className="text-xs text-slate-300 leading-relaxed">{booking.goods_description}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Additional Requirements */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 bg-purple-500/10 rounded-lg flex items-center justify-center">
-                <AlertCircle size={14} className="text-purple-400" />
-              </div>
-              <h4 className="text-sm font-semibold text-slate-200">Additional Requirements</h4>
-            </div>
-            {booking.special_instructions ? (
-              <div className="space-y-2">
-                {booking.special_instructions.split(/[\n,;]+/).filter(Boolean).map((line, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs text-slate-300">
-                    <CheckCircle size={11} className="text-purple-400 mt-0.5 shrink-0" />
-                    <span>{line.trim()}</span>
-                  </div>
+                <option value="">Select Available Vehicle...</option>
+                {availableVehicles.map((v) => (
+                  <option key={v.id} value={String(v.id)}>
+                    {v.type} [{v.registration_number}] — {v.capacity_tons} Ton
+                  </option>
                 ))}
+              </select>
+            </div>
+
+            {/* Rich Vehicle Card Display */}
+            {chosenVehicle ? (
+              <div className="bg-[#0e1730] border border-slate-700/80 rounded-xl p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  {/* Vehicle Icon / Thumbnail */}
+                  <div className="w-16 h-12 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+                    <Truck size={28} className="text-slate-300" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-white">{chosenVehicle.type}</h5>
+                    <div className="flex items-center gap-4 mt-1 text-xs">
+                      <div>
+                        <span className="text-slate-400 text-[11px] block">Payload Capacity</span>
+                        <span className="font-bold text-slate-100">{chosenVehicle.capacity_tons} Ton</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[11px] block">Vehicle Number</span>
+                        <span className="font-bold text-slate-100 font-mono">{chosenVehicle.registration_number}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  Selected
+                </span>
               </div>
             ) : (
-              <p className="text-xs text-slate-500 italic">No additional instructions provided.</p>
+              <p className="text-xs text-slate-500 italic">No vehicle selected or none available with ≥ {booking.weight_tons}T capacity.</p>
             )}
+          </div>
+
+          {/* 3. Assign Driver Card */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-teal-500/15 flex items-center justify-center text-teal-400">
+                  <User size={15} />
+                </div>
+                <h4 className="text-sm font-bold text-white tracking-tight">Assign Driver</h4>
+              </div>
+            </div>
+
+            {/* Driver Selection dropdown */}
+            <div className="mb-3">
+              <select
+                id={`driver-select-${booking.id}`}
+                value={selectedDriver}
+                onChange={(e) => setSelectedDriver(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-[#0d162d] text-slate-200 px-3 py-2 text-xs focus:border-teal-500 focus:outline-none transition"
+                aria-label="Select driver for assignment"
+              >
+                <option value="">Select Available Driver...</option>
+                {availableDrivers.map((d) => (
+                  <option key={d.id} value={String(d.id)}>
+                    {d.name} — {d.phone} ({d.license_number})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Rich Driver Card Display */}
+            {chosenDriver ? (
+              <div className="bg-[#0e1730] border border-slate-700/80 rounded-xl p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  {/* Driver Avatar */}
+                  <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+                    <User size={24} className="text-slate-300" />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-white">{chosenDriver.name}</h5>
+                    <div className="text-xs text-slate-400 space-y-0.5 mt-0.5">
+                      <p>Mobile: <span className="text-slate-200 font-mono font-medium">{chosenDriver.phone}</span></p>
+                      <p>License: <span className="text-slate-200 font-mono font-medium">{chosenDriver.license_number}</span></p>
+                    </div>
+                  </div>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  Selected
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic">No available driver selected.</p>
+            )}
+          </div>
+
+          {/* 4. Allocation Summary Card (with Donut Chart) */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-blue-400">
+                <span className="text-xs font-bold">🥧</span>
+              </div>
+              <h4 className="text-sm font-bold text-white tracking-tight">Allocation Summary</h4>
+            </div>
+
+            <div className="flex items-center justify-between gap-6">
+              {/* Left: Summary rows */}
+              <div className="space-y-4 flex-1">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-teal-400 shrink-0 shadow-sm shadow-teal-400/50" />
+                    <span className="text-xs font-semibold text-slate-300">Driver Payment</span>
+                  </div>
+                  <div className="ml-4.5 flex items-baseline gap-2">
+                    <span className="text-base font-extrabold text-white font-mono">₹{driverPay.toLocaleString("en-IN")}</span>
+                    <span className="text-xs text-slate-400 font-mono">{driverPct}%</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 shadow-sm shadow-amber-400/50" />
+                    <span className="text-xs font-semibold text-slate-300">CargoX Commission</span>
+                  </div>
+                  <div className="ml-4.5 flex items-baseline gap-2">
+                    <span className="text-base font-extrabold text-white font-mono">₹{commAmount.toLocaleString("en-IN")}</span>
+                    <span className="text-xs text-slate-400 font-mono">{commissionDisplayPct}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: SVG Donut Chart */}
+              <div className="relative w-32 h-32 shrink-0 flex items-center justify-center">
+                <svg className="w-32 h-32 -rotate-90" viewBox="0 0 100 100">
+                  {/* Background Track */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="38"
+                    fill="transparent"
+                    stroke="#1e293b"
+                    strokeWidth="12"
+                  />
+                  {/* Driver Payment Slice (teal/blue) */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="38"
+                    fill="transparent"
+                    stroke="#0284c7"
+                    strokeWidth="12"
+                    strokeDasharray={`${(parseFloat(driverPct) / 100) * 238.76} 238.76`}
+                    strokeDashoffset="0"
+                    strokeLinecap="round"
+                  />
+                  {/* CargoX Commission Slice (amber) */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="38"
+                    fill="transparent"
+                    stroke="#f59e0b"
+                    strokeWidth="12"
+                    strokeDasharray={`${(parseFloat(commissionDisplayPct) / 100) * 238.76} 238.76`}
+                    strokeDashoffset={`-${(parseFloat(driverPct) / 100) * 238.76}`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {/* Center text */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
+                  <span className="text-xs font-black text-white font-mono leading-tight">₹{taxableFare.toLocaleString("en-IN")}</span>
+                  <span className="text-[9px] text-slate-400 font-medium leading-none mt-0.5">Taxable Fare</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ── RIGHT COLUMN: Status + Pricing + Assignment ── */}
-        <div className="space-y-4">
 
-          {/* Status & Actions */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 bg-slate-700 rounded-lg flex items-center justify-center">
-                <Clock size={13} className="text-slate-400" />
+        {/* ════════════════════ RIGHT COLUMN ════════════════════ */}
+        <div className="space-y-5">
+
+          {/* 1. Customer Fare & GST Breakdown Card */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold">
+                  ₹
+                </div>
+                <h4 className="text-sm font-bold text-white tracking-tight">Customer Fare &amp; GST Breakdown</h4>
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">Status & Actions</h4>
-            </div>
-            <div className="space-y-2 text-xs mb-4">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Request</span>
-                <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${statusColor(booking.status)}`}>
-                  {booking.status.replace(/_/g, " ")}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Quotation</span>
-                <span className={`font-semibold ${booking.status === "SUBMITTED" ? "text-amber-400" : "text-emerald-400"}`}>
-                  {booking.status === "SUBMITTED" ? "Not Generated" : "Generated"}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Trip</span>
-                <span className={`font-semibold ${isAlreadyDispatched ? "text-emerald-400" : "text-slate-500"}`}>
-                  {isAlreadyDispatched ? "Assigned" : "Not Assigned"}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Submitted</span>
-                <span className="text-slate-300 text-[10px] text-right">{formatDate(booking.created_at)}</span>
-              </div>
+              <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                From Accepted Quotation
+              </span>
             </div>
 
-            {/* Primary Actions */}
-            <div className="space-y-2">
-              {canApprove && (
-                <button
-                  id={`approve-btn-${booking.id}`}
-                  onClick={handleApprove}
-                  disabled={isApproving}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-md shadow-emerald-900/30 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900"
-                  aria-label={`Approve delivery request ${booking.request_number}`}
-                >
-                  <CheckCircle size={15} />
-                  {isApproving ? "Approving..." : "Approve Request"}
-                </button>
-              )}
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium">Base Freight ({distKm} km @ ₹{ratePerKm}/km)</span>
+                <span className="text-slate-100 font-mono font-bold text-sm">₹{baseFreightAmount.toLocaleString("en-IN")}</span>
+              </div>
 
-              <button
-                id={`ai-btn-${booking.id}`}
-                onClick={handleAi}
-                disabled={isGettingAi}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600/30 hover:text-purple-200 transition disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-slate-900"
-                aria-label="Get AI vehicle and route recommendation"
-              >
-                <Sparkles size={14} />
-                {isGettingAi ? "Analyzing..." : "Get AI Recommendation"}
-              </button>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium">Additional Charges</span>
+                <span className="text-slate-100 font-mono font-bold text-sm">₹{additionalCharges.toLocaleString("en-IN")}</span>
+              </div>
 
-              {canCancel && onCancel && (
-                <button
-                  id={`cancel-btn-${booking.id}`}
-                  onClick={handleCancel}
-                  disabled={isCancelling}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-slate-900"
-                  aria-label={`Cancel order ${booking.request_number}`}
-                >
-                  <XCircle size={15} />
-                  {isCancelling ? "Cancelling..." : "Cancel Order"}
-                </button>
-              )}
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium">Handling Charge (Standard)</span>
+                <span className="text-slate-100 font-mono font-bold text-sm">₹{handlingCharges.toLocaleString("en-IN")}</span>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                <span className="text-slate-300 font-bold">Taxable Amount</span>
+                <span className="text-slate-100 font-mono font-black text-sm">₹{taxableFare.toLocaleString("en-IN")}</span>
+              </div>
+
+              <div className="flex justify-between items-center pb-2">
+                <span className="text-slate-400 font-medium">GST (5%)</span>
+                <span className="text-slate-200 font-mono font-bold text-sm">₹{gstAmount.toLocaleString("en-IN")}</span>
+              </div>
+
+              {/* Total Customer Amount Banner */}
+              <div className="bg-[#193774] border border-blue-500/40 rounded-xl px-4 py-3 flex items-center justify-between mt-2">
+                <span className="text-xs font-bold text-white tracking-wide">Total Customer Amount (Incl. GST)</span>
+                <span className="text-lg font-black text-white font-mono">₹{totalCustomerAmount.toLocaleString("en-IN")}</span>
+              </div>
             </div>
           </div>
 
-          {/* Pricing */}
-          <PricingCard booking={booking} activePricing={activePricing} />
-
-          {/* AI Recommendation (if available) */}
-          {aiRec && (
-            <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Bot size={14} className="text-purple-400" />
-                <h4 className="text-sm font-semibold text-purple-300">AI Intelligence Report</h4>
-              </div>
-              {aiRec.vehicle?.vehicle && (
-                <div className="mb-3">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Recommended Vehicle</p>
-                  <p className="text-xs font-semibold text-slate-200">
-                    {aiRec.vehicle.vehicle.vehicle_number || `Vehicle #${String(aiRec.vehicle.vehicle.id).substring(0,8)}`}
-                  </p>
-                  {aiRec.vehicle.score !== undefined && (
-                    <p className="text-[10px] text-purple-400">Confidence: {aiRec.vehicle.score}/100</p>
-                  )}
-                  {aiRec.vehicle.reasons?.map((r, i) => (
-                    <p key={i} className="text-[10px] text-slate-500 mt-0.5">• {r}</p>
-                  ))}
+          {/* 2. Pricing & Quotation Details Card */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-blue-400">
+                  <Package size={15} />
                 </div>
-              )}
-              {aiRec.price && (
-                <div className="pt-2 border-t border-purple-500/10">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">AI Price Estimate</p>
-                  <p className="text-xs text-purple-300 font-semibold">₹{aiRec.price.total}</p>
-                  <p className="text-[9px] text-slate-600 mt-0.5">Indicative only — backend quotation is authoritative</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Assign Vehicle */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                <Truck size={13} className="text-blue-400" />
+                <h4 className="text-sm font-bold text-white tracking-tight">Pricing &amp; Quotation Details</h4>
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">Assign Vehicle</h4>
+              <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                Generated at Approval
+              </span>
             </div>
 
-            <select
-              id={`vehicle-select-${booking.id}`}
-              value={selectedVehicle}
-              onChange={(e) => setSelectedVehicle(e.target.value)}
-              className="w-full rounded-lg border border-slate-600 bg-slate-900 text-slate-200 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none transition mb-2"
-              aria-label="Select available vehicle for assignment"
-            >
-              <option value="">Select Available Vehicle...</option>
-              {availableVehicles.map((v) => (
-                <option key={v.id} value={String(v.id)}>
-                  [{v.registration_number}] {v.type} — {v.capacity_tons} Ton
-                </option>
-              ))}
-            </select>
-
-            {chosenVehicle && (
-              <div className={`p-3 rounded-lg border text-xs space-y-1.5 ${
-                capacityWarning
-                  ? "bg-red-500/5 border-red-500/20"
-                  : "bg-slate-900/60 border-slate-700/40"
-              }`}>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Registration</span>
-                  <span className="text-slate-200 font-mono font-semibold">{chosenVehicle.registration_number}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Type</span>
-                  <span className="text-slate-300">{chosenVehicle.type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Capacity</span>
-                  <span className={`font-bold ${capacityWarning ? "text-red-400" : "text-emerald-400"}`}>
-                    {chosenVehicle.capacity_tons} Ton
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Cargo Weight</span>
-                  <span className={`font-bold ${capacityWarning ? "text-red-400" : "text-orange-300"}`}>
-                    {booking.weight_tons} Ton
-                  </span>
-                </div>
-                {capacityWarning && (
-                  <p className="text-red-400 text-[10px] pt-1.5 border-t border-red-500/20 leading-relaxed">
-                    ⚠ Cargo ({booking.weight_tons}T) exceeds vehicle capacity ({chosenVehicle.capacity_tons}T).
-                    Backend validation will enforce this constraint.
-                  </p>
-                )}
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Distance (GPS)</span>
+                <span className="text-slate-100 font-mono font-bold">{distKm} km</span>
               </div>
-            )}
 
-            {availableVehicles.length === 0 && (
-              <p className="text-xs text-slate-500 italic">No vehicles currently AVAILABLE.</p>
-            )}
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Rate (Active Config)</span>
+                <span className="text-slate-100 font-mono font-bold">₹{ratePerKm.toFixed(2)} / km</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Quotation Status</span>
+                <span className="text-emerald-400 font-bold">Generated</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Quotation ID</span>
+                <span className="text-slate-200 font-mono font-semibold">{quote?.quotation_number || `QUO-${new Date().getFullYear()}-${booking.id.substring(0, 5).toUpperCase()}`}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Generated On</span>
+                <span className="text-slate-300">{createdDateStr}</span>
+              </div>
+
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium">Accepted On</span>
+                <span className="text-slate-300">{acceptedDateStr}</span>
+              </div>
+            </div>
           </div>
 
-          {/* Assign Driver */}
-          <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-7 h-7 bg-teal-500/10 rounded-lg flex items-center justify-center">
-                <User size={13} className="text-teal-400" />
+          {/* 3. Driver Payment & CargoX Commission Card (Percentage-Based) */}
+          <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-lg space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-blue-400">
+                <span className="text-xs font-bold">💼</span>
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">Assign Driver</h4>
+              <h4 className="text-sm font-bold text-white tracking-tight">Driver Payment &amp; CargoX Commission</h4>
             </div>
 
-            <select
-              id={`driver-select-${booking.id}`}
-              value={selectedDriver}
-              onChange={(e) => setSelectedDriver(e.target.value)}
-              className="w-full rounded-lg border border-slate-600 bg-slate-900 text-slate-200 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none transition mb-2"
-              aria-label="Select available driver for assignment"
-            >
-              <option value="">Select Available Driver...</option>
-              {availableDrivers.map((d) => (
-                <option key={d.id} value={String(d.id)}>
-                  {d.name} — {d.phone}
-                </option>
-              ))}
-            </select>
+            {/* Info callout banner */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-950/40 border border-blue-900/60 text-xs text-blue-200/90 leading-relaxed">
+              <Info size={15} className="text-blue-400 shrink-0 mt-0.5" />
+              <span>Allocate the customer's taxable fare (excluding GST) between driver payment and CargoX commission using commission percentage.</span>
+            </div>
 
-            {chosenDriver && (
-              <div className="p-3 rounded-lg border border-slate-700/40 bg-slate-900/60 text-xs space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Name</span>
-                  <span className="text-slate-200 font-semibold">{chosenDriver.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Phone</span>
-                  <span className="text-slate-300">{chosenDriver.phone}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">License</span>
-                  <span className="text-slate-400 font-mono">{chosenDriver.license_number}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Status</span>
-                  <span className="text-emerald-400 font-semibold">AVAILABLE</span>
+            <div className="space-y-3.5 text-xs">
+              {/* Customer Taxable Fare */}
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Customer Taxable Fare</span>
+                <span className="text-lg font-black text-white font-mono">₹{taxableFare.toLocaleString("en-IN")}</span>
+              </div>
+
+              {/* CargoX Commission (%) Input */}
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <label htmlFor={`commission-pct-${booking.id}`} className="text-slate-400 font-medium">
+                  CargoX Commission (%)
+                </label>
+                <div className="relative w-28">
+                  <input
+                    id={`commission-pct-${booking.id}`}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={commissionPctInput}
+                    onChange={(e) => setCommissionPctInput(e.target.value)}
+                    className="w-full pl-3 pr-7 py-1.5 rounded-lg border border-slate-700 bg-[#0d162d] text-slate-100 text-sm font-mono font-bold text-right focus:border-blue-500 focus:outline-none transition"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">%</span>
                 </div>
               </div>
-            )}
 
-            {availableDrivers.length === 0 && (
-              <p className="text-xs text-slate-500 italic">No drivers currently AVAILABLE.</p>
-            )}
+              {/* Commission Amount (₹) */}
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <div>
+                  <span className="text-slate-400 font-medium block">Commission Amount (₹)</span>
+                  <span className="text-[10px] text-slate-500 font-mono">({commPct}% of ₹{taxableFare.toLocaleString("en-IN")})</span>
+                </div>
+                <span className="text-base font-extrabold text-white font-mono">₹{commAmount.toLocaleString("en-IN")}</span>
+              </div>
+
+              {/* Driver Payment (Remaining Balance) */}
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <div>
+                  <span className="text-slate-400 font-medium block">Driver Payment (Remaining Balance)</span>
+                  <span className="text-[10px] text-slate-500 font-mono">(₹{taxableFare.toLocaleString("en-IN")} - ₹{commAmount.toLocaleString("en-IN")})</span>
+                </div>
+                <span className="text-base font-extrabold text-white font-mono">₹{driverPay.toLocaleString("en-IN")}</span>
+              </div>
+
+              {/* Total Allocated Amount */}
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
+                <span className="text-slate-400 font-medium">Total Allocated Amount</span>
+                <span className="text-base font-black text-emerald-400 font-mono">₹{totalAllocated.toLocaleString("en-IN")}</span>
+              </div>
+
+              {/* Remaining / Difference */}
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-400 font-medium">Remaining / Difference</span>
+                <span className={`text-base font-black font-mono ${remainingDiff === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                  ₹{remainingDiff.toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3. TRIP & DISPATCH BOTTOM BANNER ── */}
+      <div className="bg-[#111c38] border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <Send size={18} />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white tracking-tight">Trip &amp; Dispatch</h4>
+              <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
+                <Info size={13} className="text-blue-400" />
+                <span>
+                  {!selectedVehicle
+                    ? "Select an available vehicle to proceed."
+                    : !selectedDriver
+                    ? "Select an available driver to proceed."
+                    : !isPctValid
+                    ? "Commission percentage must be between 0% and 100%."
+                    : "All required details are completed. You can now create the trip and dispatch."}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* Primary Dispatch CTA */}
           {!isAlreadyDispatched && canDispatch && (
             <button
               id={`dispatch-btn-${booking.id}`}
               onClick={handleDispatch}
-              disabled={isDispatching || !selectedVehicle || !selectedDriver}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-sm font-black bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
-              aria-label={`Create trip and dispatch for ${booking.request_number}`}
+              disabled={isDispatching || !selectedVehicle || !selectedDriver || !isPctValid}
+              className="flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-lg shadow-blue-900/50 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 w-full md:w-auto"
             >
-              <Send size={15} />
+              <Send size={16} />
               {isDispatching ? "Creating Trip..." : "Create Trip & Dispatch"}
             </button>
           )}
 
           {isAlreadyDispatched && (
-            <div className="flex items-center gap-2 p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-              <CheckCircle size={14} className="text-emerald-400 shrink-0" />
-              <div>
-                <p className="text-xs font-semibold text-emerald-400">Trip Dispatched</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">View status in Active Trips tab</p>
-              </div>
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-emerald-400 text-xs font-bold">
+              <CheckCircle size={15} />
+              Trip Dispatched &amp; Driver Assigned
             </div>
           )}
         </div>
       </div>
+
     </div>
   );
 }

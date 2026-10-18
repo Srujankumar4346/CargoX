@@ -434,3 +434,95 @@ async def test_reassign_started_trip_rejected(async_client: AsyncClient, admin_u
     })
     assert resp.status_code == 400
     assert "already started" in resp.json()["detail"].lower()
+
+@pytest.mark.anyio
+async def test_percentage_commission_calculation_5_percent(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
+    """
+    Test Phase 4 requirement:
+    Customer Taxable Fare: Rs 6,540
+    CargoX Commission (%): 5%
+    Calculated Commission: Rs 327 (5% of 6,540)
+    Driver Payment: Rs 6,213 (6,540 - 327)
+    Total Allocated: Rs 6,540, Difference: Rs 0
+    """
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    # Set accepted quotation customer_total_charge to 6540.00
+    quote = await Quotation.find_one(Quotation.request_id == accepted_delivery_request.id)
+    quote.customer_total_charge = Decimal("6540.00")
+    await quote.save()
+
+    # Dispatch with commission_percentage = 5.0
+    resp = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+        "vehicle_id": str(vehicle_container_10t.id),
+        "driver_id": str(driver_profile_1.id),
+        "commission_percentage": 5.0
+    })
+    assert resp.status_code == 201
+
+    trip = await Trip.find_one(Trip.request_id == accepted_delivery_request.id)
+    assert trip is not None
+    assert Decimal(str(trip.commission_percentage)) == Decimal("5.0")
+    assert Decimal(str(trip.commission_amount)) == Decimal("327.00")
+    assert Decimal(str(trip.driver_payout)) == Decimal("6213.00")
+    assert Decimal(str(trip.commission_amount)) + Decimal(str(trip.driver_payout)) == Decimal("6540.00")
+
+    # Verify Quotation record was also updated and synchronized
+    refreshed_quote = await Quotation.get(quote.id)
+    assert Decimal(str(refreshed_quote.service_fee_percentage)) == Decimal("5.0")
+    assert Decimal(str(refreshed_quote.service_fee_amount)) == Decimal("327.00")
+    assert Decimal(str(refreshed_quote.driver_payable_amount)) == Decimal("6213.00")
+
+@pytest.mark.anyio
+async def test_percentage_commission_zero_and_hundred_percent(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    quote = await Quotation.find_one(Quotation.request_id == accepted_delivery_request.id)
+    quote.customer_total_charge = Decimal("1000.00")
+    await quote.save()
+
+    # 0% commission test
+    resp_zero = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+        "vehicle_id": str(vehicle_container_10t.id),
+        "driver_id": str(driver_profile_1.id),
+        "commission_percentage": 0.0
+    })
+    assert resp_zero.status_code == 201
+
+    trip = await Trip.find_one(Trip.request_id == accepted_delivery_request.id)
+    assert Decimal(str(trip.commission_amount)) == Decimal("0.00")
+    assert Decimal(str(trip.driver_payout)) == Decimal("1000.00")
+
+@pytest.mark.anyio
+async def test_percentage_commission_invalid_values_rejected(async_client: AsyncClient, admin_user, accepted_delivery_request, vehicle_container_10t, driver_profile_1):
+    app.dependency_overrides[get_current_admin] = lambda: admin_user
+
+    # Negative percentage
+    resp_neg = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+        "vehicle_id": str(vehicle_container_10t.id),
+        "driver_id": str(driver_profile_1.id),
+        "commission_percentage": -5.0
+    })
+    assert resp_neg.status_code == 422 # Pydantic ge=0 validation
+
+    # Over 100 percentage
+    resp_over = await async_client.post(f"/api/v1/admin/requests/{accepted_delivery_request.id}/dispatch", json={
+        "vehicle_id": str(vehicle_container_10t.id),
+        "driver_id": str(driver_profile_1.id),
+        "commission_percentage": 105.0
+    })
+    assert resp_over.status_code == 422 # Pydantic le=100 validation
+
+@pytest.mark.anyio
+async def test_customer_isolation_no_commission_leak(async_client: AsyncClient, customer_user, accepted_delivery_request):
+    """
+    Ensure customer endpoints do not expose internal commission percentages or driver margins.
+    """
+    app.dependency_overrides[get_current_customer_user] = lambda: customer_user
+    resp = await async_client.get(f"/api/v1/customer/requests/{accepted_delivery_request.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "commission_percentage" not in data
+    assert "commission_amount" not in data
+    assert "driver_payout" not in data
+

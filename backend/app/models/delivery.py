@@ -37,6 +37,8 @@ class DeliveryRequest(Document):
     
     # Metrics
     distance_km: Optional[DecimalType] = None
+    vehicle_capacity_tons: Optional[float] = None
+    selected_vehicle_id: Optional[str] = None
     status: DeliveryRequestStatus = DeliveryRequestStatus.DRAFT
     cancellation_reason: Optional[str] = None
     created_at: datetime
@@ -67,8 +69,11 @@ class Trip(Document):
     current_lat: Optional[float] = None
     current_lng: Optional[float] = None
     
-    # Settlement
+    # Settlement & Payout
     settlement_id: Optional[uuid.UUID] = None # type: ignore
+    driver_payout: Optional[DecimalType] = None
+    commission_percentage: Optional[DecimalType] = None
+    commission_amount: Optional[DecimalType] = None
 
     class Settings:
         name = "trips"

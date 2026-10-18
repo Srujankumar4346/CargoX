@@ -29,9 +29,52 @@ async def list_requests(
     current_admin: User = Depends(get_current_admin),
     ):
     """
-    List all delivery requests for admin dashboard.
+    List all delivery requests for admin dashboard enriched with authoritative accepted quotation.
     """
-    return await DeliveryRequest.find_all().sort("-created_at").to_list()
+    from app.models.pricing import Quotation
+    requests = await DeliveryRequest.find_all().sort("-created_at").to_list()
+    
+    # Batch fetch quotations for these requests
+    req_ids = [r.id for r in requests]
+    quotes = await Quotation.find({"request_id": {"$in": req_ids}}).to_list()
+    quote_by_req: dict[uuid.UUID, Quotation] = {}
+    for q in quotes:
+        # Prefer accepted quote, or latest
+        if q.request_id not in quote_by_req or q.status.value == "ACCEPTED":
+            quote_by_req[q.request_id] = q
+
+    results = []
+    for r in requests:
+        q = quote_by_req.get(r.id)
+        quote_data = None
+        if q:
+            quote_data = {
+                "id": str(q.id),
+                "quotation_number": f"QUO-{q.created_at.year}-{str(q.id)[:8].upper()}",
+                "status": q.status.value if hasattr(q.status, "value") else str(q.status),
+                "distance_km": float(q.distance_km),
+                "base_rate_per_km": float(q.base_rate_per_km),
+                "internal_base_cost": float(q.internal_base_cost),
+                "cargox_margin": float(q.cargox_margin),
+                "base_fare": float(q.base_fare or 0),
+                "distance_charge": float(q.distance_charge or 0),
+                "capacity_surcharge": float(q.capacity_surcharge or 0),
+                "handling_surcharge": float(q.handling_surcharge or 0),
+                "customer_total_charge": float(q.customer_total_charge),
+                "service_fee_percentage": float(q.service_fee_percentage) if q.service_fee_percentage is not None else None,
+                "service_fee_amount": float(q.service_fee_amount) if q.service_fee_amount is not None else None,
+                "driver_payable_amount": float(q.driver_payable_amount) if q.driver_payable_amount is not None else None,
+                "selected_vehicle_id": q.selected_vehicle_id,
+                "created_at": q.created_at.isoformat() if q.created_at else None,
+                "accepted_at": q.accepted_at.isoformat() if q.accepted_at else None,
+            }
+
+        # Convert to DeliveryRequestRead model with attached quotation
+        item = DeliveryRequestRead.model_validate(r)
+        item.quotation = quote_data
+        results.append(item)
+
+    return results
 
 class DeliveryRequestApprove(BaseModel):
     distance_km: Optional[Decimal] = Field(None, gt=Decimal("0"), description="Optional admin-approved distance in km")

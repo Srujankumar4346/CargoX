@@ -48,25 +48,25 @@ export default function MasterCustomerApp() {
   const [durationStr, setDurationStr] = useState<string | null>(null);
 
   const [cargoData, setCargoData] = useState({
-    cargoType: "Industrial Machinery",
-    weightTons: 5,
-    length: "3",
-    width: "2",
-    height: "2",
+    cargoType: "General Freight / Household Goods",
+    weightTons: 0.5,
+    length: "2",
+    width: "1.5",
+    height: "1.5",
     specialHandling: "None"
   });
 
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleOption>({
-    id: "bolero",
-    name: "Mahindra Bolero Pik-Up",
-    category: "Pickup Trucks",
-    capacity: "2.0 Ton (2,000 kg)",
-    maxPayloadTons: 2.0,
-    maxPayloadKg: 2000,
-    dimensions: "10 x 5.5 ft",
-    description: "Best for general cargo",
-    price: 7850,
-    image: "/images/vehicles/mahindra-bolero-pikup.png"
+    id: "tata-ace",
+    name: "Tata Ace Gold",
+    category: "Mini Trucks",
+    capacity: "1.0 Ton (1,000 kg)",
+    maxPayloadTons: 1.0,
+    maxPayloadKg: 1000,
+    dimensions: "8 x 4.5 ft",
+    description: "Best for city deliveries & house shifting",
+    price: 300,
+    image: "/images/vehicles/tata-ace-gold.png"
   });
 
   const [createdBooking, setCreatedBooking] = useState<any>(null);
@@ -189,6 +189,33 @@ export default function MasterCustomerApp() {
       loadCustomerBookings();
     }
   }, [isSignedIn, currentScreen]);
+
+  // Automatically invalidate and clear vehicle selection if cargo weight exceeds payload capacity
+  useEffect(() => {
+    if (selectedVehicle?.maxPayloadTons && cargoData.weightTons > selectedVehicle.maxPayloadTons) {
+      // Find the first eligible vehicle or reset to an eligible vehicle
+      const allVehiclesFleet = [
+        { id: "tata-ace", name: "Tata Ace Gold", maxPayloadTons: 1.0, maxPayloadKg: 1000, capacity: "1.0 Ton (1,000 kg)" },
+        { id: "dost", name: "Ashok Leyland Dost", maxPayloadTons: 1.5, maxPayloadKg: 1500, capacity: "1.5 Ton (1,500 kg)" },
+        { id: "bolero", name: "Mahindra Bolero Pik-Up", maxPayloadTons: 2.0, maxPayloadKg: 2000, capacity: "2.0 Ton (2,000 kg)" },
+        { id: "tata-intra", name: "Tata Intra V30", maxPayloadTons: 2.5, maxPayloadKg: 2500, capacity: "2.5 Ton (2,500 kg)" },
+        { id: "eicher-pro", name: "Eicher Pro 2049", maxPayloadTons: 5.0, maxPayloadKg: 5000, capacity: "5.0 Ton (5,000 kg)" },
+        { id: "bharatbenz-1015r", name: "BharatBenz 1015R", maxPayloadTons: 6.0, maxPayloadKg: 6000, capacity: "6.0 Ton (6,000 kg)" }
+      ];
+      const eligible = allVehiclesFleet.find(v => v.maxPayloadTons >= cargoData.weightTons);
+      if (eligible) {
+        setSelectedVehicle(prev => ({
+          ...prev,
+          id: eligible.id,
+          name: eligible.name,
+          capacity: eligible.capacity,
+          maxPayloadTons: eligible.maxPayloadTons,
+          maxPayloadKg: eligible.maxPayloadKg
+        }));
+      }
+      setTotalCalculatedPrice(null);
+    }
+  }, [cargoData.weightTons, selectedVehicle?.maxPayloadTons]);
 
   // If activeTrackingBookingId is not set yet, set it to the latest active or most recent booking
   useEffect(() => {
@@ -371,6 +398,7 @@ export default function MasterCustomerApp() {
         {/* Screen 5: Cargo Details */}
         {currentScreen === "cargo" && (
           <CargoDetailsScreen
+            initialCargoData={cargoData}
             onBack={() => setCurrentScreen("drop")}
             onNext={(details) => {
               setCargoData(details);

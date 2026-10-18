@@ -99,11 +99,19 @@ export default function QuickPriceCalculatorModal({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [estimateData, setEstimateData] = useState<any>(null);
 
+  // Automatically clear vehicle selection if cargo weight exceeds its capacity
+  useEffect(() => {
+    if (selectedVehicle && selectedVehicle.maxPayloadTons && cargoWeightTons > selectedVehicle.maxPayloadTons) {
+      setSelectedVehicle(null);
+      setEstimateData(null);
+    }
+  }, [cargoWeightTons, selectedVehicle]);
+
   // Recalculate price estimate on inputs change
   useEffect(() => {
     if (!isOpen) return;
 
-    if (!selectedVehicle) {
+    if (!selectedVehicle || (selectedVehicle.maxPayloadTons && cargoWeightTons > selectedVehicle.maxPayloadTons)) {
       setEstimateData(null);
       setIsLoading(false);
       return;
@@ -127,16 +135,14 @@ export default function QuickPriceCalculatorModal({
         if (isMounted) {
           console.warn("Pricing calculation error:", err);
           // Fallback realistic formula if backend quotation API is unreachable
-          const baseFare = 1500;
-          const ratePerKm = selectedVehicle.maxPayloadTons && selectedVehicle.maxPayloadTons > 3 ? 42 : 28;
+          const baseFare = 200;
+          const ratePerKm = selectedVehicle.maxPayloadTons && selectedVehicle.maxPayloadTons > 3 ? 35 : 20;
           const distCost = Math.round(distanceKm * ratePerKm);
-          const weightSurcharge = cargoWeightTons > (selectedVehicle.maxPayloadTons || 2) ? 800 : 0;
-          const handlingCost = specialHandling === "Fragile" ? 350 : specialHandling === "Hazardous" ? 750 : 0;
-          const total = baseFare + distCost + weightSurcharge + handlingCost;
+          const handlingCost = specialHandling === "Fragile" ? 100 : specialHandling === "Hazardous" ? 200 : 0;
+          const total = baseFare + distCost + handlingCost;
           setEstimateData({
             base_fare: baseFare,
             distance_charges: distCost,
-            weight_surcharge: weightSurcharge,
             special_handling_surcharge: handlingCost,
             estimated_price: total
           });
@@ -158,7 +164,9 @@ export default function QuickPriceCalculatorModal({
 
   if (!isOpen) return null;
 
-  const isOverweight = selectedVehicle?.maxPayloadTons ? cargoWeightTons > selectedVehicle.maxPayloadTons : false;
+  const isEligibleVehicleSelected = selectedVehicle && selectedVehicle.maxPayloadTons
+    ? cargoWeightTons <= selectedVehicle.maxPayloadTons
+    : false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-200">
@@ -228,23 +236,38 @@ export default function QuickPriceCalculatorModal({
             <div className="grid grid-cols-2 gap-2">
               {VEHICLE_PRESETS.map((v) => {
                 const isSelected = selectedVehicle?.id === v.id;
+                const isEligible = v.maxPayloadTons ? cargoWeightTons <= v.maxPayloadTons : false;
+
                 return (
                   <button
                     key={v.id}
                     type="button"
-                    onClick={() => setSelectedVehicle(v)}
-                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
-                      isSelected
-                        ? "border-[#1e60ff] bg-blue-50/40 shadow-xs ring-1 ring-[#1e60ff]"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+                    disabled={!isEligible}
+                    onClick={() => {
+                      if (!isEligible) return;
+                      setSelectedVehicle(v);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
+                      !isEligible
+                        ? "opacity-50 bg-slate-100/80 border-slate-200 cursor-not-allowed"
+                        : isSelected
+                        ? "border-[#1e60ff] bg-blue-50/40 shadow-xs ring-1 ring-[#1e60ff] cursor-pointer"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50 cursor-pointer"
                     }`}
                   >
                     <img src={v.image} alt={v.name} className="w-9 h-7 object-contain shrink-0" />
-                    <div className="overflow-hidden">
+                    <div className="overflow-hidden flex-1">
                       <p className={`text-[11px] font-bold truncate ${isSelected ? "text-[#1e60ff]" : "text-slate-800"}`}>
                         {v.name}
                       </p>
-                      <p className="text-[10px] text-slate-400 font-semibold">{v.capacity.split(" ")[0]} Ton</p>
+                      <div className="flex items-center justify-between gap-1 mt-0.5">
+                        <span className="text-[10px] text-slate-400 font-semibold">{v.capacity.split(" ")[0]} Ton</span>
+                        {!isEligible && (
+                          <span className="text-[9px] font-extrabold text-red-600 bg-red-50 px-1 py-0.2 rounded border border-red-200/60 shrink-0">
+                            Insufficient capacity
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 );
@@ -281,18 +304,18 @@ export default function QuickPriceCalculatorModal({
                 className="w-full bg-white border border-slate-200 px-2 py-1.5 rounded-xl text-slate-800 font-bold text-xs outline-hidden"
               >
                 <option value="None">Standard</option>
-                <option value="Fragile">Fragile (+₹350)</option>
-                <option value="Hazardous">Hazardous (+₹750)</option>
+                <option value="Fragile">Fragile (+₹100)</option>
+                <option value="Hazardous">Hazardous (+₹200)</option>
               </select>
             </div>
           </div>
 
-          {/* Overweight warning */}
-          {isOverweight && selectedVehicle && (
-            <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 flex items-center gap-2 text-amber-800">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-              <p className="text-[10px] font-medium leading-tight">
-                Cargo ({cargoWeightTons}T) exceeds vehicle capacity ({selectedVehicle.maxPayloadTons}T). Overweight surcharge applies.
+          {/* No Eligible Vehicles notice */}
+          {!VEHICLE_PRESETS.some((v) => v.maxPayloadTons && cargoWeightTons <= v.maxPayloadTons) && (
+            <div className="p-3 bg-red-50 rounded-xl border border-red-200 flex items-center gap-2.5 text-red-800">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <p className="text-[11px] font-semibold leading-tight">
+                No vehicle can transport {cargoWeightTons} Tons. Please reduce cargo weight or contact CargoX Heavy Freight.
               </p>
             </div>
           )}
@@ -302,11 +325,11 @@ export default function QuickPriceCalculatorModal({
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Estimated Total Fare</span>
-                <p className="text-[10px] text-slate-400 font-medium">Includes fuel surcharge & toll estimates</p>
+                <p className="text-[10px] text-slate-400 font-medium">Includes base freight & distance charges</p>
               </div>
               <div className="text-right">
                 {!selectedVehicle ? (
-                  <span className="text-xs font-semibold text-amber-300">Select a vehicle</span>
+                  <span className="text-xs font-semibold text-amber-300">Choose eligible vehicle</span>
                 ) : isLoading ? (
                   <div className="flex items-center gap-1 text-slate-300">
                     <RefreshCw className="w-4 h-4 animate-spin text-[#1e60ff]" />
@@ -329,23 +352,23 @@ export default function QuickPriceCalculatorModal({
             {!selectedVehicle ? (
               <div className="pt-3 pb-1 text-center">
                 <p className="text-xs text-slate-400 font-medium">
-                  Please tap a commercial vehicle above to calculate your exact trip tariff.
+                  Please tap an eligible commercial vehicle above to calculate your exact trip tariff.
                 </p>
               </div>
             ) : estimateData && !isLoading ? (
               <div className="pt-2.5 space-y-1 text-[11px] text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Base Freight:</span>
-                  <span>₹{Number(estimateData.base_fare ?? 500).toLocaleString("en-IN")}</span>
+                  <span>₹{Number(estimateData.base_fare ?? 200).toLocaleString("en-IN")}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Distance Charges ({distanceKm} km):</span>
-                  <span>₹{Number(estimateData.distance_charge ?? estimateData.distance_charges ?? Math.round(distanceKm * 28)).toLocaleString("en-IN")}</span>
+                  <span>₹{Number(estimateData.distance_charge ?? estimateData.distance_charges ?? Math.round(distanceKm * 20)).toLocaleString("en-IN")}</span>
                 </div>
-                {(Number(estimateData.capacity_surcharge) > 0 || Number(estimateData.weight_surcharge) > 0) && (
+                {Number(estimateData.capacity_surcharge) > 0 && (
                   <div className="flex justify-between text-amber-300">
-                    <span>Capacity / Weight Surcharge:</span>
-                    <span>+₹{Number(estimateData.capacity_surcharge || estimateData.weight_surcharge).toLocaleString("en-IN")}</span>
+                    <span>Near Max Capacity Fee (≥85%):</span>
+                    <span>+₹{Number(estimateData.capacity_surcharge).toLocaleString("en-IN")}</span>
                   </div>
                 )}
                 {(Number(estimateData.handling_surcharge) > 0 || Number(estimateData.special_handling_surcharge) > 0) && (
@@ -370,21 +393,27 @@ export default function QuickPriceCalculatorModal({
           </button>
           <button
             type="button"
-            disabled={!selectedVehicle}
+            disabled={!isEligibleVehicleSelected}
             onClick={() => {
-              if (!selectedVehicle) return;
+              if (!isEligibleVehicleSelected || !selectedVehicle) return;
               onClose();
               if (onProceedToBook) {
                 onProceedToBook(distanceKm, selectedVehicle, cargoWeightTons);
               }
             }}
             className={`w-2/3 py-2.5 rounded-xl text-xs font-extrabold transition-colors shadow-sm flex items-center justify-center gap-1.5 ${
-              selectedVehicle
+              isEligibleVehicleSelected
                 ? "bg-[#1e60ff] text-white hover:bg-blue-600 cursor-pointer"
                 : "bg-slate-200 text-slate-400 cursor-not-allowed"
             }`}
           >
-            <span>{selectedVehicle ? "Book This Vehicle" : "Choose Vehicle First"}</span>
+            <span>
+              {!selectedVehicle
+                ? "Choose Vehicle First"
+                : !isEligibleVehicleSelected
+                ? "Insufficient Capacity"
+                : "Book This Vehicle"}
+            </span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

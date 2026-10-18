@@ -3,7 +3,6 @@ import {
   Calendar, 
   MapPin, 
   CreditCard, 
-  Bell, 
   HelpCircle, 
   Gift, 
   Settings as SettingsIcon, 
@@ -14,7 +13,7 @@ import {
 import { useClerk, useUser } from "@clerk/react";
 
 interface ProfileSettingsScreenProps {
-  onNavigateTab: (tab: "home" | "bookings" | "track" | "profile") => void;
+  onNavigateTab?: (tab: "home" | "bookings" | "track" | "profile") => void;
   onOpenSavedLocations?: () => void;
   onOpenPaymentMethods?: () => void;
   onOpenNotifications?: () => void;
@@ -25,78 +24,18 @@ interface ProfileSettingsScreenProps {
 }
 
 export default function ProfileSettingsScreen({
-  onNavigateTab,
   onOpenSavedLocations,
-  onOpenPaymentMethods,
-  onOpenNotifications,
   onOpenHelpSupport,
   onOpenReferEarn,
   onOpenSettings,
-  onReplayWelcome
 }: ProfileSettingsScreenProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
 
-  const name = user?.fullName || "Valued Customer";
-  const email = user?.primaryEmailAddress?.emailAddress || "customer@cargox.com";
-  const userInitials = (user?.firstName?.charAt(0) || "") + (user?.lastName?.charAt(0) || "") || "CX";
-  const profileImageUrl = user?.imageUrl;
+  const name = user?.fullName || "Srujan Kumar Sangepu";
+  const email = user?.primaryEmailAddress?.emailAddress || "srujankumar4346@gmail.com";
 
   const [activeModal, setActiveModal] = useState<string | null>(null);
-
-  const menuItems = [
-    {
-      id: "bookings",
-      label: "My Bookings",
-      icon: <Calendar className="w-5 h-5 text-[#1e60ff]" />,
-      action: () => onNavigateTab("bookings")
-    },
-    {
-      id: "saved-locations",
-      label: "Saved Locations",
-      icon: <MapPin className="w-5 h-5 text-emerald-600" />,
-      action: onOpenSavedLocations || (() => setActiveModal("saved-locations"))
-    },
-    {
-      id: "payment-methods",
-      label: "Payment Methods",
-      icon: <CreditCard className="w-5 h-5 text-indigo-600" />,
-      action: onOpenPaymentMethods || (() => setActiveModal("payment-methods"))
-    },
-    {
-      id: "notifications",
-      label: "Notifications",
-      icon: <Bell className="w-5 h-5 text-amber-500" />,
-      action: onOpenNotifications || (() => setActiveModal("notifications"))
-    },
-    {
-      id: "help-support",
-      label: "Help & Support",
-      icon: <HelpCircle className="w-5 h-5 text-blue-500" />,
-      action: onOpenHelpSupport || (() => setActiveModal("help-support"))
-    },
-    {
-      id: "refer-earn",
-      label: "Refer & Earn",
-      icon: <Gift className="w-5 h-5 text-purple-500" />,
-      action: onOpenReferEarn || (() => setActiveModal("refer-earn"))
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: <SettingsIcon className="w-5 h-5 text-slate-600" />,
-      action: onOpenSettings || (() => { window.location.href = "/customer/settings"; })
-    },
-    {
-      id: "welcome-tour",
-      label: "Welcome Tour (Preview)",
-      icon: <Sparkles className="w-5 h-5 text-amber-500" />,
-      action: onReplayWelcome || (() => {
-        try { localStorage.removeItem("cargox_onboarding_completed"); } catch {}
-        window.location.href = "/preview-welcome";
-      })
-    },
-  ];
 
   const handleLogout = () => {
     try {
@@ -108,72 +47,233 @@ export default function ProfileSettingsScreen({
   };
 
   return (
-    <div className="min-h-full flex-1 bg-[#f8fafc] text-slate-800 flex flex-col justify-between pb-28 select-none overflow-y-auto">
+    <div className="min-h-full flex-1 bg-[#f4f6fb] text-slate-800 flex flex-col justify-between pb-28 select-none overflow-y-auto">
       <div>
-        {/* Profile Card Header matching Shared CargoX Aesthetic */}
-        <div className="bg-gradient-to-b from-[#070d1e] to-[#0d1730] text-white px-5 pt-[max(env(safe-area-inset-top),24px)] pb-7 rounded-b-3xl shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3.5">
-              {profileImageUrl ? (
-                <img
-                  src={profileImageUrl}
-                  alt={name}
-                  className="w-14 h-14 rounded-full object-cover border-2 border-white/20 shadow-md bg-slate-800"
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 border-2 border-white/20 shadow-md flex items-center justify-center font-bold text-white text-lg tracking-wider">
-                  {userInitials}
-                </div>
-              )}
+        {/* User Profile Header Card matching Screenshot 3 */}
+        <section className="px-4 pt-[max(env(safe-area-inset-top),16px)] pb-2">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100/90">
+            <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-base font-extrabold text-white tracking-tight">{name}</h1>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">{email}</p>
-                <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                  Verified Shipper
+                <h1 className="text-base font-extrabold text-slate-900 tracking-tight">{name}</h1>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="text-xs text-slate-500 font-medium truncate max-w-[200px]">{email}</p>
+                  <button 
+                    onClick={() => alert("Verification code sent to your email address.")}
+                    className="text-xs font-bold text-[#1e60ff] hover:underline"
+                  >
+                    Verify
+                  </button>
+                </div>
+              </div>
+              <button 
+                onClick={onOpenSettings || (() => { window.location.href = "/customer/settings"; })}
+                className="text-xs font-bold text-[#1e60ff] flex items-center hover:underline"
+              >
+                <span>View</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* + Add GST Details Outline Button */}
+            <div className="mt-3.5">
+              <button
+                onClick={() => setActiveModal("gst-modal")}
+                className="w-full py-2 px-3 border border-[#1e60ff] rounded-xl text-xs font-bold text-[#1e60ff] hover:bg-blue-50/70 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span>+</span>
+                <span>Add GST Details</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Section 1: Saved Addresses & Business Details */}
+        <section className="px-4 mt-2.5">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/90 divide-y divide-slate-100">
+            {/* Saved Addresses */}
+            <div 
+              onClick={onOpenSavedLocations || (() => setActiveModal("saved-locations"))}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded-t-2xl"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
+                  <MapPin className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">Saved Addresses</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
+
+            {/* Business Details with + Add GSTIN */}
+            <div 
+              onClick={() => setActiveModal("gst-modal")}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded-b-2xl"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">Business Details</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#1e60ff] bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
+                  + Add GSTIN
                 </span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Section 2: Rewards & Refer Friends */}
+        <section className="px-4 mt-2.5">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/90 divide-y divide-slate-100">
+            {/* CargoX Rewards */}
+            <div 
+              onClick={() => alert("CargoX Rewards: You currently have 0 coins. Earn 2 coins for every ₹100 spent on freight orders!")}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded-t-2xl"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-amber-500">
+                  <Gift className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">CargoX Rewards</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                  🪙 0
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
               </div>
             </div>
 
-            <button 
-              onClick={onOpenSettings || (() => { window.location.href = "/customer/settings"; })}
-              className="p-2.5 rounded-xl text-slate-300 hover:text-white bg-white/10 hover:bg-white/15 transition-all shadow-xs"
-              title="Open Account Settings"
+            {/* Refer your friends */}
+            <div 
+              onClick={onOpenReferEarn || (() => setActiveModal("refer-earn"))}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded-b-2xl"
             >
-              <SettingsIcon className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Menu Container */}
-        <div className="px-5 mt-4 space-y-2">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={item.action}
-              className="w-full py-3 px-4 bg-white border border-slate-100 hover:border-blue-200 shadow-2xs rounded-2xl flex items-center justify-between hover:bg-slate-50/80 active:scale-[0.99] transition-all group"
-            >
-              <div className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 border border-slate-100 group-hover:scale-105 transition-transform">
-                  {item.icon}
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-purple-600">
+                  <Sparkles className="w-4 h-4" />
                 </div>
-                <span className="text-xs font-bold text-slate-800 tracking-tight">
-                  {item.label}
-                </span>
+                <span className="text-xs font-bold text-slate-800">Refer your friends!</span>
               </div>
-              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#1e60ff] group-hover:translate-x-0.5 transition-all" />
-            </button>
-          ))}
-
-          {/* Red Logout Action Button */}
-          <div className="pt-3">
-            <button
-              onClick={handleLogout}
-              className="w-full py-3 px-4 rounded-2xl border border-red-200 bg-red-50/60 hover:bg-red-50 text-red-600 font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-2xs active:scale-[0.99]"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
-            </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-[#1e60ff] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                  Invite
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </div>
           </div>
+        </section>
+
+        {/* Section 3: Enterprise */}
+        <section className="px-4 mt-2.5">
+          <div 
+            onClick={() => alert("CargoX Enterprise: Dedicated account management, volume SLA guarantees, and consolidated monthly invoicing. Contact corporate@cargox.com")}
+            role="button"
+            tabIndex={0}
+            className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-100/90 flex items-center justify-between cursor-pointer hover:border-blue-200 transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800">CargoX Enterprise</p>
+                <p className="text-[10px] text-slate-400 font-medium">Upgrade to Business Solution</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-extrabold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-md">
+                NEW
+              </span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
+          </div>
+        </section>
+
+        {/* Section 4: General Utility Items */}
+        <section className="px-4 mt-2.5">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100/90 divide-y divide-slate-100">
+            {/* Help & Support */}
+            <div 
+              onClick={onOpenHelpSupport || (() => setActiveModal("help-support"))}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors rounded-t-2xl"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-blue-600">
+                  <HelpCircle className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">Help & Support</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
+
+            {/* Change Language */}
+            <div 
+              onClick={() => alert("Current language: English (Default). Hindi, Telugu, and Tamil support coming soon.")}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700 font-bold text-xs">
+                  文A
+                </div>
+                <span className="text-xs font-bold text-slate-800">Change Language</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
+
+            {/* Terms & Conditions */}
+            <div 
+              onClick={() => alert("CargoX Terms: Goods carried under standard Indian Carriage of Goods by Road Act rules. Standard billing terms apply.")}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-slate-700">
+                  <SettingsIcon className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">Terms & Conditions</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
+
+            {/* Logout */}
+            <div 
+              onClick={handleLogout}
+              role="button"
+              tabIndex={0}
+              className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-red-50/50 transition-colors rounded-b-2xl"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center text-red-500">
+                  <LogOut className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-800">Logout</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
+          </div>
+        </section>
+
+        {/* App Version Footer matching Screenshot 3 */}
+        <div className="text-center py-5">
+          <p className="text-xs text-slate-400 font-semibold tracking-wide">App version 6.95.0</p>
         </div>
       </div>
 

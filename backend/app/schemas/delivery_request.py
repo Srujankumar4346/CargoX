@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing import Optional
+from typing import Optional, Any, Dict
 from datetime import datetime
 from decimal import Decimal
 import uuid
@@ -95,6 +95,7 @@ class DeliveryRequestRead(BaseModel):
     assigned_vehicle_registration: Optional[str] = None
     assigned_vehicle_type: Optional[str] = None
     assigned_vehicle_capacity_tons: Optional[float] = None
+    quotation: Optional[Dict[str, Any]] = None
     
     model_config = ConfigDict(from_attributes=True)
 

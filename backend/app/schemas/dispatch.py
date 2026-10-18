@@ -1,5 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 import uuid
+from decimal import Decimal
 from datetime import datetime
 from typing import Optional
 from app.models.enums import DeliveryRequestStatus
@@ -7,6 +8,9 @@ from app.models.enums import DeliveryRequestStatus
 class DispatchRequest(BaseModel):
     vehicle_id: uuid.UUID
     driver_id: uuid.UUID
+    commission_percentage: Optional[Decimal] = Field(default=None, ge=Decimal("0.0"), le=Decimal("100.0"), description="CargoX Commission percentage between 0 and 100")
+    driver_payout: Optional[Decimal] = None
+    commission_amount: Optional[Decimal] = None
 
 class VehicleAssignmentRead(BaseModel):
     id: uuid.UUID

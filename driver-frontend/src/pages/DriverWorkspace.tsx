@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle, ShieldCheck, KeyRound, Smartphone, ShieldAlert } from "lucide-react";
+import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle, ShieldCheck, KeyRound, Smartphone, ShieldAlert, FileText, HelpCircle, Phone, Mail, FileCheck } from "lucide-react";
 import { useAuth, UserButton, useUser } from "@clerk/react";
 import { api } from "../services/api";
 import NotificationDropdown from "../components/NotificationDropdown";
+import CargoExpressLogo from "../components/CargoExpressLogo";
 import { CircleMarker, MapContainer, TileLayer } from "react-leaflet";
 
 const driverSidebar = [
@@ -11,6 +12,8 @@ const driverSidebar = [
   { label: "Previous Orders", icon: Package },
   { label: "Tracking", icon: Navigation },
   { label: "Payments", icon: Wallet },
+  { label: "Vehicle Documents", icon: FileText },
+  { label: "Help & Support", icon: HelpCircle },
   { label: "Profile", icon: User },
 ];
 
@@ -58,13 +61,38 @@ const openGoogleMapsRoute = (pickupLat?: number | null, pickupLng?: number | nul
   }
 };
 
+import DriverWelcomeScreen from "../components/DriverWelcomeScreen";
+import DriverBottomNavigation, { DriverNavTab } from "../components/DriverBottomNavigation";
+import DriverProfileDrawer, { DriverMenuItemKey } from "../components/DriverProfileDrawer";
+import DriverHomeDashboard from "../components/DriverHomeDashboard";
+import DriverAllOrdersScreen from "../components/DriverAllOrdersScreen";
+import DriverOrderDetailsScreen from "../components/DriverOrderDetailsScreen";
+import DriverEarningsScreen from "../components/DriverEarningsScreen";
+import DriverActiveOrderScreen from "../components/DriverActiveOrderScreen";
+import DriverVehicleDocumentsScreen from "../components/DriverVehicleDocumentsScreen";
+import DriverHelpSupportScreen from "../components/DriverHelpSupportScreen";
+import DriverProfileScreen from "../components/DriverProfileScreen";
+
 export default function DriverWorkspace() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [activeTrip, setActiveTrip] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [settlements, setSettlements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Reference Navigation and Screen State
+  const [currentTab, setCurrentTab] = useState<DriverNavTab>('home');
+  const [activeScreen, setActiveScreen] = useState<
+    'welcome' | 'dashboard' | 'all-orders' | 'order-details' | 'earnings' | 'active-order' | 'documents' | 'help' | 'profile'
+  >('dashboard');
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<any>(null);
+  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const [isOnDuty, setIsOnDuty] = useState<boolean>(() => {
+    return localStorage.getItem('cargoexpress_driver_on_duty') === 'true';
+  });
+
   const [selectedTab, setSelectedTab] = useState("Dashboard");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -352,7 +380,7 @@ export default function DriverWorkspace() {
     } catch (err: any) {
       const msg = err.message || "";
       if (msg.includes("503") || msg.toLowerCase().includes("not configured")) {
-        alert("Online payment is not configured yet. Please collect Cash or contact CargoX Admin.");
+        alert("Online payment is not configured yet. Please collect Cash or contact CargoExpress Admin.");
       } else {
         alert(`Payment initiation failed: ${msg}`);
       }
@@ -486,9 +514,14 @@ export default function DriverWorkspace() {
       }
       const activeRes = await api.getDriverActiveTrip();
       const historyRes = await api.getDriverTripsHistory();
+      let settlementsRes: any[] = [];
+      try {
+        settlementsRes = await api.getDriverSettlements();
+      } catch (_) {}
 
       setActiveTrip(activeRes);
       setHistory(Array.isArray(historyRes) ? historyRes : []);
+      setSettlements(Array.isArray(settlementsRes) ? settlementsRes : []);
       if (activeRes) {
         const due = parseFloat(activeRes.amount_due_for_collection || "0");
         const total = parseFloat(activeRes.invoice_total_amount || "0");
@@ -505,6 +538,12 @@ export default function DriverWorkspace() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleDuty = () => {
+    const nextState = !isOnDuty;
+    setIsOnDuty(nextState);
+    localStorage.setItem('cargoexpress_driver_on_duty', String(nextState));
   };
 
   // Handle body scroll locking, escape key, and desktop resize cleanup for mobile drawer
@@ -1096,7 +1135,7 @@ export default function DriverWorkspace() {
                           </h3>
                         </div>
                         <p className="text-xs text-slate-400 mt-1">
-                          Direct merchant settlement to CargoX Logistics corporate current account.
+                          Direct merchant settlement to CargoExpress Logistics corporate current account.
                         </p>
                       </div>
 
@@ -1160,7 +1199,7 @@ export default function DriverWorkspace() {
                                 : "text-slate-400 hover:text-slate-200"
                             }`}
                           >
-                            <QrCode size={16} /> Pay Online / UPI (CargoX)
+                            <QrCode size={16} /> Pay Online / UPI (CargoExpress)
                           </button>
                           <button
                             type="button"
@@ -1186,7 +1225,7 @@ export default function DriverWorkspace() {
                                 className="flex-1 min-w-[200px] py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
                               >
                                 <QrCode size={18} />
-                                {initiatingPayment ? "Generating CargoX Payment..." : "Generate Payment QR / Pay CargoX Now"}
+                                {initiatingPayment ? "Generating CargoExpress Payment..." : "Generate Payment QR / Pay CargoExpress Now"}
                               </button>
 
                               <button
@@ -1258,7 +1297,7 @@ export default function DriverWorkspace() {
                             <div className="p-3 bg-slate-50 rounded-xl border-2 border-slate-200 shrink-0 text-center">
                               <img
                                 src={paymentOrder?.qr_image_url || activeTrip.qr_image_url}
-                                alt="CargoX Corporate UPI QR"
+                                alt="CargoExpress Corporate UPI QR"
                                 className="w-48 h-48 mx-auto object-contain"
                               />
                               <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 block mt-2">
@@ -1268,13 +1307,13 @@ export default function DriverWorkspace() {
 
                             <div className="flex-1 space-y-2 text-center md:text-left">
                               <div className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded uppercase tracking-wider">
-                                Official CargoX Beneficiary
+                                Official CargoExpress Beneficiary
                               </div>
                               <h4 className="text-lg font-black text-slate-950">
-                                {paymentOrder?.business_name || activeTrip.business_name || "CargoX Logistics"}
+                                {paymentOrder?.business_name || activeTrip.business_name || "CargoExpress Logistics"}
                               </h4>
                               <p className="text-xs text-slate-600 font-mono">
-                                UPI: <span className="font-bold text-slate-900">{paymentOrder?.cargox_upi_id || activeTrip.cargox_upi_id || "CargoX Current Account"}</span>
+                                UPI: <span className="font-bold text-slate-900">{paymentOrder?.cargox_upi_id || activeTrip.cargox_upi_id || "CargoExpress Current Account"}</span>
                               </p>
                               <p className="text-xs text-slate-600">
                                 Invoice: <span className="font-bold text-slate-900">{activeTrip.invoice_number || "CX-INV"}</span>
@@ -1521,28 +1560,165 @@ export default function DriverWorkspace() {
     </div>
   );
 
+  const renderVehicleDocuments = () => (
+    <div className="fade-in max-w-[1600px] mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <FileText className="text-blue-400" size={24} /> Vehicle Documents & Compliance
+          </h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Official CargoExpress Fleet driver compliance registry and verified permits.
+          </p>
+        </div>
+        <CargoExpressLogo variant="badge" size="sm" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white font-bold">
+              <FileCheck className="text-emerald-400" size={18} /> Commercial Driving License
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              VERIFIED
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">Class: Heavy Goods Vehicle (HGV / Multi-Axle)</p>
+          <div className="p-3 bg-slate-950/60 rounded-lg text-xs font-mono text-slate-300 flex justify-between">
+            <span>Doc ID: DL-IND-884210</span>
+            <span className="text-emerald-400">Valid: 2028-12-31</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white font-bold">
+              <ShieldCheck className="text-blue-400" size={18} /> Fleet Vehicle RC Book
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+              ACTIVE
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">Registered to: CargoExpress Logistics Fleet India</p>
+          <div className="p-3 bg-slate-950/60 rounded-lg text-xs font-mono text-slate-300 flex justify-between">
+            <span>Reg: {activeTrip?.vehicle_number || "MH 12 QX 4901"}</span>
+            <span className="text-slate-400">Fitness: OK</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white font-bold">
+              <ShieldAlert className="text-purple-400" size={18} /> Comprehensive Transit Insurance
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              COVERED
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">Coverage: Goods in transit & 3rd-party freight protection</p>
+          <div className="p-3 bg-slate-950/60 rounded-lg text-xs font-mono text-slate-300 flex justify-between">
+            <span>Policy: CXP-INS-90432</span>
+            <span className="text-purple-300">₹25,00,000</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderHelpSupport = () => (
+    <div className="fade-in max-w-[1600px] mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <HelpCircle className="text-emerald-400" size={24} /> CargoExpress Driver Help & Support
+          </h2>
+          <p className="text-sm text-slate-400 mt-1">
+            24/7 Priority dispatch assistance and operations command center.
+          </p>
+        </div>
+        <CargoExpressLogo variant="full" size="sm" showTagline={true} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Phone className="text-emerald-400" size={18} /> Dispatch Operations Hotline
+          </h3>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Need emergency route clearance, toll allowance approval, or delivery consignee assistance?
+          </p>
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Toll-Free Dispatch:</span>
+              <a href="tel:18002660000" className="text-emerald-400 font-bold hover:underline">1800-266-0000</a>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Emergency SOS:</span>
+              <a href="tel:+919876543210" className="text-rose-400 font-bold hover:underline">+91 98765 43210</a>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Mail className="text-blue-400" size={18} /> Support Desk & Settlements
+          </h3>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            Questions regarding daily trip allowances, UPI payments, or settlement statements.
+          </p>
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Support Desk:</span>
+              <a href="mailto:support@cargoexpress.com" className="text-blue-400 font-bold hover:underline">support@cargoexpress.com</a>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-400">Settlements:</span>
+              <a href="mailto:settlements@cargoexpress.com" className="text-emerald-400 font-bold hover:underline">settlements@cargoexpress.com</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderProfile = () => (
     <div className="fade-in max-w-[1600px] mx-auto space-y-6">
-      <h2 className="text-2xl font-bold text-white">Profile</h2>
+      <div className="flex items-center justify-between max-w-2xl">
+        <h2 className="text-2xl font-bold text-white">Driver Profile</h2>
+        <CargoExpressLogo variant="badge" size="sm" />
+      </div>
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 max-w-2xl">
          <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-600 to-emerald-500 text-white flex items-center justify-center text-2xl font-bold shadow-lg shadow-blue-900/30">
                {user?.firstName?.[0] || profile?.email?.[0]?.toUpperCase() || "D"}
             </div>
             <div>
                <h3 className="text-xl font-bold text-white">{user?.fullName || profile?.email || "Driver Name"}</h3>
-               <p className="text-blue-400 text-sm font-semibold">Verified Driver</p>
+               <p className="text-emerald-400 text-sm font-semibold flex items-center gap-1.5 mt-0.5">
+                 <ShieldCheck size={16} /> Verified CargoExpress Fleet Driver
+               </p>
             </div>
          </div>
          
           <div className="space-y-4 pt-4 border-t border-slate-800 text-sm">
+            <div className="grid grid-cols-[150px_1fr]">
+               <span className="text-slate-500">Fleet Organization</span>
+               <span className="text-slate-200 font-semibold">CargoExpress Logistics Fleet</span>
+            </div>
             <div className="grid grid-cols-[150px_1fr]">
                <span className="text-slate-500">Email</span>
                <span className="text-slate-200">{user?.primaryEmailAddress?.emailAddress || profile?.email}</span>
             </div>
             <div className="grid grid-cols-[150px_1fr]">
                <span className="text-slate-500">Account Status</span>
-               <span className="text-emerald-400 font-medium">Active</span>
+               <span className="text-emerald-400 font-medium flex items-center gap-1.5">
+                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Active & On-Duty
+               </span>
+            </div>
+            <div className="grid grid-cols-[150px_1fr]">
+               <span className="text-slate-500">Driver Tagline</span>
+               <span className="text-slate-400 italic">“Fast • Reliable • Everywhere”</span>
             </div>
          </div>
       </div>
@@ -1555,138 +1731,220 @@ export default function DriverWorkspace() {
     "Previous Orders": renderHistory(),
     Tracking: renderTracking(),
     Payments: renderPayments(),
+    "Vehicle Documents": renderVehicleDocuments(),
+    "Help & Support": renderHelpSupport(),
     Profile: renderProfile(),
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row relative">
-      {/* Mobile Top Header */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-md">
-        <div className="flex items-center gap-2">
-          <button 
-            type="button"
-            onClick={() => setIsMobileSidebarOpen(prev => !prev)}
-            aria-label="Toggle Navigation Menu"
-            className="p-2 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 active:bg-slate-600 hover:text-white transition"
-          >
-            {isMobileSidebarOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-          <span className="font-bold text-lg tracking-wide flex items-center gap-2">
-             <Truck size={18} className="text-blue-400"/> CargoX
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <NotificationDropdown userType="DRIVER" userId={0} />
-          {isSignedIn ? <UserButton /> : (
-            <button 
-              onClick={() => { localStorage.removeItem("access_token"); window.location.href = "/login"; }}
-              className="text-sm font-semibold text-red-400 border border-red-500/30 rounded px-2 py-1"
-            >
-              Log out
-            </button>
-          )}
-        </div>
-      </div>
+  // Render appropriate view based on activeScreen or bottom navigation currentTab
+  const renderReferenceContent = () => {
+    if (activeScreen === 'order-details' && selectedOrderForDetails) {
+      return (
+        <DriverOrderDetailsScreen
+          order={selectedOrderForDetails}
+          onBack={() => setActiveScreen('all-orders')}
+          onNavigateToActiveOrder={() => {
+            setActiveTrip(selectedOrderForDetails);
+            setActiveScreen('active-order');
+          }}
+        />
+      );
+    }
 
-      {/* Mobile Sidebar Backdrop */}
-      <div 
-        onClick={() => setIsMobileSidebarOpen(false)}
-        onTouchStart={() => setIsMobileSidebarOpen(false)}
-        className={`driver-sidebar-backdrop ${isMobileSidebarOpen ? 'open' : ''}`}
-        aria-hidden="true"
+    if (activeScreen === 'active-order') {
+      return (
+        <DriverActiveOrderScreen
+          activeTrip={activeTrip}
+          onBack={() => {
+            setActiveScreen('dashboard');
+            setCurrentTab('home');
+          }}
+          onRefreshTrip={loadDriverData}
+          onOpenPODModal={handleOpenPodModal}
+          onOpenPaymentModal={() => handlePayCargoXNow()}
+        />
+      );
+    }
+
+    if (activeScreen === 'documents') {
+      return (
+        <DriverVehicleDocumentsScreen
+          onBack={() => {
+            setActiveScreen('dashboard');
+            setCurrentTab('home');
+          }}
+        />
+      );
+    }
+
+    if (activeScreen === 'profile') {
+      return (
+        <DriverProfileScreen
+          onBack={() => {
+            setActiveScreen('dashboard');
+            setCurrentTab('home');
+          }}
+          driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
+          driverAvatar={user?.imageUrl}
+          driverEmail={user?.primaryEmailAddress?.emailAddress || profile?.email || 'driver@cargoexpress.in'}
+          driverPhone={profile?.phone || '+91 98765 43210'}
+          rating={4.8}
+          completedTripsCount={history.length > 0 ? history.length : 120}
+          isOnDuty={isOnDuty}
+          vehicleModel={activeTrip?.vehicle_model || profile?.vehicle_model || 'Tata 407 (1.5 Ton)'}
+          vehicleNumber={activeTrip?.vehicle_number || profile?.vehicle_number || 'TS 08 UB 4521'}
+          licenseNumber={profile?.license_number || 'DL-0420180092415'}
+          onNavigateToDocuments={() => setActiveScreen('documents')}
+          onNavigateToEarnings={() => {
+            setCurrentTab('earnings');
+            setActiveScreen('earnings');
+          }}
+          onNavigateToSupport={() => setActiveScreen('help')}
+        />
+      );
+    }
+
+    if (activeScreen === 'help') {
+      return (
+        <DriverHelpSupportScreen
+          onBack={() => {
+            setActiveScreen('dashboard');
+            setCurrentTab('home');
+          }}
+        />
+      );
+    }
+
+    if (currentTab === 'orders' || activeScreen === 'all-orders') {
+      return (
+        <DriverAllOrdersScreen
+          onBack={() => {
+            setCurrentTab('home');
+            setActiveScreen('dashboard');
+          }}
+          onOpenHelp={() => setActiveScreen('help')}
+          orders={activeTrip ? [activeTrip, ...history] : history}
+          onSelectOrder={(order) => {
+            setSelectedOrderForDetails(order);
+            setActiveScreen('order-details');
+          }}
+        />
+      );
+    }
+
+    if (currentTab === 'earnings' || activeScreen === 'earnings') {
+      return (
+        <DriverEarningsScreen
+          onBack={() => {
+            setCurrentTab('home');
+            setActiveScreen('dashboard');
+          }}
+          settlements={settlements}
+        />
+      );
+    }
+
+    // Default: Screen 2 / 3 Driver Home Dashboard (Off Duty / On Duty)
+    return (
+      <DriverHomeDashboard
+        driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
+        driverAvatar={user?.imageUrl}
+        rating={4.8}
+        completedTripsCount={history.length > 0 ? history.length : 120}
+        isOnDuty={isOnDuty}
+        onToggleDuty={handleToggleDuty}
+        todayEarnings={activeTrip ? parseFloat(activeTrip.amount_due_for_collection || 3240) : 0}
+        todayOrdersCount={activeTrip ? 1 : 0}
+        acceptanceRate="92%"
+        activeTrip={activeTrip}
+        onNavigateToTab={(tab) => {
+          if (tab === 'orders') {
+            setCurrentTab('orders');
+            setActiveScreen('all-orders');
+          } else if (tab === 'earnings') {
+            setCurrentTab('earnings');
+            setActiveScreen('earnings');
+          } else if (tab === 'documents') {
+            setActiveScreen('documents');
+          } else if (tab === 'more') {
+            setIsProfileDrawerOpen(true);
+          } else if (tab === 'active-order') {
+            setActiveScreen('active-order');
+          }
+        }}
+        onOpenProfileDrawer={() => setIsProfileDrawerOpen(true)}
+        gpsCoords={gpsLastCoords}
       />
+    );
+  };
 
-      {/* Sidebar */}
-      <aside 
-        className={`driver-sidebar-drawer ${isMobileSidebarOpen ? 'open' : ''}`}
-        aria-label="Driver Navigation"
-      >
-        <div className="p-5 pb-2">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-3">
-              <Truck size={24} className="text-blue-500" />
-              <h2 className="text-2xl font-bold tracking-wider">CargoX</h2>
-            </div>
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsMobileSidebarOpen(false);
-              }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsMobileSidebarOpen(false);
-              }}
-              aria-label="Close sidebar"
-              className="md:hidden flex items-center justify-center w-12 h-12 -mr-2 rounded-xl text-slate-200 hover:text-white bg-slate-800 active:bg-slate-700 transition-colors cursor-pointer select-none"
-            >
-              <X size={24} />
-            </button>
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 relative">
+      {/* Reference Redesigned Viewport Container */}
+      <div className="w-full max-w-md mx-auto min-h-screen bg-white shadow-2xl relative flex flex-col">
+        {loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 min-h-[500px]">
+            <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              Connecting to CargoExpress Dispatch...
+            </span>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1">
+            {renderReferenceContent()}
+          </div>
+        )}
 
-        <nav className="flex-1 space-y-1 px-3 mt-6">
-          {driverSidebar.map(({ label, icon: Icon }) => (
-            <button
-              key={label}
-              onClick={() => { setSelectedTab(label); setIsMobileSidebarOpen(false); }}
-              className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-medium transition ${
-                 selectedTab === label 
-                   ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              <Icon size={18} />
-              {label}
-            </button>
-          ))}
-        </nav>
-      </aside>
+        {/* Persistent Bottom Navigation (Home, Orders, Earnings, More) */}
+        {activeScreen !== 'order-details' && activeScreen !== 'active-order' && (
+          <DriverBottomNavigation
+            currentTab={currentTab}
+            onSelectTab={(tab) => {
+              if (tab === 'more') {
+                setIsProfileDrawerOpen(true);
+              } else {
+                setCurrentTab(tab);
+                if (tab === 'home') setActiveScreen('dashboard');
+                if (tab === 'orders') setActiveScreen('all-orders');
+                if (tab === 'earnings') setActiveScreen('earnings');
+              }
+            }}
+            hasActiveOrder={!!activeTrip}
+          />
+        )}
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Desktop Header */}
-        <header className="hidden md:flex h-16 border-b border-slate-800 bg-slate-900/50 items-center justify-between px-8 sticky top-0 z-10 backdrop-blur-sm">
-           <div></div>
-           <div className="flex items-center gap-5">
-              <NotificationDropdown userType="DRIVER" userId={0} />
-              <div className="flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
-                    DR
-                 </div>
-                 <div className="text-right">
-                    <p className="text-sm font-bold text-white">{user?.fullName || profile?.email?.split('@')[0] || "Driver"}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Driver</p>
-                 </div>
-                 {isSignedIn ? <UserButton /> : (
-                    <button 
-                      onClick={() => { localStorage.removeItem("access_token"); window.location.href = "/login"; }}
-                      className="text-xs font-semibold text-red-400 border border-red-500/30 rounded px-2 py-1 ml-2"
-                    >
-                      Log out
-                    </button>
-                 )}
-              </div>
-           </div>
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-          {error && (
-            <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-              {error}
-            </div>
-          )}
-          {loading ? (
-             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-             </div>
-          ) : (
-             contentMap[selectedTab] || contentMap.Dashboard
-          )}
-        </main>
+        {/* Reference Profile Drawer (Screen 7) */}
+        <DriverProfileDrawer
+          isOpen={isProfileDrawerOpen}
+          onClose={() => setIsProfileDrawerOpen(false)}
+          driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
+          driverAvatar={user?.imageUrl}
+          rating={4.8}
+          completedTripsCount={history.length > 0 ? history.length : 120}
+          onSelectMenuItem={(itemKey: DriverMenuItemKey) => {
+            setIsProfileDrawerOpen(false);
+            if (itemKey === 'profile') {
+              setActiveScreen('profile');
+            } else if (itemKey === 'earnings') {
+              setCurrentTab('earnings');
+              setActiveScreen('earnings');
+            } else if (itemKey === 'documents') {
+              setActiveScreen('documents');
+            } else if (itemKey === 'help' || itemKey === 'support') {
+              setActiveScreen('help');
+            } else if (itemKey === 'incentives') {
+              alert('Driver Incentives: Complete 15 weekly deliveries on time to unlock ₹2,500 fleet performance bonus.');
+            } else if (itemKey === 'rewards') {
+              alert('Driver Rewards & Insurance: Covered under CargoExpress ₹10 Lakhs Transit Accident Insurance & Fuel Partner Discounts.');
+            } else if (itemKey === 'demand') {
+              alert('Demand Planner: High shipment surge active around Secunderabad, Miyapur, and Quthbullapur industrial corridors.');
+            } else if (itemKey === 'referrals') {
+              alert('Refer Friends: Invite verified commercial truck drivers to join CargoExpress and earn ₹5,500 after their 10th completed trip.');
+            } else {
+              setActiveScreen('profile');
+            }
+          }}
+        />
       </div>
 
       {/* Proof of Delivery (POD) Modal */}

@@ -30,17 +30,17 @@ class PricingEngineService:
         new_config = PricingConfig(
             base_rate_per_km=config_in.base_rate_per_km,
             margin_per_km=config_in.margin_per_km,
-            base_flat_fare=config_in.base_flat_fare if config_in.base_flat_fare is not None else Decimal("500.00"),
+            base_flat_fare=config_in.base_flat_fare if config_in.base_flat_fare is not None else Decimal("200.00"),
             base_distance_km=config_in.base_distance_km if config_in.base_distance_km is not None else Decimal("0.00"),
             capacity_surcharge_enabled=config_in.capacity_surcharge_enabled if config_in.capacity_surcharge_enabled is not None else True,
             capacity_utilization_threshold_percent=config_in.capacity_utilization_threshold_percent if config_in.capacity_utilization_threshold_percent is not None else Decimal("85.00"),
-            vehicle_max_capacity_surcharge=config_in.vehicle_max_capacity_surcharge if config_in.vehicle_max_capacity_surcharge is not None else Decimal("600.00"),
+            vehicle_max_capacity_surcharge=config_in.vehicle_max_capacity_surcharge if config_in.vehicle_max_capacity_surcharge is not None else Decimal("150.00"),
             fragile_surcharge_enabled=config_in.fragile_surcharge_enabled if config_in.fragile_surcharge_enabled is not None else True,
-            fragile_surcharge=config_in.fragile_surcharge if config_in.fragile_surcharge is not None else Decimal("400.00"),
+            fragile_surcharge=config_in.fragile_surcharge if config_in.fragile_surcharge is not None else Decimal("100.00"),
             hazardous_surcharge_enabled=config_in.hazardous_surcharge_enabled if config_in.hazardous_surcharge_enabled is not None else True,
-            hazardous_surcharge=config_in.hazardous_surcharge if config_in.hazardous_surcharge is not None else Decimal("700.00"),
+            hazardous_surcharge=config_in.hazardous_surcharge if config_in.hazardous_surcharge is not None else Decimal("200.00"),
             refrigerated_surcharge_enabled=config_in.refrigerated_surcharge_enabled if config_in.refrigerated_surcharge_enabled is not None else True,
-            refrigerated_surcharge=config_in.refrigerated_surcharge if config_in.refrigerated_surcharge is not None else Decimal("800.00"),
+            refrigerated_surcharge=config_in.refrigerated_surcharge if config_in.refrigerated_surcharge is not None else Decimal("250.00"),
             effective_from=effective_from,
             active=True,
             created_by=admin_user.id,
@@ -60,19 +60,19 @@ class PricingEngineService:
             # Auto-provision default pricing config if database was newly created
             now = datetime.now(timezone.utc).replace(tzinfo=None)
             config = PricingConfig(
-                base_rate_per_km=Decimal("25.00"),
-                margin_per_km=Decimal("5.00"),
-                base_flat_fare=Decimal("500.00"),
+                base_rate_per_km=Decimal("20.00"),
+                margin_per_km=Decimal("0.00"),
+                base_flat_fare=Decimal("200.00"),
                 base_distance_km=Decimal("0.00"),
                 capacity_surcharge_enabled=True,
                 capacity_utilization_threshold_percent=Decimal("85.00"),
-                vehicle_max_capacity_surcharge=Decimal("600.00"),
+                vehicle_max_capacity_surcharge=Decimal("150.00"),
                 fragile_surcharge_enabled=True,
-                fragile_surcharge=Decimal("400.00"),
+                fragile_surcharge=Decimal("100.00"),
                 hazardous_surcharge_enabled=True,
-                hazardous_surcharge=Decimal("700.00"),
+                hazardous_surcharge=Decimal("200.00"),
                 refrigerated_surcharge_enabled=True,
-                refrigerated_surcharge=Decimal("800.00"),
+                refrigerated_surcharge=Decimal("250.00"),
                 effective_from=now,
                 active=True,
                 created_by=uuid.uuid4(),
@@ -283,6 +283,20 @@ class PricingEngineService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot accept quotation in status '{quotation.status.value}'"
+            )
+
+        # Enforce capacity verification before accepting quote
+        veh_capacity = 0.0
+        if getattr(quotation, "vehicle_capacity_tons", None):
+            veh_capacity = float(quotation.vehicle_capacity_tons)
+        elif getattr(request, "vehicle_capacity_tons", None):
+            veh_capacity = float(request.vehicle_capacity_tons)
+
+        req_weight = float(request.weight_tons or 0.0)
+        if veh_capacity > 0 and req_weight > veh_capacity:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Cannot accept quotation: cargo weight ({req_weight}T) exceeds vehicle capacity ({veh_capacity}T)"
             )
 
         # Atomic state transition

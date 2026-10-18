@@ -104,19 +104,19 @@ export const api = {
     return res.json();
   },
 
-  driverStartPickup: async (tripId: number) => {
+  driverStartPickup: async (tripId: string | number) => {
     const res = await authFetch(`${API_URL}/driver/trips/${tripId}/start-pickup`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
 
-  driverStartTransit: async (tripId: number) => {
+  driverStartTransit: async (tripId: string | number) => {
     const res = await authFetch(`${API_URL}/driver/trips/${tripId}/start-transit`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
 
-  driverArrive: async (tripId: number) => {
+  driverArrive: async (tripId: string | number) => {
     const res = await authFetch(`${API_URL}/driver/trips/${tripId}/arrive`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -206,6 +206,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  getDriverSettlements: async () => {
+    const res = await authFetch(`${API_URL}/driver/settlements`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

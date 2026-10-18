@@ -730,7 +730,14 @@ export default function AdminDashboard() {
               activePricing={activePricing}
               aiRecommendations={aiRecommendations}
               onApprove={handleApproveBooking}
-              onCreateTrip={async (booking: any, vehicleId: string, driverId: string) => {
+              onCreateTrip={async (
+                booking: any,
+                vehicleId: string,
+                driverId: string,
+                commissionPercentage?: number,
+                driverPayout?: number,
+                commissionAmount?: number
+              ) => {
                 try {
                   const bookingId = typeof booking === "object" ? booking.id : booking;
                   const bookingStatus = typeof booking === "object" ? booking.status : null;
@@ -756,6 +763,9 @@ export default function AdminDashboard() {
                     booking_id: bookingId,
                     vehicle_id: vehicleId,
                     driver_id: driverId,
+                    commission_percentage: commissionPercentage,
+                    driver_payout: driverPayout,
+                    commission_amount: commissionAmount,
                   });
                   alert("Trip dispatched successfully! Vehicle and driver assigned.");
                   loadData();

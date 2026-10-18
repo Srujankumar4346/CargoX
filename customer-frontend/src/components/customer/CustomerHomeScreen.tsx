@@ -1,9 +1,5 @@
-import { useState } from "react";
 import { 
-  Bell, 
-  MapPin, 
   Search, 
-  Crosshair, 
   ArrowRight, 
   Navigation, 
   Calendar, 
@@ -11,7 +7,6 @@ import {
   Headphones, 
   ChevronRight
 } from "lucide-react";
-import { UserButton, useUser } from "@clerk/react";
 
 interface CustomerHomeScreenProps {
   pickupAddress: string;
@@ -34,7 +29,6 @@ export default function CustomerHomeScreen({
   isDetectingLocation = false,
   onOpenPickup,
   onOpenDrop,
-  onUseCurrentLocation,
   onGetQuote,
   onQuickTrack,
   onQuickBookings,
@@ -42,216 +36,185 @@ export default function CustomerHomeScreen({
   onQuickSupport,
   onSelectVehicleCategory
 }: CustomerHomeScreenProps) {
-  const { user } = useUser();
-  const [tripType, setTripType] = useState<"one-way" | "round-trip" | "multi-stop">("one-way");
-
-  const userName = user?.firstName || user?.fullName?.split(" ")[0] || "";
-
-  const popularTrucks = [
-    {
-      id: "bolero",
-      name: "Mahindra Bolero Pik-Up",
-      capacity: "2.0 Ton (2,000 kg)",
-      image: "/images/vehicles/mahindra-bolero-pikup.png",
-    },
-    {
-      id: "tata-ace",
-      name: "Tata Ace Gold",
-      capacity: "1.0 Ton (1,000 kg)",
-      image: "/images/vehicles/tata-ace-gold.png",
-    },
-    {
-      id: "dost",
-      name: "Ashok Leyland Dost",
-      capacity: "1.5 Ton (1,500 kg)",
-      image: "/images/vehicles/ashok-leyland-dost.png",
-    },
-    {
-      id: "tata-intra",
-      name: "Tata Intra V30",
-      capacity: "2.5 Ton (2,500 kg)",
-      image: "/images/vehicles/tata-intra-v30.png",
-    },
-  ];
 
   return (
-    <div className="min-h-full flex-1 bg-[#f8fafc] text-slate-900 pb-28 select-none overflow-y-auto">
-      {/* Top Header Bar with Safe Area Top Padding */}
-      <header className="px-5 pt-[max(env(safe-area-inset-top),16px)] pb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className="text-2xl font-black text-slate-900 tracking-tight font-display">Cargo</span>
-          <span className="text-2xl font-black text-[#1e60ff] tracking-tight font-display">X</span>
+    <div className="min-h-full flex-1 bg-[#f4f6fb] text-slate-900 pb-28 select-none overflow-y-auto">
+      {/* Top Pickup Bar Matching Screenshot 1 */}
+      <section className="px-4 pt-[max(env(safe-area-inset-top),14px)] pb-2">
+        <div 
+          onClick={onOpenPickup}
+          role="button"
+          tabIndex={0}
+          className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-100 flex items-center justify-between cursor-pointer hover:border-blue-200 transition-all"
+        >
+          <div className="flex items-center gap-3 overflow-hidden pr-2">
+            <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <span className="text-sm font-black">↑</span>
+            </div>
+            <div className="truncate">
+              <p className="text-[11px] font-bold text-slate-800 leading-tight">Pick up from</p>
+              <p className="text-xs text-slate-500 truncate mt-0.5 font-medium">
+                {isDetectingLocation ? "Detecting current GPS location..." : (pickupAddress || "Set pickup location")}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
         </div>
+      </section>
 
-        <div className="flex items-center gap-2.5">
-          <button 
-            onClick={onQuickSupport}
-            aria-label="Notifications" 
-            className="relative p-2.5 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+      {/* Main Service Category Cards matching Reference Screenshot (Trucks and Packers & Movers only - NO 2-wheelers/bikes) */}
+      <section className="px-4 mt-2">
+        <div className="grid grid-cols-2 gap-3">
+          {/* Trucks Card */}
+          <div
+            onClick={() => {
+              onSelectVehicleCategory("Tata Ace Gold");
+              onOpenDrop();
+            }}
+            role="button"
+            tabIndex={0}
+            className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100/90 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between h-44 group relative overflow-hidden"
           >
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
-          </button>
-          <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 flex items-center justify-center bg-slate-100">
-            <UserButton />
+            <div className="w-full flex items-center justify-center h-24 mb-1">
+              <img
+                src="/images/vehicles/tata-ace-gold.png"
+                alt="Commercial Cargo Trucks"
+                className="max-h-20 max-w-[90%] object-contain group-hover:scale-105 transition-transform drop-shadow-sm"
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-50">
+              <span className="text-sm font-extrabold text-slate-900 tracking-tight">Trucks</span>
+              <div className="w-6 h-6 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center group-hover:bg-[#1e60ff] group-hover:text-white transition-colors">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </div>
           </div>
-        </div>
-      </header>
 
-      {/* Hero Welcome Banner */}
-      <section className="px-5 mt-2">
-        <div className="relative overflow-hidden bg-gradient-to-r from-blue-50/90 to-indigo-50/50 rounded-2xl p-4 flex items-center justify-between border border-blue-100/70 shadow-xs">
-          <div className="z-10 max-w-[62%]">
-            {userName && (
-              <p className="text-[11px] font-semibold text-slate-500 mb-0.5">Welcome, {userName}</p>
-            )}
-            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight leading-tight">
-              Ship Anything<br />Anywhere
-            </h1>
-            <p className="text-[11px] font-semibold text-slate-500 mt-2 tracking-wide">
-              Fast • Reliable • Transparent<br />Logistics Services
-            </p>
-          </div>
-          
-          {/* Blue cargo truck banner image */}
-          <div className="relative w-36 sm:w-40 h-24 flex items-center justify-end shrink-0">
-            <img
-              src="/images/hero/home-blue-truck.png"
-              alt="CargoX Commercial Heavy Truck"
-              className="h-full w-full object-cover object-center drop-shadow-md rounded-xl"
-            />
+          {/* Packers & Movers Card */}
+          <div
+            onClick={() => {
+              onSelectVehicleCategory("Mahindra Bolero Pik-Up");
+              onOpenDrop();
+            }}
+            role="button"
+            tabIndex={0}
+            className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100/90 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between h-44 group relative overflow-hidden"
+          >
+            <div className="w-full flex items-center justify-center h-24 mb-1">
+              <img
+                src="/images/vehicles/mahindra-bolero-pikup.png"
+                alt="Packers & Movers Logistics"
+                className="max-h-20 max-w-[90%] object-contain group-hover:scale-105 transition-transform drop-shadow-sm"
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-50">
+              <span className="text-sm font-extrabold text-slate-900 tracking-tight leading-tight">Packers &<br />Movers</span>
+              <div className="w-6 h-6 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center group-hover:bg-[#1e60ff] group-hover:text-white transition-colors">
+                <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Main Booking Card (Trip type, Pickup, Drop, Get Quote) */}
-      <section className="px-5 mt-4">
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100/80">
-          {/* Trip Selector Buttons */}
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100/80 rounded-xl mb-4 text-xs font-semibold">
-            <button
-              onClick={() => setTripType("one-way")}
-              className={`py-2 rounded-lg transition-all text-center ${
-                tripType === "one-way"
-                  ? "bg-[#1e60ff] text-white shadow-sm font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              One Way
-            </button>
-            <button
-              onClick={() => setTripType("round-trip")}
-              className={`py-2 rounded-lg transition-all text-center ${
-                tripType === "round-trip"
-                  ? "bg-[#1e60ff] text-white shadow-sm font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Round Trip
-            </button>
-            <button
-              onClick={() => setTripType("multi-stop")}
-              className={`py-2 rounded-lg transition-all text-center ${
-                tripType === "multi-stop"
-                  ? "bg-[#1e60ff] text-white shadow-sm font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Multi Stop
-            </button>
-          </div>
-
-          {/* Location Selection Fields with aligned layout */}
-          <div className="relative space-y-2.5">
-            {/* Pickup Field */}
-            <div
-              onClick={onOpenPickup}
-              role="button"
-              tabIndex={0}
-              className="group cursor-pointer flex items-center justify-between p-3 rounded-xl bg-slate-50/80 hover:bg-slate-100 border border-slate-100 transition-all"
-            >
-              <div className="flex items-center gap-3 overflow-hidden pr-2">
-                <div className="w-7 h-7 rounded-full bg-blue-100 text-[#1e60ff] flex items-center justify-center shrink-0">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#1e60ff]" />
-                </div>
-                <div className="truncate text-left">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                    {isDetectingLocation ? "Detecting GPS..." : "PICKUP LOCATION"}
-                  </p>
-                  <p className="text-xs font-bold text-slate-800 truncate">
-                    {isDetectingLocation ? "Fetching your current location…" : (pickupAddress || "Use current location or search")}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onUseCurrentLocation) {
-                    onUseCurrentLocation();
-                  } else {
-                    onOpenPickup();
-                  }
-                }}
-                disabled={isDetectingLocation}
-                title="Detect Current GPS Location"
-                className="flex items-center gap-1 text-[11px] font-bold text-[#1e60ff] hover:text-[#164ed9] px-2 py-1 rounded-md hover:bg-blue-50 transition-colors shrink-0"
-              >
-                <Crosshair className={`w-3.5 h-3.5 ${isDetectingLocation ? "animate-spin" : ""}`} />
-                <span className="hidden xs:inline">Use Current</span>
-              </button>
+      {/* Rewards Banner matching Reference Screenshot 1 */}
+      <section className="px-4 mt-3">
+        <div 
+          onClick={() => alert("CargoX Rewards: Earn 2 cargo coins for every ₹100 spent. Redeemable on all future freight trips!")}
+          role="button"
+          tabIndex={0}
+          className="bg-gradient-to-r from-amber-50/80 via-white to-orange-50/70 border border-amber-200/60 rounded-2xl p-3.5 flex items-center justify-between shadow-2xs cursor-pointer hover:border-amber-300 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-amber-400/20 text-amber-600 flex items-center justify-center text-lg font-bold shadow-2xs">
+              🪙
             </div>
-
-            {/* Connecting Line between pickup and drop */}
-            <div className="absolute left-[24px] top-[37px] w-0.5 h-3 bg-slate-200 pointer-events-none" />
-
-            {/* Drop Field */}
-            <div
-              onClick={onOpenDrop}
-              role="button"
-              tabIndex={0}
-              className="group cursor-pointer flex items-center justify-between p-3 rounded-xl bg-slate-50/80 hover:bg-slate-100 border border-slate-100 transition-all"
-            >
-              <div className="flex items-center gap-3 overflow-hidden pr-2">
-                <div className="w-7 h-7 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                  <MapPin className="w-3.5 h-3.5" />
-                </div>
-                <div className="truncate text-left">
-                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">DROP LOCATION</p>
-                  <p className="text-xs font-bold text-slate-800 truncate">
-                    {dropAddress || "Search destination"}
-                  </p>
-                </div>
-              </div>
-              <div className="p-1 rounded-md text-slate-400 group-hover:text-[#1e60ff] transition-colors shrink-0">
-                <Search className="w-4 h-4" />
-              </div>
+            <div>
+              <p className="text-xs font-extrabold text-slate-900 leading-tight">Explore CargoX Rewards</p>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">Earn 2 coins for every 100 spent</p>
             </div>
           </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+        </div>
+      </section>
 
-          {/* Prominent Get Quote Button */}
+      {/* Announcements Section matching Screenshot 1 */}
+      <section className="px-4 mt-4">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xs font-bold text-slate-800">Announcements</h2>
+          <button 
+            onClick={() => alert("CargoX Logistics Updates:\n• Seamless door-to-door house shifting now active\n• Intercity linehauls now cover all major hubs")}
+            className="text-xs font-bold text-[#1e60ff] hover:underline flex items-center gap-0.5"
+          >
+            <span>View all</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Announcement Card */}
+        <div 
+          onClick={onOpenDrop}
+          role="button"
+          tabIndex={0}
+          className="bg-white rounded-2xl p-3.5 border border-slate-100/90 shadow-2xs flex items-center justify-between cursor-pointer hover:border-blue-200 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative w-8 h-8 rounded-full bg-blue-50 text-[#1e60ff] flex items-center justify-center text-sm font-bold">
+              📢
+              <span className="absolute -top-1 -left-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-black flex items-center justify-center border border-white">
+                2
+              </span>
+            </div>
+            <p className="text-xs font-extrabold text-slate-800">Professional house shifting & cargo freight</p>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+        </div>
+      </section>
+
+      {/* Quick Search & Direct Destination Jump Card */}
+      <section className="px-4 mt-4">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">Quick Booking</p>
+          
+          <div
+            onClick={onOpenDrop}
+            role="button"
+            tabIndex={0}
+            className="cursor-pointer flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all"
+          >
+            <div className="flex items-center gap-3 truncate">
+              <div className="w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold">↓</span>
+              </div>
+              <span className="text-xs font-bold text-slate-600 truncate">
+                {dropAddress || "Where are you shipping to? (Search drop location)"}
+              </span>
+            </div>
+            <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          </div>
+
           <button
             onClick={onGetQuote}
-            className="w-full mt-4 bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.99] text-white py-3.5 px-6 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-500/25 transition-all"
+            className="w-full mt-3 bg-[#1e60ff] hover:bg-[#164ed9] active:scale-[0.99] text-white py-3 px-5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 transition-all"
           >
-            <span>Get Quote</span>
-            <ArrowRight className="w-4 h-4" />
+            <span>Search & Book Commercial Truck</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </section>
 
-      {/* Quick Action Grid (Track Shipment, Bookings, Price Calculator, Support) matching Screenshot 2 */}
-      <section className="px-5 mt-4">
-        <div className="grid grid-cols-4 gap-2.5">
+      {/* Quick Action Grid */}
+      <section className="px-4 mt-4">
+        <div className="grid grid-cols-4 gap-2">
           {/* Track */}
           <button
             onClick={onQuickTrack}
             className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white border border-slate-100 shadow-2xs hover:border-blue-200 transition-all group"
           >
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#1e60ff] flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <Navigation className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#1e60ff] flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
+              <Navigation className="w-4 h-4" />
             </div>
-            <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">
+            <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">
               Track<br />Shipment
             </span>
           </button>
@@ -261,10 +224,10 @@ export default function CustomerHomeScreen({
             onClick={onQuickBookings}
             className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white border border-slate-100 shadow-2xs hover:border-blue-200 transition-all group"
           >
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <Calendar className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
+              <Calendar className="w-4 h-4" />
             </div>
-            <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">
+            <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">
               My<br />Bookings
             </span>
           </button>
@@ -274,11 +237,11 @@ export default function CustomerHomeScreen({
             onClick={onQuickCalculator}
             className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white border border-slate-100 shadow-2xs hover:border-blue-200 transition-all group"
           >
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <Calculator className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
+              <Calculator className="w-4 h-4" />
             </div>
-            <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">
-              Price<br />Calculator
+            <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">
+              Price<br />Estimate
             </span>
           </button>
 
@@ -287,50 +250,13 @@ export default function CustomerHomeScreen({
             onClick={onQuickSupport}
             className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-white border border-slate-100 shadow-2xs hover:border-blue-200 transition-all group"
           >
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-1.5 group-hover:scale-105 transition-transform">
-              <Headphones className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
+              <Headphones className="w-4 h-4" />
             </div>
-            <span className="text-[11px] font-bold text-slate-700 text-center leading-tight">
-              Support
+            <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">
+              24/7<br />Help
             </span>
           </button>
-        </div>
-      </section>
-
-      {/* Popular Vehicles Section matching Screenshot 2 */}
-      <section className="px-5 mt-5">
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-sm font-bold text-slate-900">Popular Vehicles</h2>
-          <button 
-            onClick={onGetQuote}
-            className="text-xs font-bold text-[#1e60ff] hover:underline flex items-center gap-0.5"
-          >
-            <span>View All</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* 4 Clean Vehicle Cards matching visual reference */}
-        <div className="grid grid-cols-4 gap-2">
-          {popularTrucks.map((truck) => (
-            <div
-              key={truck.id}
-              onClick={() => onSelectVehicleCategory(truck.name)}
-              className="cursor-pointer bg-white border border-slate-100 rounded-xl p-2 flex flex-col items-center text-center shadow-2xs hover:border-blue-300 hover:shadow-sm transition-all group"
-            >
-              <div className="w-full h-12 flex items-center justify-center mb-1 overflow-hidden">
-                <img
-                  src={truck.image}
-                  alt={truck.name}
-                  className="max-h-11 max-w-full object-contain group-hover:scale-105 transition-transform"
-                />
-              </div>
-              <p className="text-[10px] font-bold text-slate-800 truncate w-full leading-tight">
-                {truck.name.split(" ")[0]}<br />
-                {truck.name.split(" ").slice(1).join(" ")}
-              </p>
-            </div>
-          ))}
         </div>
       </section>
     </div>

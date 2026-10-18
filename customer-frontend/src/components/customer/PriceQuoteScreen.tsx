@@ -51,9 +51,15 @@ export default function PriceQuoteScreen({
     setPricingLoading(true);
     setPricingError(null);
     setEstimatedPrice(null);
-    const vehicleCap = parseCapacityTons(vehicle.capacity);
+    const vehicleCap = vehicle.maxPayloadTons || parseCapacityTons(vehicle.capacity);
     const weight = cargoData?.weightTons || 1.5;
     const handling = cargoData?.specialHandling || "None";
+
+    if (weight > vehicleCap) {
+      setPricingError(`Cargo weight (${weight}T) exceeds vehicle capacity (${vehicleCap}T). Please select a higher-capacity vehicle.`);
+      setPricingLoading(false);
+      return;
+    }
 
     api.getPricingEstimate(distanceKm, {
       weight_tons: weight,
@@ -73,10 +79,9 @@ export default function PriceQuoteScreen({
           setPricingError("Pricing data unavailable. Please go back and retry.");
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!isMounted) return;
-        // Do NOT substitute hardcoded local pricing. Show an actionable error.
-        setPricingError("Unable to retrieve pricing from the server. Please go back and try again.");
+        setPricingError(err?.message || "Unable to retrieve pricing from the server. Please go back and try again.");
       })
       .finally(() => { if (isMounted) setPricingLoading(false); });
     return () => { isMounted = false; };
@@ -85,21 +90,21 @@ export default function PriceQuoteScreen({
   const remainingKm = Math.max(0, distanceKm - 50);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between pb-8 select-none">
-      <div>
-        {/* Top Header */}
-        <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs">
-          <button
-            onClick={onBack}
-            className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <h1 className="text-base font-bold text-slate-900">Price Quote</h1>
-          <div className="w-6" />
-        </div>
+    <div className="h-full bg-slate-50 text-slate-800 flex flex-col justify-between overflow-hidden select-none">
+      {/* Top Header */}
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-100 shadow-xs shrink-0">
+        <button
+          onClick={onBack}
+          className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-base font-bold text-slate-900">Price Quote</h1>
+        <div className="w-6" />
+      </div>
 
-        <div className="px-5 py-4 space-y-4">
+      {/* Scrollable Content Body */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {/* Route Details Card */}
           <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-xs">
             <div className="flex items-center justify-between mb-3">
@@ -251,11 +256,10 @@ export default function PriceQuoteScreen({
               </div>
             )}
           </div>
-        </div>
       </div>
 
-      {/* Proceed to Booking Button — disabled until real backend pricing is loaded */}
-      <div className="px-5 mt-2">
+      {/* Proceed to Booking Button — always pinned to the bottom */}
+      <div className="shrink-0 p-4 bg-white border-t border-slate-100 shadow-[0_-4px_16px_rgba(0,0,0,0.04)] z-20">
         <button
           disabled={pricingLoading || pricingError !== null || estimatedPrice === null}
           onClick={() => estimatedPrice !== null && onProceedToBooking(estimatedPrice)}

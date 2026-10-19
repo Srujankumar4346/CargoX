@@ -34,15 +34,15 @@ interface DriverHomeDashboardProps {
 }
 
 export const DriverHomeDashboard: React.FC<DriverHomeDashboardProps> = ({
-  driverName = 'Ramesh Kumar',
+  driverName = 'Assigned Driver',
   driverAvatar,
-  rating = 4.8,
-  completedTripsCount = 120,
+  rating = 5.0,
+  completedTripsCount = 0,
   isOnDuty,
   onToggleDuty,
   todayEarnings = 0,
   todayOrdersCount = 0,
-  acceptanceRate = '92%',
+  acceptanceRate = '100%',
   activeTrip,
   onNavigateToTab,
   onOpenProfileDrawer,

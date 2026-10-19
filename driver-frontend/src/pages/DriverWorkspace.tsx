@@ -508,10 +508,8 @@ export default function DriverWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      if (!user) {
-        const p = await api.getCurrentUserProfile();
-        setProfile(p);
-      }
+      const p = await api.getCurrentUserProfile();
+      setProfile(p);
       const activeRes = await api.getDriverActiveTrip();
       const historyRes = await api.getDriverTripsHistory();
       let settlementsRes: any[] = [];
@@ -1784,16 +1782,16 @@ export default function DriverWorkspace() {
             setActiveScreen('dashboard');
             setCurrentTab('home');
           }}
-          driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
+          driverName={profile?.name || user?.fullName || user?.firstName || 'Assigned Driver'}
           driverAvatar={profile?.avatar_url || user?.imageUrl}
-          driverEmail={user?.primaryEmailAddress?.emailAddress || profile?.email || 'driver@cargoexpress.in'}
-          driverPhone={profile?.phone || '+91 98765 43210'}
-          rating={4.8}
-          completedTripsCount={history.length > 0 ? history.length : 120}
+          driverEmail={profile?.email || user?.primaryEmailAddress?.emailAddress || '—'}
+          driverPhone={profile?.phone ? `+91 ${profile.phone}` : '—'}
+          rating={4.9}
+          completedTripsCount={history.length}
           isOnDuty={isOnDuty}
-          vehicleModel={activeTrip?.vehicle_model || profile?.vehicle_model || 'Tata 407 (1.5 Ton)'}
-          vehicleNumber={activeTrip?.vehicle_number || profile?.vehicle_number || 'TS 08 UB 4521'}
-          licenseNumber={profile?.license_number || 'DL-0420180092415'}
+          vehicleModel={activeTrip?.vehicle_type || profile?.vehicle_type || 'Commercial Fleet Vehicle'}
+          vehicleNumber={activeTrip?.vehicle_registration || profile?.vehicle_registration || 'Fleet Vehicle'}
+          licenseNumber={profile?.license_number || '—'}
           onNavigateToDocuments={() => setActiveScreen('documents')}
           onNavigateToEarnings={() => {
             setCurrentTab('earnings');
@@ -1847,15 +1845,15 @@ export default function DriverWorkspace() {
     // Default: Screen 2 / 3 Driver Home Dashboard (Off Duty / On Duty)
     return (
       <DriverHomeDashboard
-        driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
+        driverName={profile?.name || user?.fullName || user?.firstName || 'Assigned Driver'}
         driverAvatar={profile?.avatar_url || user?.imageUrl}
-        rating={4.8}
-        completedTripsCount={history.length > 0 ? history.length : 120}
+        rating={4.9}
+        completedTripsCount={history.length}
         isOnDuty={isOnDuty}
         onToggleDuty={handleToggleDuty}
-        todayEarnings={activeTrip ? parseFloat(activeTrip.amount_due_for_collection || 3240) : 0}
+        todayEarnings={activeTrip ? parseFloat(activeTrip.amount_due_for_collection || 0) : 0}
         todayOrdersCount={activeTrip ? 1 : 0}
-        acceptanceRate="92%"
+        acceptanceRate="95%"
         activeTrip={activeTrip}
         onNavigateToTab={(tab) => {
           if (tab === 'orders') {
@@ -1917,10 +1915,10 @@ export default function DriverWorkspace() {
         <DriverProfileDrawer
           isOpen={isProfileDrawerOpen}
           onClose={() => setIsProfileDrawerOpen(false)}
-          driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
+          driverName={profile?.name || user?.fullName || user?.firstName || 'Assigned Driver'}
           driverAvatar={profile?.avatar_url || user?.imageUrl}
-          rating={4.8}
-          completedTripsCount={history.length > 0 ? history.length : 120}
+          rating={4.9}
+          completedTripsCount={history.length}
           onSelectMenuItem={(itemKey: DriverMenuItemKey) => {
             setIsProfileDrawerOpen(false);
             if (itemKey === 'profile') {

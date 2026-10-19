@@ -21,20 +21,53 @@ class CurrentUserResponse(BaseModel):
     id: UUID4
     email: str
     role: UserRole
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    license_number: Optional[str] = None
+    username: Optional[str] = None
+    avatar_url: Optional[str] = None
+    vehicle_registration: Optional[str] = None
+    vehicle_type: Optional[str] = None
 
 
 @router.get("/me", response_model=CurrentUserResponse)
 async def get_current_user_profile(current_user: User = Depends(get_current_user)):
     """
-    Returns the authenticated internal CargoX user identity and safe role only.
-    This is used by the admin frontend to decide the correct workspace without
-    relying on client-supplied role claims.
+    Returns the authenticated internal CargoX user identity and profile details.
+    If the user is a driver, pulls authoritative name, phone, license, and assigned vehicle.
     """
-    return {
+    resp = {
         "id": current_user.id,
         "email": current_user.email,
         "role": current_user.role,
     }
+    
+    if current_user.role == UserRole.DRIVER:
+        driver = await Driver.find_one(Driver.user_id == current_user.id)
+        if not driver:
+            driver = await Driver.find_one(Driver.email == current_user.email)
+        if driver:
+            resp.update({
+                "name": driver.name,
+                "phone": driver.phone,
+                "license_number": driver.license_number,
+                "username": driver.username,
+                "avatar_url": driver.avatar_url,
+            })
+            
+            # Find assigned vehicle if any
+            from app.models.fleet import VehicleAssignment, Vehicle
+            assignment = await VehicleAssignment.find_one(
+                VehicleAssignment.driver_id == driver.id,
+                VehicleAssignment.released_at == None
+            )
+            if assignment:
+                veh = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
+                if veh:
+                    resp["vehicle_registration"] = veh.registration_number
+                    resp["vehicle_type"] = veh.type.value if hasattr(veh.type, "value") else str(veh.type)
+
+    return resp
 
 @router.post("/driver-login", response_model=DriverLoginResponse)
 async def driver_login(req: DriverLoginRequest):

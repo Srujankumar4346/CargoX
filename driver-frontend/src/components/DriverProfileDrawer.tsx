@@ -42,10 +42,10 @@ interface DriverProfileDrawerProps {
 export const DriverProfileDrawer: React.FC<DriverProfileDrawerProps> = ({
   isOpen,
   onClose,
-  driverName = 'Ramesh Kumar',
+  driverName = 'Assigned Driver',
   driverAvatar,
-  rating = 4.8,
-  completedTripsCount = 120,
+  rating = 5.0,
+  completedTripsCount = 0,
   onSelectMenuItem,
 }) => {
   const { signOut } = useClerk();

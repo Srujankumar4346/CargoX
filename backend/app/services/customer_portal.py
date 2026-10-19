@@ -137,11 +137,20 @@ class CustomerPortalService:
         if not req or req.customer_company_id != user.customer_company_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
             
-        # Only allow edits if SUBMITTED or UNDER_REVIEW
-        if req.status not in [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot edit request in state {req.status.value}")
-            
         update_data = payload.model_dump(exclude_unset=True)
+        is_recipient_only_update = all(
+            k in ["destination_contact_person", "destination_phone", "destination_company_name"]
+            for k in update_data.keys()
+        )
+
+        # Allow updating recipient contact info at any active stage prior to completion
+        if not is_recipient_only_update:
+            if req.status not in [DeliveryRequestStatus.SUBMITTED, DeliveryRequestStatus.UNDER_REVIEW]:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot edit request in state {req.status.value}")
+        else:
+            if req.status in [DeliveryRequestStatus.COMPLETED, DeliveryRequestStatus.CUSTOMER_CANCELLED, DeliveryRequestStatus.REJECTED]:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot edit finished request in state {req.status.value}")
+
         for key, value in update_data.items():
             setattr(req, key, value)
             

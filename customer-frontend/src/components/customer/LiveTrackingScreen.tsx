@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Share2, MoreVertical, Phone, MessageSquare, KeyRound, ShieldCheck, Clock, RefreshCw, CheckCircle2, X, Copy, ExternalLink, HelpCircle, FileText, Check } from "lucide-react";
+import { ArrowLeft, Share2, MoreVertical, Phone, MessageSquare, KeyRound, ShieldCheck, Clock, RefreshCw, CheckCircle2, X, Copy, ExternalLink, HelpCircle, FileText, Check, Edit3, Send } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Polyline } from "react-leaflet";
 import L from "leaflet";
 
@@ -62,6 +62,13 @@ export default function LiveTrackingScreen({
   const [isOtpLoading, setIsOtpLoading] = useState<boolean>(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpTimeLeft, setOtpTimeLeft] = useState<number>(0);
+
+  // Edit Receiver Details State
+  const [editReceiverModalOpen, setEditReceiverModalOpen] = useState(false);
+  const [receiverNameInput, setReceiverNameInput] = useState("");
+  const [receiverPhoneInput, setReceiverPhoneInput] = useState("");
+  const [savingReceiver, setSavingReceiver] = useState(false);
+  const [receiverSaveMsg, setReceiverSaveMsg] = useState<string | null>(null);
 
   const handleShare = () => {
     if (navigator.share) {
@@ -239,6 +246,42 @@ export default function LiveTrackingScreen({
     }, 1000);
     return () => clearInterval(timer);
   }, [otpTimeLeft]);
+
+  // Handler to update receiver details (recipient name & destination phone)
+  const handleSaveReceiver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestId) return;
+    const cleanedPhone = receiverPhoneInput.trim().replace(/\D/g, "");
+    if (cleanedPhone && cleanedPhone.length !== 10) {
+      setReceiverSaveMsg("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
+    try {
+      setSavingReceiver(true);
+      setReceiverSaveMsg(null);
+      await api.updateBooking(requestId, {
+        destination_contact_person: receiverNameInput.trim() || undefined,
+        destination_phone: cleanedPhone || undefined,
+      });
+
+      // Refresh tracking data and OTP
+      const updated = await api.getTracking(requestId);
+      if (updated) setLiveData(updated);
+      await fetchOtp();
+
+      setReceiverSaveMsg("Receiver details updated successfully! OTP resent.");
+      setTimeout(() => {
+        setEditReceiverModalOpen(false);
+        setReceiverSaveMsg(null);
+      }, 1200);
+    } catch (err: any) {
+      console.error("Failed to update receiver details:", err);
+      setReceiverSaveMsg(err?.message || "Failed to update receiver details. Please try again.");
+    } finally {
+      setSavingReceiver(false);
+    }
+  };
 
   const activeDriverName = liveData?.driver_name || driverName || null;
   const activeDriverPhone = liveData?.driver_phone || driverPhone || null;
@@ -580,11 +623,27 @@ export default function LiveTrackingScreen({
                 {otpData.purpose === "DELIVERY" ? (
                   <div className="mt-2 space-y-2">
                     <div className="bg-white/80 border border-emerald-200/70 rounded-xl p-2.5">
-                      <p className="text-xs text-emerald-950 font-bold flex items-center gap-1.5">
-                        <span>📲</span>
-                        <span>Sent via SMS to Receiver</span>
-                      </p>
-                      <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-emerald-950 font-bold flex items-center gap-1.5">
+                          <span>📲</span>
+                          <span>Sent via SMS to Receiver</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReceiverNameInput(otpData.recipient_name || liveData?.destination_contact_person || "");
+                            setReceiverPhoneInput(liveData?.destination_phone || "");
+                            setReceiverSaveMsg(null);
+                            setEditReceiverModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-md transition cursor-pointer"
+                          title="Edit recipient name and mobile number"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit Receiver Details</span>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1 leading-snug">
                         {otpData.instruction || `Delivery OTP was sent to receiver (${otpData.recipient_name || 'Receiver'} at ${otpData.recipient_phone_masked || 'destination mobile'}).`}
                       </p>
                     </div>
@@ -903,6 +962,108 @@ export default function LiveTrackingScreen({
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT RECEIVER DETAILS MODAL (Temporary feature) */}
+      {editReceiverModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#1e60ff] flex items-center justify-center font-bold">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Edit Receiver Details</h3>
+                  <p className="text-[11px] text-slate-500">Update destination recipient & SMS OTP</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditReceiverModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveReceiver} className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  Recipient Name
+                </label>
+                <input
+                  type="text"
+                  value={receiverNameInput}
+                  onChange={(e) => setReceiverNameInput(e.target.value)}
+                  placeholder="e.g. Suresh Kumar"
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#1e60ff]/30 focus:border-[#1e60ff] font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                  Receiver Phone Number <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-2 rounded-xl border border-slate-200">
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    value={receiverPhoneInput}
+                    onChange={(e) => setReceiverPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    placeholder="10-digit mobile number"
+                    maxLength={10}
+                    required
+                    className="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-[#1e60ff]/30 focus:border-[#1e60ff] font-medium tracking-wider"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Delivery verification OTP will be sent directly via SMS to this number.
+                </p>
+              </div>
+
+              {receiverSaveMsg && (
+                <div className={`p-2.5 rounded-xl text-xs font-semibold ${
+                  receiverSaveMsg.includes("successfully") 
+                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    : "bg-red-50 text-red-700 border border-red-200"
+                }`}>
+                  {receiverSaveMsg}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={savingReceiver}
+                  onClick={() => setEditReceiverModalOpen(false)}
+                  className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingReceiver || !receiverPhoneInput.trim()}
+                  className="px-4 py-2 text-xs font-bold text-white bg-[#1e60ff] hover:bg-blue-600 rounded-xl transition shadow-md shadow-blue-500/20 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {savingReceiver ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Update & Resend OTP</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

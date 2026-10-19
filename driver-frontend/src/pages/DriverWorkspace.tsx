@@ -1848,7 +1848,7 @@ export default function DriverWorkspace() {
     return (
       <DriverHomeDashboard
         driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
-        driverAvatar={user?.imageUrl}
+        driverAvatar={profile?.avatar_url || user?.imageUrl}
         rating={4.8}
         completedTripsCount={history.length > 0 ? history.length : 120}
         isOnDuty={isOnDuty}
@@ -1918,7 +1918,7 @@ export default function DriverWorkspace() {
           isOpen={isProfileDrawerOpen}
           onClose={() => setIsProfileDrawerOpen(false)}
           driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
-          driverAvatar={user?.imageUrl}
+          driverAvatar={profile?.avatar_url || user?.imageUrl}
           rating={4.8}
           completedTripsCount={history.length > 0 ? history.length : 120}
           onSelectMenuItem={(itemKey: DriverMenuItemKey) => {

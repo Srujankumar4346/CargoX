@@ -29,14 +29,31 @@ const AVATAR_OPTIONS = [
   "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=256&h=256&q=80",
 ];
 
+export const VEHICLE_TYPE_OPTIONS = [
+  { value: "TATA_ACE", label: "Tata Ace / Mini Truck (0.8T - 1.2T)", defaultTons: 1.0, defaultImage: "/images/vehicles/tata-ace-gold.png" },
+  { value: "BOLERO_PICKUP", label: "Mahindra Bolero / Dost Pickup (1.5T - 3.0T)", defaultTons: 2.5, defaultImage: "/images/vehicles/mahindra-bolero-pikup.png" },
+  { value: "OPEN", label: "Open Truck / Flatbed (3.0T - 10T)", defaultTons: 5.0, defaultImage: "/images/vehicles/col5_full.png" },
+  { value: "CONTAINER", label: "Closed Container (3.5T - 15T)", defaultTons: 7.0, defaultImage: "/images/vehicles/screen6_full.png" },
+  { value: "TRUCK_14FT", label: "14ft - 19ft Intermediate Truck (5T - 12T)", defaultTons: 6.5, defaultImage: "/images/vehicles/screen2_trucks.png" },
+  { value: "REFRIGERATED", label: "Refrigerated Reefer Van (1.5T - 8T)", defaultTons: 3.5, defaultImage: "/images/vehicles/ashok-leyland-dost.png" },
+  { value: "TRAILER", label: "Heavy Trailer / Multi-Axle (15T - 40T)", defaultTons: 25.0, defaultImage: "/images/vehicles/col5_full.png" },
+];
+
 // Helper to resolve vehicle representative image
 export function getVehicleImage(vehicle: any): string {
   if (vehicle?.image_url) return vehicle.image_url;
   const tons = Number(vehicle?.capacity_tons) || 1;
   const type = String(vehicle?.type || "").toUpperCase();
 
-  if (tons <= 1.0) return "/images/vehicles/tata-ace-gold.png";
-  if (tons <= 2.0) return "/images/vehicles/ashok-leyland-dost.png";
+  if (type === "TATA_ACE") return "/images/vehicles/tata-ace-gold.png";
+  if (type === "BOLERO_PICKUP") return "/images/vehicles/mahindra-bolero-pikup.png";
+  if (type === "CONTAINER") return "/images/vehicles/screen6_full.png";
+  if (type === "REFRIGERATED") return "/images/vehicles/ashok-leyland-dost.png";
+  if (type === "TRUCK_14FT") return "/images/vehicles/screen2_trucks.png";
+  if (type === "TRAILER") return "/images/vehicles/col5_full.png";
+
+  if (tons <= 1.2) return "/images/vehicles/tata-ace-gold.png";
+  if (tons <= 2.2) return "/images/vehicles/ashok-leyland-dost.png";
   if (tons <= 3.5) return "/images/vehicles/mahindra-bolero-pikup.png";
   if (type === "CONTAINER") return "/images/vehicles/screen6_full.png";
   return "/images/vehicles/col5_full.png";
@@ -194,17 +211,27 @@ function DriverForm({ onDone }: { onDone: () => void }) {
 function VehicleForm({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedType, setSelectedType] = useState(VEHICLE_TYPE_OPTIONS[0].value);
+  const [capacityTons, setCapacityTons] = useState<number | string>(VEHICLE_TYPE_OPTIONS[0].defaultTons);
   const [customImage, setCustomImage] = useState("");
+
+  const handleTypeChange = (newType: string) => {
+    setSelectedType(newType);
+    const matched = VEHICLE_TYPE_OPTIONS.find((opt) => opt.value === newType);
+    if (matched && !customImage) {
+      setCapacityTons(matched.defaultTons);
+    }
+  };
 
   return <form onSubmit={async (event) => {
     event.preventDefault(); setError(""); setSaving(true); const form = new FormData(event.currentTarget);
     const registration = String(form.get("registration_number") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!vehicleRegistrationPattern.test(registration)) { setError("Use a valid registration such as TG09HS1234."); setSaving(false); return; }
+    if (!vehicleRegistrationPattern.test(registration)) { setError("Use a valid registration such as TG08T1223."); setSaving(false); return; }
     try { 
       await api.createVehicle({ 
         registration_number: registration, 
-        type: form.get("type"), 
-        capacity_tons: Number(form.get("capacity_tons")),
+        type: selectedType, 
+        capacity_tons: Number(capacityTons),
         image_url: customImage.trim() || undefined
       }); 
       event.currentTarget.reset(); 
@@ -217,17 +244,61 @@ function VehicleForm({ onDone }: { onDone: () => void }) {
     }
   }} className="space-y-3">
     {error && <div className="flex gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300"><AlertCircle size={15} />{error}</div>}
-    <input name="registration_number" required placeholder="Registration number (e.g. TG08T1223)" className="fleet-input font-mono uppercase tracking-wider" />
-    <select name="type" defaultValue="OPEN" className="fleet-input"><option value="OPEN">Open truck / flatbed</option><option value="CONTAINER">Closed container</option><option value="TRAILER">Heavy trailer</option></select>
-    <input name="capacity_tons" type="number" required min="0.5" max="50" step="0.1" placeholder="Capacity in tons" className="fleet-input" />
-    <input 
-      type="url"
-      value={customImage}
-      onChange={(e) => setCustomImage(e.target.value)}
-      placeholder="Custom Vehicle Image URL (Optional)" 
-      className="fleet-input text-xs" 
-    />
-    <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"><Plus size={16} />{saving ? "Adding vehicle..." : "Add vehicle"}</button>
+    
+    <div>
+      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Vehicle Category</label>
+      <select 
+        name="type" 
+        value={selectedType} 
+        onChange={(e) => handleTypeChange(e.target.value)}
+        className="fleet-input"
+      >
+        {VEHICLE_TYPE_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+
+    <div>
+      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Registration Number</label>
+      <input 
+        name="registration_number" 
+        required 
+        placeholder="e.g. TG08T1223 or TS07EJ3509" 
+        className="fleet-input font-mono uppercase tracking-wider" 
+      />
+    </div>
+
+    <div>
+      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Payload Capacity (in Metric Tons)</label>
+      <input 
+        name="capacity_tons" 
+        type="number" 
+        required 
+        min="0.5" 
+        max="50" 
+        step="0.1" 
+        value={capacityTons}
+        onChange={(e) => setCapacityTons(e.target.value)}
+        placeholder="Capacity in tons" 
+        className="fleet-input" 
+      />
+    </div>
+
+    <div>
+      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Vehicle Picture URL (Optional)</label>
+      <input 
+        type="url"
+        value={customImage}
+        onChange={(e) => setCustomImage(e.target.value)}
+        placeholder="Or leave empty to use default vehicle image" 
+        className="fleet-input text-xs" 
+      />
+    </div>
+
+    <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50">
+      <Plus size={16} />{saving ? "Adding vehicle..." : "Add vehicle to fleet"}
+    </button>
   </form>;
 }
 
@@ -310,7 +381,13 @@ function InlineEdit({ kind, record, onCancel, onSaved }: any) {
           className="fleet-input"
         />
       ))}
-      {!isDriver && <select name="type" defaultValue={record.type} className="fleet-input"><option value="OPEN">OPEN</option><option value="CONTAINER">CONTAINER</option><option value="TRAILER">TRAILER</option></select>}
+      {!isDriver && (
+        <select name="type" defaultValue={record.type} className="fleet-input">
+          {VEHICLE_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      )}
       <select name="status" defaultValue={record.status} className="fleet-input">{statuses.map((status) => <option key={status} value={status}>{status.replace(/_/g, " ")}</option>)}</select>
     </div>
     <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={onCancel} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-400">Cancel</button><button className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white"><Save size={13} />Save changes</button></div>
@@ -347,6 +424,10 @@ export default function FleetManagementPanel({
   const [vehicleFilter, setVehicleFilter] = useState("ALL");
   const [editingDriver, setEditingDriver] = useState<any>(null); 
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
+  const [photoModalDriver, setPhotoModalDriver] = useState<any>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string>("");
+  const [customPhotoInput, setCustomPhotoInput] = useState<string>("");
+  const [photoSaving, setPhotoSaving] = useState(false);
 
   const activeTrips = trips.filter((trip) => !["COMPLETED", "DELIVERED"].includes(normalize(trip.status)));
   const filteredDrivers = useMemo(() => drivers.filter((driver) => (!driverQuery || [driver.name, driver.phone, driver.email, driver.license_number].some((value) => String(value || "").toLowerCase().includes(driverQuery.toLowerCase()))) && (driverFilter === "ALL" || normalize(driver.status) === driverFilter)), [drivers, driverFilter, driverQuery]);
@@ -521,27 +602,25 @@ export default function FleetManagementPanel({
                         >
                           <Edit2 size={14} />
                         </button>
-                        {vehicle.is_deletable && (
-                          <button 
-                            onClick={() => showConfirm({ 
-                              title: "Delete Vehicle", 
-                              message: `Delete vehicle "${vehicle.registration_number}"? Backend history restrictions remain enforced.`, 
-                              confirmLabel: "Delete vehicle", 
-                              onConfirm: async () => { 
-                                try { 
-                                  await api.deleteVehicle(vehicle.id); 
-                                  loadData(); 
-                                } catch (err: any) { 
-                                  alert(`Unable to delete vehicle: ${err?.message || err}`); 
-                                } 
+                        <button 
+                          onClick={() => showConfirm({ 
+                            title: "Delete Vehicle", 
+                            message: `Are you sure you want to delete or decommission vehicle "${vehicle.registration_number}"? If it has historical trips, its operational record will be archived safely.`, 
+                            confirmLabel: "Delete vehicle", 
+                            onConfirm: async () => { 
+                              try { 
+                                await api.deleteVehicle(vehicle.id); 
+                                loadData(); 
+                              } catch (err: any) { 
+                                alert(`Unable to delete vehicle: ${err?.message || err}`); 
                               } 
-                            })} 
-                            className="rounded-md border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20 transition" 
-                            title="Delete vehicle"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                            } 
+                          })} 
+                          className="rounded-md border border-red-500/20 bg-red-500/10 p-2 text-red-300 hover:bg-red-500/20 transition" 
+                          title="Delete vehicle"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -612,13 +691,26 @@ export default function FleetManagementPanel({
                     {/* Driver Avatar & Name */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="relative w-12 h-12 rounded-full overflow-hidden border border-slate-700 bg-slate-950 shrink-0 shadow-md">
+                        <div className="relative group w-12 h-12 rounded-full overflow-hidden border-2 border-slate-700 bg-slate-950 shrink-0 shadow-md">
                           <img 
                             src={driver.avatar_url || "/images/driver-avatar.png"} 
-                            alt={driver.name} 
+                            alt="" 
                             className="w-full h-full object-cover"
                             onError={(e: any) => { e.currentTarget.src = "/images/driver-avatar.png"; }}
                           />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPhotoModalDriver(driver);
+                              setSelectedPhoto(driver.avatar_url || AVATAR_OPTIONS[0]);
+                              setCustomPhotoInput("");
+                            }}
+                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white"
+                            title="Update Driver Profile Photo (Admin Only)"
+                          >
+                            <Camera size={14} className="text-blue-300" />
+                            <span className="text-[8px] font-bold mt-0.5 tracking-tighter">CHANGE</span>
+                          </button>
                         </div>
                         <div>
                           <p className="text-sm font-bold text-white flex items-center gap-1.5">
@@ -700,6 +792,104 @@ export default function FleetManagementPanel({
           <p className="mb-4 mt-2 text-xs leading-5 text-slate-500">Provision a driver profile with custom or preset photo, credentials and vehicle authorization.</p>
           <DriverForm onDone={refresh} />
         </aside>
+      </div>
+    )}
+
+    {/* ===================== ADMIN ONLY: DRIVER PROFILE PHOTO MODAL ===================== */}
+    {photoModalDriver && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+        <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-6 shadow-2xl space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">
+                Admin Authorized Action
+              </span>
+              <h3 className="text-base font-bold text-white mt-1">Update Driver Profile Photo</h3>
+              <p className="text-xs text-slate-400">Driver: <strong className="text-slate-200">{photoModalDriver.name}</strong></p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPhotoModalDriver(null)}
+              className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="flex flex-col items-center gap-3 py-2">
+            <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-blue-500 bg-slate-900 shadow-lg shadow-blue-500/20">
+              <img
+                src={customPhotoInput.trim() || selectedPhoto || "/images/driver-avatar.png"}
+                alt=""
+                className="w-full h-full object-cover"
+                onError={(e: any) => { e.currentTarget.src = "/images/driver-avatar.png"; }}
+              />
+            </div>
+            <p className="text-xs text-slate-400">Choose a verified preset or enter an authoritative image URL:</p>
+            <div className="flex items-center gap-2 overflow-x-auto p-1 max-w-full">
+              {AVATAR_OPTIONS.map((url, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPhoto(url);
+                    setCustomPhotoInput("");
+                  }}
+                  className={`relative w-10 h-10 rounded-full overflow-hidden border-2 shrink-0 transition ${
+                    selectedPhoto === url && !customPhotoInput
+                      ? "border-blue-400 scale-110 shadow-md shadow-blue-500/50"
+                      : "border-slate-700 opacity-60 hover:opacity-100"
+                  }`}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1">Custom Photo Link</label>
+            <input
+              type="url"
+              value={customPhotoInput}
+              onChange={(e) => setCustomPhotoInput(e.target.value)}
+              placeholder="https://... (direct image link)"
+              className="fleet-input text-xs"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setPhotoModalDriver(null)}
+              className="rounded-lg border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={photoSaving}
+              onClick={async () => {
+                const finalPhoto = customPhotoInput.trim() || selectedPhoto;
+                if (!finalPhoto) return;
+                setPhotoSaving(true);
+                try {
+                  await api.updateDriver(photoModalDriver.id, { avatar_url: finalPhoto });
+                  setPhotoModalDriver(null);
+                  loadData();
+                } catch (err: any) {
+                  alert(`Unable to update photo: ${err?.message || err}`);
+                } finally {
+                  setPhotoSaving(false);
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              <Save size={14} />
+              {photoSaving ? "Saving..." : "Save Profile Photo"}
+            </button>
+          </div>
+        </div>
       </div>
     )}
   </div>;

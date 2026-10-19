@@ -118,6 +118,14 @@ export const DriverProfileScreen: React.FC<DriverProfileScreenProps> = ({
 
       {/* Main Content Details */}
       <div className="p-4 space-y-4 flex-1">
+        {/* Admin Controlled Notice */}
+        <div className="bg-blue-50 border border-blue-200/80 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-blue-900">
+          <ShieldCheck size={16} className="text-blue-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold">Authoritative Driver Profile:</span> Profile photo and credentials are authenticated and managed by CargoX Fleet Admins. To update your profile photo, contact your fleet administrator.
+          </div>
+        </div>
+
         {/* Contact & Identity Card */}
         <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs space-y-3.5">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">

@@ -37,7 +37,10 @@ class FleetService:
 
         results = []
         for v in vehicles:
-            assignment = await VehicleAssignment.find_one(VehicleAssignment.vehicle_id == v.id)
+            active_assignment = await VehicleAssignment.find_one(
+                VehicleAssignment.vehicle_id == v.id,
+                VehicleAssignment.released_at == None
+            )
             results.append(VehicleRead(
                 id=v.id,
                 registration_number=v.registration_number,
@@ -45,7 +48,7 @@ class FleetService:
                 capacity_tons=Decimal(str(v.capacity_tons)),
                 status=v.status,
                 image_url=v.image_url,
-                is_deletable=(assignment is None)
+                is_deletable=(active_assignment is None)
             ))
         return results
 

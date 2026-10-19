@@ -14,6 +14,10 @@ class VehicleType(str, enum.Enum):
     OPEN = "OPEN"
     CONTAINER = "CONTAINER"
     TRAILER = "TRAILER"
+    TATA_ACE = "TATA_ACE"
+    BOLERO_PICKUP = "BOLERO_PICKUP"
+    TRUCK_14FT = "TRUCK_14FT"
+    REFRIGERATED = "REFRIGERATED"
 
 class VehicleStatus(str, enum.Enum):
     AVAILABLE = "AVAILABLE"

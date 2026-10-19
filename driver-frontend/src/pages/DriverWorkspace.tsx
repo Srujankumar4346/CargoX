@@ -1908,9 +1908,9 @@ export default function DriverWorkspace() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 relative">
-      {/* Reference Redesigned Viewport Container */}
-      <div className="w-full max-w-md mx-auto min-h-screen bg-white shadow-2xl relative flex flex-col">
+    <div className="min-h-screen bg-[#0A1120] text-slate-900 py-0 sm:py-8 flex justify-center items-start">
+      {/* Mobile Device Frame Container (Matches Customer Mobile Viewport) */}
+      <div className="w-full max-w-[430px] min-h-screen sm:min-h-[880px] bg-white sm:rounded-[40px] shadow-[0_25px_70px_rgba(0,0,0,0.55)] border-0 sm:border-[8px] sm:border-slate-800/90 relative flex flex-col overflow-hidden">
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3 min-h-[500px]">
             <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />

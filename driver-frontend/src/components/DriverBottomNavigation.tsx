@@ -24,7 +24,7 @@ export const DriverBottomNavigation: React.FC<DriverBottomNavigationProps> = ({
   return (
     <nav
       aria-label="Driver Navigation"
-      className="fixed bottom-0 inset-x-0 w-full bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] z-40 transition-all box-border"
+      className="fixed bottom-0 sm:bottom-8 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white/95 backdrop-blur-md border-t border-slate-200/90 sm:rounded-b-[32px] shadow-[0_-4px_25px_rgba(0,0,0,0.08)] z-40 transition-all box-border overflow-hidden"
     >
       <div className="w-full h-16 grid grid-cols-4 px-2 box-border">
         {navItems.map((item) => {

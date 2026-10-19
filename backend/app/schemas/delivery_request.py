@@ -85,6 +85,8 @@ class DeliveryRequestRead(BaseModel):
     destination_lat: Optional[float]
     destination_lng: Optional[float]
     distance_km: Optional[Decimal] = None
+    vehicle_capacity_tons: Optional[float] = None
+    selected_vehicle_id: Optional[str] = None
     
     status: str
     created_at: datetime

@@ -94,6 +94,8 @@ class CustomerPortalService:
                 
                 # Metrics / State
                 distance_km=payload.distance_km,
+                selected_vehicle_id=payload.selected_vehicle_id,
+                vehicle_capacity_tons=payload.vehicle_capacity_tons,
                 status=DeliveryRequestStatus.SUBMITTED,
                 created_at=now,
                 updated_at=now

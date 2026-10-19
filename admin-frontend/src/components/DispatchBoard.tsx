@@ -180,6 +180,44 @@ function shortDate(iso: string): string {
   }
 }
 
+// Map selected_vehicle_id or goods_description to user-friendly vehicle model name
+function getRequestedVehicleType(booking: Booking): { name: string; capacity?: string; isPartLoad?: boolean } {
+  const vehId = (booking.selected_vehicle_id || booking.quotation?.selected_vehicle_id || "").toLowerCase();
+  const desc = (booking.goods_description || "").toLowerCase();
+
+  if (vehId === "part-load" || desc.includes("part load") || desc.includes("shared truck")) {
+    return { name: "Part Load (Shared Truck)", capacity: "1-3000 kg", isPartLoad: true };
+  }
+  if (vehId === "tata-ace" || desc.includes("tata ace")) {
+    return { name: "Tata Ace", capacity: "750 kg" };
+  }
+  if (vehId === "pickup-8ft" || desc.includes("pickup 8ft") || desc.includes("dost")) {
+    return { name: "Pickup 8ft (Dost)", capacity: "1200 kg" };
+  }
+  if (vehId === "pickup-9ft" || desc.includes("pickup 9ft") || desc.includes("bolero")) {
+    return { name: "Pickup 9ft (Bolero)", capacity: "1700 kg" };
+  }
+  if (vehId === "14ft-open" || desc.includes("14ft (open)") || desc.includes("14ft open")) {
+    return { name: "14ft (Open)", capacity: "3500 kg" };
+  }
+  if (vehId === "14ft-closed" || desc.includes("14ft (closed)") || desc.includes("14ft closed")) {
+    return { name: "14ft (Closed)", capacity: "3500 kg" };
+  }
+  if (vehId === "17ft-closed" || desc.includes("17ft closed") || desc.includes("17ft")) {
+    return { name: "17ft Closed", capacity: "6000 kg" };
+  }
+
+  // Fallback to weight-based deduction if available
+  const weight = Number(booking.weight_tons || 0);
+  if (weight > 0 && weight <= 0.75) return { name: "Tata Ace", capacity: "750 kg" };
+  if (weight > 0.75 && weight <= 1.2) return { name: "Pickup 8ft", capacity: "1200 kg" };
+  if (weight > 1.2 && weight <= 1.7) return { name: "Pickup 9ft", capacity: "1700 kg" };
+  if (weight > 1.7 && weight <= 3.5) return { name: "14ft Truck", capacity: "3500 kg" };
+  if (weight > 3.5) return { name: "17ft+ Heavy Truck", capacity: "6000 kg" };
+
+  return { name: "Standard Cargo Truck", capacity: "Flexible" };
+}
+
 
 
 // ── Subcomponent: Expanded Detail Workspace Matching Reference Design ─────────────
@@ -371,12 +409,21 @@ function ExpandedWorkspace({
                 <Truck size={20} />
               </div>
               <div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   <h3 className="text-lg font-bold text-white tracking-tight">Request Details</h3>
                   <span className="text-sm font-semibold text-slate-400">#{booking.request_number}</span>
                   <span className="px-3 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     {booking.status === "ACCEPTED" ? "Accepted" : booking.status.replace(/_/g, " ")}
                   </span>
+                  {(() => {
+                    const reqVeh = getRequestedVehicleType(booking);
+                    return (
+                      <span className="flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                        <Truck size={12} className="text-blue-400" />
+                        <span>Wanted: <strong className="text-white">{reqVeh.name}</strong></span>
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -529,6 +576,30 @@ function ExpandedWorkspace({
                   <span>{distKm} km</span>
                 </div>
               </div>
+
+              {/* Customer Requested Vehicle Type */}
+              {(() => {
+                const reqVeh = getRequestedVehicleType(booking);
+                return (
+                  <div className="flex justify-between items-center py-1.5 border-b border-blue-500/20 bg-blue-950/20 px-2 rounded-lg -mx-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-blue-400 font-semibold">Requested Vehicle</span>
+                      <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold">Customer Choice</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <span className="text-xs font-black text-white">{reqVeh.name}</span>
+                        {reqVeh.capacity && (
+                          <span className="block text-[10px] text-blue-300/80 font-mono">Max: {reqVeh.capacity}</span>
+                        )}
+                      </div>
+                      <div className="w-6 h-6 rounded bg-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
+                        <Truck size={12} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex justify-between items-center py-1 border-b border-slate-800/60">
                 <span className="text-slate-400 font-medium">Cargo Type</span>
@@ -1173,10 +1244,22 @@ export default function DispatchBoard({
                     </div>
                   </div>
 
-                  {/* Weight */}
-                  <div className="shrink-0 text-center hidden sm:block">
-                    <p className="text-xl font-black text-orange-300 leading-none">{booking.weight_tons}T</p>
-                    <p className="text-[9px] text-orange-500/70 uppercase tracking-widest font-semibold">{booking.goods_type}</p>
+                  {/* Requested Vehicle & Weight */}
+                  <div className="shrink-0 text-right hidden sm:block">
+                    {(() => {
+                      const reqVeh = getRequestedVehicleType(booking);
+                      return (
+                        <div className="flex items-center gap-2 justify-end">
+                          <div className="px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/25 text-right">
+                            <div className="flex items-center gap-1 justify-end text-[11px] font-black text-blue-300">
+                              <Truck size={11} className="text-blue-400 shrink-0" />
+                              <span>{reqVeh.name}</span>
+                            </div>
+                            <span className="text-[9px] text-slate-400 font-medium">{booking.weight_tons}T • {booking.goods_type}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Status */}

@@ -18,21 +18,28 @@ async function authFetch(url: string, options: RequestInit = {}) {
   if (tokenGetter) {
     try {
       token = await tokenGetter();
+      // If we received an authenticated Clerk token, remove any stale guest access token from localStorage
+      if (token && typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+      }
     } catch (e) {
       console.warn("[authFetch] Failed to get token from tokenGetter:", e);
     }
   }
 
-  // 2. Try to get Clerk token from window
+  // 2. Try to get Clerk token directly from window
   if (!token && typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
     try {
       token = await (window as any).Clerk.session.getToken();
+      if (token && typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+      }
     } catch (e) {
       console.warn("Failed to fetch Clerk token", e);
     }
   }
   
-  // Fallback to localStorage
+  // Fallback to localStorage (e.g. guest token or local dev token)
   if (!token) {
     token = localStorage.getItem('access_token');
   }

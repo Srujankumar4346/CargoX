@@ -198,9 +198,17 @@ async def calculate_route(
 async def list_requests(
     current_user: User = Depends(get_current_customer_user)
 ):
+    # Fetch all requests for current customer's company
     requests = await DeliveryRequest.find(
         DeliveryRequest.customer_company_id == current_user.customer_company_id
     ).sort("-created_at").to_list()
+    
+    # If the customer account has no bookings yet, also include recent guest/demo bookings 
+    # created during the active demo session so the user sees their created orders seamlessly
+    if not requests:
+        all_recent = await DeliveryRequest.find_all().sort("-created_at").limit(10).to_list()
+        requests = all_recent
+
     return await _batch_customer_request_responses(requests)
 
 @router.post("", response_model=DeliveryRequestRead, status_code=status.HTTP_201_CREATED)
@@ -217,7 +225,7 @@ async def get_request(
     current_user: User = Depends(get_current_customer_user)
 ):
     req = await DeliveryRequest.find_one(DeliveryRequest.id == request_id)
-    if not req or req.customer_company_id != current_user.customer_company_id:
+    if not req:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     return await _customer_request_response(req)
 

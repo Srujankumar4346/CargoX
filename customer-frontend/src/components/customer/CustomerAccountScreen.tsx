@@ -22,16 +22,31 @@ interface CustomerAccountScreenProps {
 export default function CustomerAccountScreen({
   onOpenSavedLocations,
 }: CustomerAccountScreenProps) {
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { isSignedIn, user } = useUser();
+  const { signOut, openSignIn } = useClerk();
 
   const [showGSTModal, setShowGSTModal] = useState(false);
   const [gstin, setGstin] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [savedGST, setSavedGST] = useState<string | null>(null);
 
-  const displayName = user?.fullName || user?.firstName || "Customer Account";
-  const displayEmail = user?.primaryEmailAddress?.emailAddress || "Verified Account";
+  const displayName = isSignedIn 
+    ? (user?.fullName || user?.firstName || "Customer Account") 
+    : (localStorage.getItem("user_email") || "Customer Account");
+  const displayEmail = isSignedIn 
+    ? (user?.primaryEmailAddress?.emailAddress || "Verified Account") 
+    : (localStorage.getItem("user_email") ? "Verified Account" : "guest@cargox.com (Guest Session)");
+
+  const handleDemoLogin = async () => {
+    try {
+      localStorage.setItem("user_email", "sangepusrujankumar@gmail.com");
+      localStorage.setItem("cargox_onboarding_completed", "true");
+      alert("Switched to Demo Account (sangepusrujankumar@gmail.com). Refreshing...");
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleSaveGST = () => {
     if (!gstin.trim() || gstin.length < 15) {
@@ -47,10 +62,16 @@ export default function CustomerAccountScreen({
     if (confirm("Are you sure you want to log out of CargoExpress?")) {
       try {
         localStorage.removeItem("cargox_onboarding_completed");
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user_email");
       } catch {}
-      signOut(() => {
+      if (isSignedIn) {
+        signOut(() => {
+          window.location.href = "/";
+        });
+      } else {
         window.location.href = "/";
-      });
+      }
     }
   };
 
@@ -69,12 +90,18 @@ export default function CustomerAccountScreen({
                 <h1 className="text-sm font-black text-slate-900">{displayName}</h1>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-[11px] text-slate-500 font-medium truncate max-w-[190px]">
-                  {displayEmail}
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Verified Account
                 </p>
                 <button
-                  onClick={() => alert("Verification code sent to your email address.")}
-                  className="text-[11px] font-bold text-[#0866F5] hover:underline"
+                  onClick={() => {
+                    if (!isSignedIn) {
+                      openSignIn();
+                    } else {
+                      alert(`Account is verified: ${displayName}`);
+                    }
+                  }}
+                  className="text-[11px] font-bold text-[#0866F5] hover:underline cursor-pointer"
                 >
                   Verify
                 </button>
@@ -83,8 +110,18 @@ export default function CustomerAccountScreen({
           </div>
 
           <button
-            onClick={() => alert("CargoExpress Account Details:\n• Role: Verified Customer\n• Tenant: CargoExpress India Lines")}
-            className="text-xs font-bold text-[#0866F5] flex items-center gap-0.5"
+            onClick={() => {
+              if (!isSignedIn) {
+                if (confirm(`Current status: Guest Customer\n\nWould you like to log in to your registered customer account (sangepusrujankumar@gmail.com) with active orders?`)) {
+                  handleDemoLogin();
+                } else {
+                  openSignIn();
+                }
+              } else {
+                alert(`CargoExpress Account Details:\n• Name: ${displayName}\n• Email: ${displayEmail}\n• Role: Verified Customer`);
+              }
+            }}
+            className="text-xs font-bold text-[#0866F5] flex items-center gap-0.5 cursor-pointer hover:underline"
           >
             <span>View</span>
             <ChevronRight className="w-4 h-4" />

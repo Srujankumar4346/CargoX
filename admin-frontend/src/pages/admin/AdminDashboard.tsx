@@ -123,7 +123,8 @@ export default function AdminDashboard() {
     trips: "trips",
     financials: "financials",
     finance: "financials",
-    pricing: "financials",
+    pricing: "pricing",
+    invoices: "invoices",
     users: "users",
     team: "users",
     ai: "ai",
@@ -631,7 +632,19 @@ export default function AdminDashboard() {
             onClick={() => { setActiveTab('financials'); setIsMobileSidebarOpen(false); }} 
             className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'financials' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
           >
-             <IndianRupee size={18}/> <span>Financial Reports</span>
+             <IndianRupee size={18}/> <span>Financial Ledger</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('pricing'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'pricing' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+             <Sparkles size={18}/> <span>Pricing Setup</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('invoices'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'invoices' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+             <ClipboardList size={18}/> <span>Invoices</span>
           </button>
           <button 
             onClick={() => { setActiveTab('users'); setIsMobileSidebarOpen(false); }} 
@@ -845,47 +858,18 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'financials' && (
-          <div className="space-y-8">
+          <div className="space-y-6">
              <FinancialControlCenter />
-             
-             <div className="border-t border-slate-800 pt-8 mt-12">
-               <h2 className="text-xl font-bold text-foreground mb-4">Historical Invoicing & Pricing Setup</h2>
+          </div>
+        )}
+
+        {activeTab === 'pricing' && (
+          <div className="space-y-8">
+             <div>
+                <h1 className="text-3xl font-bold text-foreground">Admin Pricing & Surcharge Configuration</h1>
+                <p className="text-sm text-muted mt-1">Configure authoritative per-kilometer freight rates, base charges, and operational capacity surcharges.</p>
              </div>
-             
-             {(() => {
-                 const totalInvoiced = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_amount || 0), 0) || parseFloat(dashboard?.total_invoiced || 0);
-                 const totalPaid = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_paid || 0), 0) || parseFloat(dashboard?.total_collected || 0);
-                 const totalDue = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_due || 0), 0) || parseFloat(dashboard?.outstanding_balance || 0);
-                 const totalExpenses = parseFloat(dashboard?.total_operating_expenses || dashboard?.expenses || 0);
-                 const netProfit = totalInvoiced - totalExpenses;
 
-                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-green-500">
-                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Total Invoiced (Completed Trips)</h3>
-                          <p className="text-3xl font-extrabold text-foreground mt-2">₹{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                          <p className="text-xs text-muted mt-1">{invoices.length} invoices generated</p>
-                      </div>
-                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-emerald-500">
-                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Collected / Paid</h3>
-                          <p className="text-3xl font-extrabold text-emerald-400 mt-2">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                          <p className="text-xs text-muted mt-1">{invoices.filter(i => i.status === 'PAID').length} fully paid</p>
-                      </div>
-                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-amber-500">
-                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Outstanding Due</h3>
-                          <p className="text-3xl font-extrabold text-amber-400 mt-2">₹{totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                          <p className="text-xs text-muted mt-1">{invoices.filter(i => i.status === 'UNPAID').length} pending payment</p>
-                      </div>
-                      <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
-                          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Net Revenue</h3>
-                          <p className="text-3xl font-extrabold text-blue-400 mt-2">₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                          <p className="text-xs text-muted mt-1">Expenses: ₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                      </div>
-                  </div>
-                 );
-             })()}
-
-             <h2 className="text-2xl font-bold text-foreground mb-4">Admin Pricing & Surcharge Configuration</h2>
              <div className="bg-surface rounded-xl shadow-sm border border-border-theme p-6 mb-8">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     <div className="p-3 bg-surface-elevated rounded-lg border border-border-theme">
@@ -1001,9 +985,51 @@ export default function AdminDashboard() {
                     </div>
                 </form>
              </div>
+          </div>
+        )}
 
-              <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>
-              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
+        {activeTab === 'invoices' && (
+          <div className="space-y-8">
+             <div>
+                <h1 className="text-3xl font-bold text-foreground">Invoices & Historical Billing</h1>
+                <p className="text-sm text-muted mt-1">Audit customer tax invoices, review payments collected, download invoice PDFs and inspect trip expenses.</p>
+             </div>
+
+             {(() => {
+                  const totalInvoiced = invoices.reduce((sum, inv) => sum + parseFloat(inv.total_amount || 0), 0) || parseFloat(dashboard?.total_invoiced || 0);
+                  const totalPaid = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_paid || 0), 0) || parseFloat(dashboard?.total_collected || 0);
+                  const totalDue = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount_due || 0), 0) || parseFloat(dashboard?.outstanding_balance || 0);
+                  const totalExpenses = parseFloat(dashboard?.total_operating_expenses || dashboard?.expenses || 0);
+                  const netProfit = totalInvoiced - totalExpenses;
+
+                  return (
+                   <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                       <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-green-500">
+                           <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Total Invoiced (Completed Trips)</h3>
+                           <p className="text-3xl font-extrabold text-foreground mt-2">₹{totalInvoiced.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                           <p className="text-xs text-muted mt-1">{invoices.length} invoices generated</p>
+                       </div>
+                       <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-emerald-500">
+                           <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Collected / Paid</h3>
+                           <p className="text-3xl font-extrabold text-emerald-400 mt-2">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                           <p className="text-xs text-muted mt-1">{invoices.filter(i => i.status === 'PAID').length} fully paid</p>
+                       </div>
+                       <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-amber-500">
+                           <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Outstanding Due</h3>
+                           <p className="text-3xl font-extrabold text-amber-400 mt-2">₹{totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                           <p className="text-xs text-muted mt-1">{invoices.filter(i => i.status === 'UNPAID').length} pending payment</p>
+                       </div>
+                       <div className="bg-surface p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
+                           <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">Net Revenue</h3>
+                           <p className="text-3xl font-extrabold text-blue-400 mt-2">₹{netProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                           <p className="text-xs text-muted mt-1">Expenses: ₹{totalExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                       </div>
+                   </div>
+                  );
+             })()}
+
+             <h2 className="text-2xl font-bold text-foreground mb-4">Invoices</h2>
+             <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden mb-8">
                  <div className="overflow-x-auto">
                  <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-surface-elevated">
@@ -1046,7 +1072,6 @@ export default function AdminDashboard() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                                 <div className="flex items-center justify-end gap-1.5">
-                                  {/* View Button */}
                                   <button
                                     onClick={() => generateInvoicePDF(inv, booking, false)}
                                     title="View Invoice"
@@ -1054,7 +1079,6 @@ export default function AdminDashboard() {
                                   >
                                     <Eye size={12}/> View
                                   </button>
-                                  {/* Download PDF */}
                                   <button
                                     onClick={() => generateInvoicePDF(inv, booking, true)}
                                     title="Download PDF"
@@ -1075,8 +1099,7 @@ export default function AdminDashboard() {
                  </div>
               </div>
 
-             
-              <h2 className="text-2xl font-bold text-foreground mb-4">Trip Expenses</h2>
+             <h2 className="text-2xl font-bold text-foreground mb-4">Trip Expenses</h2>
              <div className="bg-surface rounded-lg shadow-sm border border-border-theme overflow-hidden">
                 <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
@@ -1097,6 +1120,9 @@ export default function AdminDashboard() {
                            <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">{exp.recorded_by}</td>
                         </tr>
                       ))}
+                      {expenses.length === 0 && (
+                        <tr><td colSpan={4} className="px-6 py-8 text-center text-muted">No trip expenses recorded.</td></tr>
+                      )}
                    </tbody>
                 </table>
                 </div>

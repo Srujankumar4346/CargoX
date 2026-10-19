@@ -123,18 +123,18 @@ export const DriverProfileDrawer: React.FC<DriverProfileDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex justify-start">
+    <div className="absolute inset-0 z-50 overflow-hidden flex justify-start sm:rounded-[32px]">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-fade-in"
+        className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity animate-fade-in sm:rounded-[32px]"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Drawer Container */}
-      <div className="relative w-[85%] max-w-[320px] bg-white h-full shadow-2xl flex flex-col z-10 animate-slide-in-right overflow-hidden">
+      {/* Drawer Container (Sliding in inside the phone frame) */}
+      <div className="relative w-[85%] max-w-[320px] bg-white h-full shadow-2xl flex flex-col z-10 animate-slide-in-right overflow-hidden sm:rounded-l-[32px]">
         {/* Top Header Card (Signature Emerald Green in Reference) */}
-        <div className="bg-[#10B981] text-white p-6 pt-10 flex items-center justify-between shadow-md relative">
+        <div className="bg-[#10B981] text-white p-5 pt-8 flex items-center justify-between shadow-md relative">
           <div
             onClick={() => {
               onSelectMenuItem('profile');

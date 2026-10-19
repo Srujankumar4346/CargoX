@@ -68,6 +68,11 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
   const isArrived = rawStatus === 'ARRIVED';
   const isPodSubmitted = rawStatus === 'POD_SUBMITTED';
   const isCompleted = ['COMPLETED', 'DELIVERED'].includes(rawStatus);
+  const isDeliveryOtpVerified = Boolean(
+    activeTrip?.delivery_otp_verified ||
+    activeTrip?.otp_verified ||
+    otpSuccessMsg
+  );
 
   // Fallback defaults matching Hyderabad -> Vijayawada
   const pickupCity = (activeTrip?.pickup_address || 'Qutubullapur, Hyderabad').split(',')[0].trim();
@@ -554,47 +559,68 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
             </div>
           </div>
 
-          {/* OTP Verification Form */}
-          <form onSubmit={handleVerifyOtp} className="space-y-3 pt-1">
-            {otpError && (
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle size={15} className="shrink-0" />
-                <span>{otpError}</span>
+          {/* Handover OTP Status: Verified Banner or Form */}
+          {isDeliveryOtpVerified ? (
+            <div className="p-3.5 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-950 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={18} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-emerald-950">
+                    Handover OTP Verified
+                  </h4>
+                  <p className="text-[11px] text-emerald-800 font-medium">
+                    {otpSuccessMsg || 'Delivery verification code confirmed. Recipient handover approved.'}
+                  </p>
+                </div>
               </div>
-            )}
-            {otpSuccessMsg && (
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 font-medium">
-                <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
-                <span>{otpSuccessMsg}</span>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Enter Handover OTP Code
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  value={otpInput}
-                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g. 542198"
-                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-bold tracking-widest text-center text-base focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
-                />
-                <button
-                  type="submit"
-                  disabled={verifyingOtp || !otpInput.trim()}
-                  className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
-                >
-                  {verifyingOtp ? <RotateCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                  <span>Verify OTP</span>
-                </button>
-              </div>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider border border-emerald-300">
+                Verified
+              </span>
             </div>
-          </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp} className="space-y-3 pt-1">
+              {otpError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{otpError}</span>
+                </div>
+              )}
+              {otpSuccessMsg && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 font-medium">
+                  <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+                  <span>{otpSuccessMsg}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Enter Handover OTP Code
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="e.g. 542198"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-bold tracking-widest text-center text-base focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
+                  />
+                  <button
+                    type="submit"
+                    disabled={verifyingOtp || !otpInput.trim()}
+                    className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {verifyingOtp ? <RotateCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                    <span>Verify OTP</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
 
           {/* Payment Status & Collection Box */}
           <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2.5 shadow-xs">

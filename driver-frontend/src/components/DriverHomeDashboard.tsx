@@ -55,7 +55,7 @@ export const DriverHomeDashboard: React.FC<DriverHomeDashboardProps> = ({
     : [17.4447, 78.3783]; // Default Hyderabad / Tech hub coordinates
 
   return (
-    <div className="w-full max-w-md mx-auto pb-24 px-4 pt-3 flex flex-col gap-4 text-slate-900 bg-white min-h-screen">
+    <div className="flex-1 w-full pb-6 px-4 pt-4 flex flex-col gap-4 text-slate-900 bg-white">
       {/* 1. Header (Driver Avatar, Name, Rating, Notifications) */}
       <div className="flex items-center justify-between pt-1">
         <div

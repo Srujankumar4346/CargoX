@@ -28,13 +28,41 @@ function RoleGate({ children }: { children: React.ReactNode }) {
   const checkRole = () => {
     setLoading(true);
     setFetchError(null);
-    api.getCurrentUserProfile()
-      .then((user) => {
+
+    // If driver signed in via username/password, token is stored in localStorage
+    const localToken = localStorage.getItem("access_token");
+    if (localToken) {
+      try {
+        const parts = localToken.split(".");
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.role === "DRIVER" || payload.iss === "cargox_local") {
+            setRole("DRIVER");
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Could not parse local token:", e);
+      }
+    }
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Connection timed out")), 5000)
+    );
+
+    Promise.race([api.getCurrentUserProfile(), timeoutPromise])
+      .then((user: any) => {
         setRole(user.role);
       })
-      .catch((err) => {
-        setRole(null);
-        setFetchError(err?.message || "Failed to connect to backend");
+      .catch((err: any) => {
+        // If we have a local token, keep DRIVER role rather than blocking the UI
+        if (localStorage.getItem("access_token")) {
+          setRole("DRIVER");
+        } else {
+          setRole(null);
+          setFetchError(err?.message || "Failed to connect to backend");
+        }
       })
       .finally(() => {
         setLoading(false);
@@ -42,9 +70,14 @@ function RoleGate({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    if (!isLoaded) return;
     const hasLocalToken = !!localStorage.getItem("access_token");
-    if (!isSignedIn && !hasLocalToken) {
+    if (hasLocalToken) {
+      checkRole();
+      return;
+    }
+
+    if (!isLoaded) return;
+    if (!isSignedIn) {
       setRole(null);
       setLoading(false);
       return;
@@ -53,7 +86,9 @@ function RoleGate({ children }: { children: React.ReactNode }) {
     checkRole();
   }, [isLoaded, isSignedIn, clerkUser]);
 
-  if (!isLoaded || loading) {
+  const hasLocalToken = !!localStorage.getItem("access_token");
+
+  if ((!hasLocalToken && !isLoaded) || loading) {
     return (
       <div className="min-h-screen bg-[#020b1a] text-slate-100 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -64,7 +99,6 @@ function RoleGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const hasLocalToken = !!localStorage.getItem("access_token");
   if (!isSignedIn && !hasLocalToken) {
     return <Navigate to="/login" replace />;
   }

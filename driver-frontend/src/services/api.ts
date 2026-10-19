@@ -15,8 +15,11 @@ export function setUserEmailGetter(getter: () => string | null | undefined) {
 async function authFetch(url: string, options: RequestInit = {}) {
   let token = null;
   
-  // 1. Try registered tokenGetter first (from Clerk React hook)
-  if (tokenGetter) {
+  // 1. Try local driver token first (Drivers log in with username/password given by admin)
+  token = localStorage.getItem('access_token');
+
+  // 2. Try registered tokenGetter (Clerk React hook fallback)
+  if (!token && tokenGetter) {
     try {
       token = await tokenGetter();
     } catch (e) {
@@ -24,18 +27,13 @@ async function authFetch(url: string, options: RequestInit = {}) {
     }
   }
 
-  // 2. Try window.Clerk fallback
+  // 3. Try window.Clerk fallback
   if (!token && typeof window !== 'undefined' && (window as any).Clerk && (window as any).Clerk.session) {
     try {
       token = await (window as any).Clerk.session.getToken();
     } catch (e) {
       console.warn("[authFetch] Failed to fetch Clerk token from window:", e);
     }
-  }
-  
-  // 3. Fallback to localStorage
-  if (!token) {
-    token = localStorage.getItem('access_token');
   }
 
   // Extract user email so backend can link pre-provisioned driver accounts accurately

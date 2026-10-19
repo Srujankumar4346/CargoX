@@ -24,6 +24,7 @@ class Vehicle(Document):
 class Driver(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
     user_id: Optional[uuid.UUID] = None
+    driver_id: Optional[str] = None
     email: str
     username: Optional[str] = None
     password_hash: Optional[str] = None
@@ -39,6 +40,8 @@ class Driver(Document):
         name = "drivers"
         indexes = [
             pymongo.IndexModel("user_id", sparse=True),
+            pymongo.IndexModel("driver_id", sparse=True),
+            pymongo.IndexModel("username", sparse=True),
             pymongo.IndexModel("status"),
             pymongo.IndexModel("phone"),
             pymongo.IndexModel("email", unique=True),

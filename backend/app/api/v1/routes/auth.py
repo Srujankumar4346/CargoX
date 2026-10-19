@@ -26,6 +26,7 @@ class CurrentUserResponse(BaseModel):
     phone: Optional[str] = None
     license_number: Optional[str] = None
     username: Optional[str] = None
+    driver_id: Optional[str] = None
     avatar_url: Optional[str] = None
     vehicle_registration: Optional[str] = None
     vehicle_type: Optional[str] = None
@@ -53,6 +54,7 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
                 "phone": driver.phone,
                 "license_number": driver.license_number,
                 "username": driver.username,
+                "driver_id": driver.driver_id,
                 "avatar_url": driver.avatar_url,
             })
             
@@ -72,9 +74,17 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
 
 @router.post("/driver-login", response_model=DriverLoginResponse)
 async def driver_login(req: DriverLoginRequest):
-    driver = await Driver.find_one(Driver.username == req.username)
+    identifier = req.username.strip()
+    # Check by driver_id (case-insensitive or exact), username, email, or phone
+    driver = await Driver.find_one(Driver.username == identifier.lower())
     if not driver:
-        driver = await Driver.find_one(Driver.email == req.username.strip().lower())
+        driver = await Driver.find_one(Driver.driver_id == identifier.upper())
+    if not driver:
+        driver = await Driver.find_one(Driver.driver_id == identifier)
+    if not driver:
+        driver = await Driver.find_one(Driver.email == identifier.lower())
+    if not driver:
+        driver = await Driver.find_one(Driver.phone == identifier)
     if not driver:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     

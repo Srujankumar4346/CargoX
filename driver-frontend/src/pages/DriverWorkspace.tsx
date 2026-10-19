@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle, ShieldCheck, KeyRound, Smartphone, ShieldAlert, FileText, HelpCircle, Phone, Mail, FileCheck } from "lucide-react";
+import { Activity, ClipboardList, Navigation, Package, Wallet, MapPin, Clock, Menu, X, CheckCircle2, Truck, IndianRupee, ArrowRight, User, QrCode, RotateCw, Copy, ExternalLink, AlertCircle, ShieldCheck, KeyRound, Smartphone, ShieldAlert, FileText, HelpCircle, Phone, Mail, FileCheck, Gift, Award, TrendingUp, Users } from "lucide-react";
 import { useAuth, UserButton, useUser } from "@clerk/react";
 import { api } from "../services/api";
 import NotificationDropdown from "../components/NotificationDropdown";
@@ -72,6 +72,7 @@ import DriverActiveOrderScreen from "../components/DriverActiveOrderScreen";
 import DriverVehicleDocumentsScreen from "../components/DriverVehicleDocumentsScreen";
 import DriverHelpSupportScreen from "../components/DriverHelpSupportScreen";
 import DriverProfileScreen from "../components/DriverProfileScreen";
+import InAppModal, { InAppModalData } from "../components/InAppModal";
 
 export default function DriverWorkspace() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -89,6 +90,7 @@ export default function DriverWorkspace() {
   >('dashboard');
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<any>(null);
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const [inAppModalData, setInAppModalData] = useState<InAppModalData | null>(null);
   const [isOnDuty, setIsOnDuty] = useState<boolean>(() => {
     return localStorage.getItem('cargoexpress_driver_on_duty') === 'true';
   });
@@ -1962,17 +1964,122 @@ export default function DriverWorkspace() {
             } else if (itemKey === 'help' || itemKey === 'support') {
               setActiveScreen('help');
             } else if (itemKey === 'incentives') {
-              alert('Driver Incentives: Complete 15 weekly deliveries on time to unlock ₹2,500 fleet performance bonus.');
+              setInAppModalData({
+                title: 'Driver Incentives',
+                subtitle: 'Weekly Performance Bonus',
+                badge: 'Active Reward',
+                icon: <Gift size={24} className="text-emerald-600" />,
+                content: (
+                  <div className="space-y-2">
+                    <p className="font-semibold text-slate-800">
+                      Complete 15 weekly deliveries on time to unlock a <span className="text-emerald-600 font-extrabold">₹2,500</span> fleet bonus.
+                    </p>
+                    <ul className="list-disc pl-4 space-y-1 text-slate-500 text-[11px]">
+                      <li>Maintain ≥ 90% acceptance rate</li>
+                      <li>Zero customer damage complaints</li>
+                      <li>Payout automatically credited to your Earnings every Monday</li>
+                    </ul>
+                  </div>
+                ),
+                actionText: 'Got It'
+              });
             } else if (itemKey === 'rewards') {
-              alert('Driver Rewards & Insurance: Covered under CargoExpress ₹10 Lakhs Transit Accident Insurance & Fuel Partner Discounts.');
+              setInAppModalData({
+                title: 'Driver Rewards & Insurance',
+                subtitle: 'Comprehensive Partner Coverage',
+                badge: 'Verified Protection',
+                icon: <Award size={24} className="text-amber-500" />,
+                content: (
+                  <div className="space-y-2">
+                    <p className="font-semibold text-slate-800">
+                      Active drivers are fully covered under CargoExpress Transit Insurance.
+                    </p>
+                    <div className="rounded-xl bg-white p-3 border border-slate-200/80 space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Accident Insurance:</span>
+                        <span className="font-bold text-slate-900">₹10 Lakhs</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Fuel Discount (HPCL/IOCL):</span>
+                        <span className="font-bold text-emerald-600">3.5% Cashback</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Tire Replacement Assistance:</span>
+                        <span className="font-bold text-slate-900">Partner Rates</span>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                actionText: 'Close'
+              });
             } else if (itemKey === 'demand') {
-              alert('Demand Planner: High shipment surge active around Secunderabad, Miyapur, and Quthbullapur industrial corridors.');
+              setInAppModalData({
+                title: 'Demand Planner',
+                subtitle: 'High Surge Freight Zones',
+                badge: 'Surge Active',
+                icon: <TrendingUp size={24} className="text-blue-600" />,
+                content: (
+                  <div className="space-y-2">
+                    <p className="font-semibold text-slate-800">
+                      High shipment surge active around major industrial corridors. Head to these hubs to receive higher booking frequency:
+                    </p>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-100">
+                        <span className="font-medium text-slate-800">Secunderabad / Bowenpally</span>
+                        <span className="text-emerald-600 font-bold text-[11px]">1.4x Surge</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-100">
+                        <span className="font-medium text-slate-800">Miyapur & Patancheru</span>
+                        <span className="text-emerald-600 font-bold text-[11px]">1.3x Surge</span>
+                      </div>
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-100">
+                        <span className="font-medium text-slate-800">Quthbullapur Corridor</span>
+                        <span className="text-blue-600 font-bold text-[11px]">1.2x Surge</span>
+                      </div>
+                    </div>
+                  </div>
+                ),
+                actionText: 'Explore Map'
+              });
             } else if (itemKey === 'referrals') {
-              alert('Refer Friends: Invite verified commercial truck drivers to join CargoExpress and earn ₹5,500 after their 10th completed trip.');
+              setInAppModalData({
+                title: 'Refer & Earn',
+                subtitle: 'Invite Commercial Truck Drivers',
+                badge: 'Earn ₹5,500',
+                icon: <Users size={24} className="text-purple-600" />,
+                content: (
+                  <div className="space-y-2.5">
+                    <p className="font-semibold text-slate-800">
+                      Invite verified commercial truck drivers to join the CargoExpress fleet!
+                    </p>
+                    <div className="rounded-xl bg-purple-50/70 p-3 border border-purple-100 text-center">
+                      <span className="text-[10px] uppercase font-bold text-purple-600">Your Referral Code</span>
+                      <div className="text-base font-black text-purple-950 tracking-widest mt-0.5">
+                        {profile?.driver_id || 'CGRX-DRIVER'}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      You receive <span className="font-bold text-slate-800">₹5,500</span> directly in your wallet once your referred driver completes 10 verified trips.
+                    </p>
+                  </div>
+                ),
+                actionText: 'Copy Code & Share',
+                onAction: () => {
+                  navigator.clipboard.writeText(profile?.driver_id || 'CGRX-DRIVER');
+                  setInAppModalData(null);
+                }
+              });
             } else {
               setActiveScreen('profile');
             }
           }}
+        />
+
+        {/* In-App Styled Notification Modal */}
+        <InAppModal
+          isOpen={!!inAppModalData}
+          onClose={() => setInAppModalData(null)}
+          data={inAppModalData}
         />
       </div>
 

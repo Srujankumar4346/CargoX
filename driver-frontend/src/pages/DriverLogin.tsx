@@ -73,11 +73,11 @@ export default function DriverLogin() {
         <p className="text-slate-500 text-xs">Sign in with your driver credentials to access assigned fleet orders.</p>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-xl border border-slate-200/90 w-full max-w-sm">
-        <form onSubmit={handleLogin} className="space-y-4">
+      <div className="bg-white p-7 rounded-3xl shadow-xl border border-slate-200/90 w-full max-w-sm">
+        <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-              <AlertCircle size={16} className="shrink-0" />
+            <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
+              <AlertCircle size={16} className="shrink-0 text-red-500" />
               <span>{error}</span>
             </div>
           )}
@@ -88,43 +88,45 @@ export default function DriverLogin() {
             <input 
               required 
               type="text"
+              autoComplete="off"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm font-medium" 
-              placeholder="e.g. CGRX-10001 or pandu" 
+              className="w-full rounded-xl border border-slate-300 bg-slate-50/50 px-3.5 py-3 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden text-sm font-medium transition" 
+              placeholder="Enter Driver ID or Username" 
             />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Admin-Assigned Password
+              Password
             </label>
             <input 
               required 
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm" 
-              placeholder="Enter password provided by admin" 
+              className="w-full rounded-xl border border-slate-300 bg-slate-50/50 px-3.5 py-3 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-hidden text-sm transition" 
+              placeholder="Enter Password" 
             />
           </div>
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full rounded-xl bg-slate-900 hover:bg-black px-4 py-3 font-extrabold text-white text-sm transition disabled:opacity-50 mt-4 cursor-pointer shadow-md"
+            className="w-full rounded-xl bg-slate-950 hover:bg-black active:scale-[0.99] px-4 py-3.5 font-bold text-white text-sm transition disabled:opacity-50 mt-4 cursor-pointer shadow-lg"
           >
             {loading ? "Signing in..." : "Sign In to Driver Workspace"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-[11px] text-slate-500">
-          Driver credentials are administered by CargoX Dispatch Operations. If you forgot your password, contact your fleet administrator.
+        <p className="mt-5 text-center text-xs text-slate-500">
+          Credentials are provided by CargoX Admin. Contact your fleet administrator if you need assistance.
         </p>
 
         <div className="mt-5 text-center flex flex-col gap-2">
           <button
             type="button"
             onClick={() => setShowLoginForm(false)}
-            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition cursor-pointer"
           >
             <ArrowLeft size={13} /> Back to Welcome Screen
           </button>

@@ -162,7 +162,14 @@ export default function MasterCustomerApp() {
               weightKg: Math.round((b.weight_tons || 0.2) * 1000),
               paymentType: "Cash",
               status: displayStatus,
-              fare: b.final_price ?? b.estimated_price ?? 2811,
+              fare: Number(
+                b.final_price ??
+                b.estimated_price ??
+                b.quotation?.customer_total_charge ??
+                b.amount_due ??
+                b.total_amount ??
+                0
+              ),
               image: "/images/vehicles/ashok-leyland-dost.png",
             };
           });

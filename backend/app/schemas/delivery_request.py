@@ -97,6 +97,8 @@ class DeliveryRequestRead(BaseModel):
     assigned_vehicle_registration: Optional[str] = None
     assigned_vehicle_type: Optional[str] = None
     assigned_vehicle_capacity_tons: Optional[float] = None
+    final_price: Optional[float] = None
+    estimated_price: Optional[float] = None
     quotation: Optional[Dict[str, Any]] = None
     
     model_config = ConfigDict(from_attributes=True)

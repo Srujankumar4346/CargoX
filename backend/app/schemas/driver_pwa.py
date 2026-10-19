@@ -71,6 +71,11 @@ class DriverTripRead(BaseModel):
     pickup_otp_verified: bool = False
     delivery_otp_verified: bool = False
     recipient_masked_phone: Optional[str] = None
+    
+    # Driver Payout Breakdown (after platform commission)
+    driver_payable_amount: Optional[Decimal] = None
+    cargox_service_fee: Optional[Decimal] = None
+    service_fee_percentage: Optional[Decimal] = None
 
     model_config = ConfigDict(from_attributes=True)
 

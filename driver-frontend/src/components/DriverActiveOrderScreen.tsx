@@ -644,6 +644,24 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
               </span>
             </div>
 
+            {/* Driver Payout & Commission Breakdown */}
+            {activeTrip?.driver_payable_amount && (
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Customer Total Fare:</span>
+                  <span className="font-bold text-slate-900">₹{parseFloat(activeTrip?.invoice_total_amount || dueAmount || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-500 text-[11px]">
+                  <span>CargoX Platform Commission ({activeTrip?.service_fee_percentage || 10}%):</span>
+                  <span className="font-bold text-amber-700">-₹{parseFloat(activeTrip?.cargox_service_fee || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-emerald-700 font-extrabold">
+                  <span>Your Net Trip Earnings:</span>
+                  <span className="text-sm">₹{parseFloat(activeTrip.driver_payable_amount).toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
             {!isPrepaid && (
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 {cashSuccessMsg ? (

@@ -40,9 +40,39 @@ async def _batch_customer_request_responses(requests: List[DeliveryRequest]) -> 
     driver_by_id = {d.id: d for d in drivers}
     vehicle_by_id = {v.id: v for v in vehicles}
     
+    # Batch load quotations and invoices to provide real calculated prices
+    from app.models.pricing import Quotation
+    from app.models.finance import Invoice
+    quotations = await Quotation.find({"request_id": {"$in": req_ids}}).to_list() if req_ids else []
+    invoices = await Invoice.find({"request_id": {"$in": req_ids}}).to_list() if req_ids else []
+    
+    quote_by_req = {q.request_id: q for q in quotations}
+    invoice_by_req = {inv.request_id: inv for inv in invoices}
+    
     results = []
     for req in requests:
         res = req.model_dump()
+        quote = quote_by_req.get(req.id)
+        invoice = invoice_by_req.get(req.id)
+        
+        # Calculate real customer price
+        customer_charge = None
+        if invoice:
+            customer_charge = float(invoice.total_amount)
+        elif quote:
+            customer_charge = float(quote.customer_total_charge)
+            
+        res["final_price"] = customer_charge
+        res["estimated_price"] = customer_charge
+        if quote:
+            res["quotation"] = {
+                "customer_total_charge": float(quote.customer_total_charge),
+                "base_fare": float(quote.base_fare or 0),
+                "distance_charge": float(quote.distance_charge or 0),
+                "driver_payable_amount": float(quote.driver_payable_amount or 0),
+                "service_fee_amount": float(quote.service_fee_amount or 0),
+            }
+        
         trip = trip_by_req.get(req.id)
         if trip:
             assignment = latest_assignment_by_trip.get(trip.id)

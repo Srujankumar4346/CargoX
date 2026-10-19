@@ -83,9 +83,7 @@ class DriverService:
             ):
                 invoice = await DriverService._ensure_invoice_for_trip(trip, request)
 
-        quotation = None
-        if not invoice:
-            quotation = await Quotation.find_one(Quotation.request_id == request.id)
+        quotation = await Quotation.find_one(Quotation.request_id == request.id)
 
         pm = getattr(invoice, "payment_method", None) if invoice else None
         payment_method_val = pm.value if pm else None
@@ -262,6 +260,14 @@ class DriverService:
             "otp_is_override": otp_is_override,
             "pickup_otp_verified": pickup_otp_verified,
             "delivery_otp_verified": delivery_otp_verified,
+            # Driver Payout Breakdown (after platform commission)
+            "driver_payable_amount": Decimal(str(quotation.driver_payable_amount)) if quotation and quotation.driver_payable_amount else (
+                Decimal(str(inv_total * Decimal("0.90"))).quantize(Decimal("0.01")) if inv_total else None
+            ),
+            "cargox_service_fee": Decimal(str(quotation.service_fee_amount)) if quotation and quotation.service_fee_amount else (
+                Decimal(str(inv_total * Decimal("0.10"))).quantize(Decimal("0.01")) if inv_total else None
+            ),
+            "service_fee_percentage": Decimal(str(quotation.service_fee_percentage)) if quotation and quotation.service_fee_percentage else Decimal("10.00"),
         }
 
     @staticmethod

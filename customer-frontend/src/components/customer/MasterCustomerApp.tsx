@@ -52,7 +52,7 @@ export default function MasterCustomerApp() {
   const [dropCoords, setDropCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
 
-  const [cargoWeightKg, setCargoWeightKg] = useState<number>(200);
+  const [cargoWeightKg, setCargoWeightKg] = useState<number>(0);
 
   const [selectedVehicle, setSelectedVehicle] = useState<FleetVehicleItem>({
     id: "part-load",
@@ -135,9 +135,8 @@ export default function MasterCustomerApp() {
     }
   }, [currentScreen]);
 
-  // Load real bookings from backend when signed in
+  // Load real bookings from backend (works with Clerk auth OR guest customer session)
   const loadCustomerBookings = () => {
-    if (!isSignedIn) return;
     setIsOrdersLoading(true);
     api.getBookings()
       .then((res) => {
@@ -186,10 +185,8 @@ export default function MasterCustomerApp() {
   };
 
   useEffect(() => {
-    if (isSignedIn) {
-      loadCustomerBookings();
-    }
-  }, [isSignedIn, currentScreen]);
+    loadCustomerBookings();
+  }, [isSignedIn, currentScreen, activeTab]);
 
   // Handle Bottom Tab Navigation (5 Tabs matching reference)
   const handleTabChange = (tab: TabType) => {
@@ -336,8 +333,18 @@ export default function MasterCustomerApp() {
       let errMsg = err.message || "Failed to create delivery request. Please check vehicle availability.";
       try {
         const parsed = JSON.parse(errMsg);
-        if (parsed.detail) errMsg = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+        if (parsed.detail) {
+          if (typeof parsed.detail === "string") {
+            errMsg = parsed.detail;
+          } else if (Array.isArray(parsed.detail) && parsed.detail.length > 0) {
+            errMsg = parsed.detail.map((d: any) => d.msg || JSON.stringify(d)).join("\n");
+          } else {
+            errMsg = JSON.stringify(parsed.detail);
+          }
+        }
       } catch {}
+      // Clean up Pydantic "Value error, " prefix if present
+      errMsg = errMsg.replace(/^Value error,\s*/i, "");
       setBookingErrorMessage(errMsg);
     } finally {
       setIsSubmittingBooking(false);
@@ -639,21 +646,27 @@ export default function MasterCustomerApp() {
 
         {/* In-App Error Notification Modal */}
         {bookingErrorMessage && (
-          <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-6 animate-fade-in">
-            <div className="bg-slate-900 border border-slate-700/80 text-white rounded-3xl p-6 w-full max-w-xs shadow-2xl flex flex-col items-center text-center">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4">
+          <div className="absolute inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-[#0f172a] border border-slate-700/90 text-white rounded-3xl p-5 w-full max-w-[340px] shadow-2xl flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 shrink-0">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
-              <h3 className="text-base font-bold text-white mb-1.5">Booking Notice</h3>
-              <p className="text-xs text-slate-300 mb-6 leading-relaxed">
-                {bookingErrorMessage}
-              </p>
+
+              <h3 className="text-base font-bold text-white mb-2">Booking Notice</h3>
+
+              {/* Message Box with explicit scroll and word-break to stay strictly inside the container */}
+              <div className="w-full max-h-48 overflow-y-auto bg-slate-950/70 border border-slate-800 rounded-xl p-3 mb-5 text-left">
+                <p className="text-xs text-slate-300 leading-relaxed break-words whitespace-pre-wrap select-text font-normal">
+                  {bookingErrorMessage}
+                </p>
+              </div>
+
               <button
                 type="button"
                 onClick={() => setBookingErrorMessage(null)}
-                className="w-full py-3 bg-[#e29367] hover:bg-[#d88457] active:scale-95 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-md"
+                className="w-full py-3 bg-[#e29367] hover:bg-[#d88457] active:scale-95 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-md cursor-pointer"
               >
                 Okay, Understood
               </button>

@@ -734,6 +734,91 @@ export default function DriverWorkspace() {
                   </div>
                 </div>
 
+                {/* Multi-Stop Part Load Consolidation Addresses Accordion / View */}
+                {activeTrip.stops && activeTrip.stops.length > 0 && (
+                  <div className="mb-6 rounded-xl border border-purple-500/40 bg-purple-950/20 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+                        <h4 className="text-sm font-bold text-white">
+                          Part Load Consolidated Stops ({activeTrip.stops.length} Total Addresses)
+                        </h4>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-purple-300 bg-purple-900/60 px-2 py-0.5 rounded-full border border-purple-500/30">
+                        Shared Truck Manifest
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                      {activeTrip.stops.map((stop: any, idx: number) => {
+                        const isPickup = stop.stop_type === "PICKUP";
+                        const isDone = stop.status === "COMPLETED";
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-lg border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                              isDone
+                                ? "bg-slate-900/40 border-slate-800 opacity-60"
+                                : isPickup
+                                ? "bg-blue-950/30 border-blue-800/60"
+                                : "bg-emerald-950/30 border-emerald-800/60"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <span
+                                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
+                                  isPickup
+                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                                    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                }`}
+                              >
+                                {stop.stop_sequence || idx + 1}
+                              </span>
+
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-white text-xs">{stop.company_name}</span>
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                      isPickup ? "bg-blue-900/60 text-blue-300" : "bg-emerald-900/60 text-emerald-300"
+                                    }`}
+                                  >
+                                    {stop.stop_type}
+                                  </span>
+                                  {isDone && (
+                                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">
+                                      COMPLETED
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] font-mono text-purple-300 font-semibold">
+                                    {stop.cargo_weight_kg} kg
+                                  </span>
+                                </div>
+                                <p className="text-slate-300 text-xs mt-1 leading-snug">{stop.address}</p>
+                                {stop.contact_phone && (
+                                  <p className="text-slate-400 text-[11px] mt-0.5">
+                                    Contact: {stop.contact_person || 'Consignee'} ({stop.contact_phone})
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => openGoogleMapsLocation(stop.lat, stop.lng, stop.address)}
+                              className="shrink-0 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-medium transition cursor-pointer"
+                            >
+                              <Navigation size={12} className="text-blue-400" />
+                              <span>Map Nav</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 border-y border-slate-800 py-4">
                   <div>
                     <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">

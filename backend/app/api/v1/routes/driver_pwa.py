@@ -84,6 +84,39 @@ async def arrive(
     """
     return await DriverService.arrive(trip_id, current_driver)
 
+@router.post("/trips/{trip_id}/stops/{stop_id}/complete")
+async def complete_trip_stop(
+    trip_id: uuid.UUID,
+    stop_id: uuid.UUID,
+    current_driver: User = Depends(get_current_driver),
+):
+    """
+    Driver: Marks an individual stop (Pickup or Drop) in the consolidated manifest as COMPLETED.
+    If it's a Drop stop, automatically transitions the underlying DeliveryRequest to DELIVERED.
+    """
+    from app.models.delivery import TripStop, DeliveryRequest
+    from app.models.enums import DeliveryRequestStatus
+    from datetime import datetime, timezone
+
+    stop = await TripStop.find_one(TripStop.id == stop_id, TripStop.trip_id == trip_id)
+    if not stop:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stop not found")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    stop.status = "COMPLETED"
+    stop.completed_at = now
+    await stop.save()
+
+    # If it was a DROP stop, mark that customer's delivery request as DELIVERED without affecting other customers
+    if stop.stop_type == "DROP":
+        req = await DeliveryRequest.find_one(DeliveryRequest.id == stop.request_id)
+        if req and req.status not in (DeliveryRequestStatus.DELIVERED, DeliveryRequestStatus.COMPLETED):
+            req.status = DeliveryRequestStatus.DELIVERED
+            req.updated_at = now
+            await req.save()
+
+    return {"message": "Stop completed successfully", "stop_id": str(stop.id), "status": stop.status}
+
 @router.post("/trips/{trip_id}/otp/verify", response_model=DeliveryOTPVerifyResponse)
 async def verify_delivery_otp(
     trip_id: uuid.UUID,

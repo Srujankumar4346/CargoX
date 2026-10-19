@@ -9,6 +9,11 @@ class PricingConfigCreate(BaseModel):
     margin_per_km: Decimal = Field(..., ge=Decimal("0"), description="Margin per km in INR")
     base_flat_fare: Optional[Decimal] = Field(default=Decimal("500.00"), ge=Decimal("0"), description="Base booking fare")
     base_distance_km: Optional[Decimal] = Field(default=Decimal("0.00"), ge=Decimal("0"), description="Included base distance threshold in km")
+    part_load_min_freight: Optional[Decimal] = Field(default=Decimal("350.00"), ge=Decimal("0"), description="Part Load minimum freight")
+    part_load_base_weight_kg: Optional[Decimal] = Field(default=Decimal("250.00"), ge=Decimal("0"), description="Part Load base weight included")
+    part_load_rate_per_kg: Optional[Decimal] = Field(default=Decimal("7.00"), ge=Decimal("0"), description="Part Load rate per kg above base weight")
+    part_load_rate_per_km: Optional[Decimal] = Field(default=Decimal("12.00"), ge=Decimal("0"), description="Part Load rate per km")
+    part_load_volumetric_ratio: Optional[Decimal] = Field(default=Decimal("5000.00"), gt=Decimal("0"), description="Volumetric divisor cm3/kg")
     capacity_surcharge_enabled: Optional[bool] = Field(default=True, description="Whether capacity surcharge is enabled")
     capacity_utilization_threshold_percent: Optional[Decimal] = Field(default=Decimal("85.00"), ge=Decimal("0"), le=Decimal("100"), description="Threshold percent for capacity surcharge")
     vehicle_max_capacity_surcharge: Optional[Decimal] = Field(default=Decimal("600.00"), ge=Decimal("0"), description="Surcharge when reaching vehicle max capacity")
@@ -26,6 +31,11 @@ class PricingConfigRead(BaseModel):
     margin_per_km: Decimal
     base_flat_fare: Decimal = Decimal("500.00")
     base_distance_km: Decimal = Decimal("0.00")
+    part_load_min_freight: Decimal = Decimal("350.00")
+    part_load_base_weight_kg: Decimal = Decimal("250.00")
+    part_load_rate_per_kg: Decimal = Decimal("7.00")
+    part_load_rate_per_km: Decimal = Decimal("12.00")
+    part_load_volumetric_ratio: Decimal = Decimal("5000.00")
     capacity_surcharge_enabled: bool = True
     capacity_utilization_threshold_percent: Decimal = Decimal("85.00")
     vehicle_max_capacity_surcharge: Decimal = Decimal("600.00")

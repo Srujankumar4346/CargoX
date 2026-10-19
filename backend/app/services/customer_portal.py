@@ -80,6 +80,11 @@ class CustomerPortalService:
                 goods_description=payload.goods_description,
                 weight_tons=payload.weight_tons,
                 special_instructions=payload.special_instructions,
+                load_type=getattr(payload, "load_type", "PART_LOAD") or "PART_LOAD",
+                length_cm=getattr(payload, "length_cm", None),
+                width_cm=getattr(payload, "width_cm", None),
+                height_cm=getattr(payload, "height_cm", None),
+                package_count=getattr(payload, "package_count", None),
                 
                 # Pickup
                 pickup_company_name=payload.pickup_company_name,
@@ -103,6 +108,21 @@ class CustomerPortalService:
             
             try:
                 await new_req.insert()
+                # Generate quotation snapshot for Part Load / Full Truck request
+                try:
+                    from app.services.pricing_engine import PricingEngineService
+                    from app.schemas.quotation import QuotationGenerate
+                    quote_in = QuotationGenerate(
+                        distance_km=new_req.distance_km,
+                        validity_hours=48,
+                        weight_tons=new_req.weight_tons,
+                        vehicle_capacity_tons=new_req.vehicle_capacity_tons,
+                        special_handling=new_req.special_instructions
+                    )
+                    await PricingEngineService.generate_quotation(new_req.id, quote_in, user)
+                except Exception as quote_err:
+                    import logging
+                    logging.getLogger("cargox").warning(f"Auto-quotation warning for request {new_req.id}: {quote_err}")
                 return new_req
             except DuplicateKeyError:
                 if attempt == max_retries - 1:

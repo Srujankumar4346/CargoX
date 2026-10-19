@@ -140,6 +140,24 @@ export const api = {
     return res.json();
   },
 
+  completeTripStop: async (tripId: string, stopId: string) => {
+    const res = await authFetch(`${API_URL}/driver/trips/${tripId}/stops/${stopId}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok) {
+      let errDetail = "Failed to complete stop";
+      try {
+        const body = await res.json();
+        errDetail = body.detail || body.message || errDetail;
+      } catch (_) {
+        errDetail = await res.text();
+      }
+      throw new Error(errDetail);
+    }
+    return res.json();
+  },
+
   verifyDeliveryOTP: async (tripId: string, otp: string, purpose: string = "DELIVERY") => {
     const res = await authFetch(`${API_URL}/driver/trips/${tripId}/otp/verify`, {
       method: "POST",

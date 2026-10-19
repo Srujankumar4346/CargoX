@@ -11,6 +11,11 @@ class DeliveryRequestCreate(BaseModel):
     weight_tons: float = Field(..., gt=0.0)
     special_instructions: Optional[str] = None
     distance_km: Decimal = Field(..., gt=Decimal("0"), description="Distance in kilometers")
+    load_type: Optional[str] = Field("PART_LOAD", description="PART_LOAD or FULL_TRUCK")
+    length_cm: Optional[float] = Field(None, gt=0.0)
+    width_cm: Optional[float] = Field(None, gt=0.0)
+    height_cm: Optional[float] = Field(None, gt=0.0)
+    package_count: Optional[int] = Field(None, ge=1)
     
     # Selected vehicle verification
     selected_vehicle_id: Optional[str] = None
@@ -69,6 +74,11 @@ class DeliveryRequestRead(BaseModel):
     goods_description: Optional[str]
     weight_tons: float
     special_instructions: Optional[str]
+    load_type: Optional[str] = "PART_LOAD"
+    length_cm: Optional[float] = None
+    width_cm: Optional[float] = None
+    height_cm: Optional[float] = None
+    package_count: Optional[int] = None
     
     pickup_company_name: str
     pickup_address: str

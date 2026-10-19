@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Package, Truck, User, ChevronUp,
   CheckCircle, Navigation, Sparkles,
-  ArrowRight, Info, Send, Eye, XCircle, Zap
+  ArrowRight, Info, Send, Eye, XCircle, Zap, RotateCw
 } from "lucide-react";
 
 // ── Types matching actual backend schemas ──────────────────────────────────────
@@ -93,6 +93,7 @@ interface Props {
   aiRecommendations: Record<string, AiRec>;
   onApprove: (bookingId: string) => Promise<void>;
   onCancel?: (bookingId: string) => Promise<void>;
+  onUnassign?: (bookingId: string) => Promise<void>;
   onCreateTrip: (
     booking: Booking,
     vehicleId: string,
@@ -230,6 +231,7 @@ function ExpandedWorkspace({
   onClose,
   onApprove,
   onCancel,
+  onUnassign,
   onCreateTrip,
   onGetAiRec,
 }: {
@@ -241,6 +243,7 @@ function ExpandedWorkspace({
   onClose: () => void;
   onApprove: (id: string) => Promise<void>;
   onCancel?: (id: string) => Promise<void>;
+  onUnassign?: (id: string) => Promise<void>;
   onCreateTrip: (
     booking: Booking,
     vehicleId: string,
@@ -255,6 +258,7 @@ function ExpandedWorkspace({
   const [selectedDriver, setSelectedDriver] = useState("");
   const [isApproving, setIsApproving] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isUnassigning, setIsUnassigning] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
   const [isGettingAi, setIsGettingAi] = useState(false);
 
@@ -1045,9 +1049,36 @@ function ExpandedWorkspace({
           )}
 
           {isAlreadyDispatched && (
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-emerald-400 text-xs font-bold">
-              <CheckCircle size={15} />
-              Trip Dispatched &amp; Driver Assigned
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-emerald-400 text-xs font-bold">
+                <CheckCircle size={15} />
+                Trip Dispatched &amp; Driver Assigned
+              </div>
+
+              {onUnassign && ["DRIVER_ASSIGNED", "VEHICLE_ASSIGNED"].includes(booking.status) && (
+                <button
+                  type="button"
+                  disabled={isUnassigning}
+                  onClick={async () => {
+                    const confirmChange = window.confirm(
+                      `Are you sure you want to change the assignment for ${booking.request_number}? This will reset the booking back to ACCEPTED and release the vehicle/driver.`
+                    );
+                    if (!confirmChange) return;
+                    setIsUnassigning(true);
+                    try {
+                      await onUnassign(booking.id);
+                    } catch (e: any) {
+                      alert(`Could not change assignment: ${e?.message || e}`);
+                    } finally {
+                      setIsUnassigning(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 hover:bg-amber-500/25 text-amber-300 text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCw size={13} className={isUnassigning ? "animate-spin" : ""} />
+                  <span>{isUnassigning ? "Resetting..." : "Change Assignment (Unassign)"}</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1066,6 +1097,7 @@ export default function DispatchBoard({
   aiRecommendations,
   onApprove,
   onCancel,
+  onUnassign,
   onCreateTrip,
   onGetAiRec,
 }: Props) {
@@ -1297,6 +1329,7 @@ export default function DispatchBoard({
                     onClose={() => setExpandedId(null)}
                     onApprove={onApprove}
                     onCancel={onCancel}
+                    onUnassign={onUnassign}
                     onCreateTrip={onCreateTrip}
                     onGetAiRec={onGetAiRec}
                   />

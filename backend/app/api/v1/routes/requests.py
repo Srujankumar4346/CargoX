@@ -17,8 +17,19 @@ async def _batch_customer_request_responses(requests: List[DeliveryRequest]) -> 
         return []
     
     req_ids = [r.id for r in requests]
-    trips = await Trip.find({"request_id": {"$in": req_ids}}).to_list()
-    trip_by_req = {t.request_id: t for t in trips}
+    trips = await Trip.find({
+        "$or": [
+            {"request_id": {"$in": req_ids}},
+            {"request_ids": {"$in": req_ids}}
+        ]
+    }).to_list()
+    trip_by_req = {}
+    for t in trips:
+        if t.request_ids:
+            for r_id in t.request_ids:
+                trip_by_req[r_id] = t
+        if t.request_id:
+            trip_by_req[t.request_id] = t
     
     trip_ids = [t.id for t in trips]
     assignments = await VehicleAssignment.find(

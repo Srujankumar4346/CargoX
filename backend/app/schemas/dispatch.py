@@ -32,3 +32,21 @@ class DispatchRead(BaseModel):
     assignment: VehicleAssignmentRead
 
     model_config = ConfigDict(from_attributes=True)
+
+class ConsolidatedDispatchRequest(BaseModel):
+    request_ids: list[uuid.UUID] = Field(..., min_length=1, description="List of compatible delivery requests to consolidate")
+    vehicle_id: uuid.UUID
+    driver_id: uuid.UUID
+    commission_percentage: Optional[Decimal] = Field(default=None, ge=Decimal("0.0"), le=Decimal("100.0"))
+
+class ConsolidatedDispatchRead(BaseModel):
+    trip_id: uuid.UUID
+    request_ids: list[uuid.UUID]
+    vehicle_id: uuid.UUID
+    driver_id: uuid.UUID
+    total_weight_tons: float
+    total_stops_count: int
+    assigned_at: datetime
+    assignment: VehicleAssignmentRead
+
+    model_config = ConfigDict(from_attributes=True)

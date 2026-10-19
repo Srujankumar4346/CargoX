@@ -13,8 +13,110 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.12em] ${tone}`}>{status?.replace(/_/g, " ") || "UNKNOWN"}</span>;
 }
 
-function Route({ trip }: { trip: any }) {
-  return <div className="space-y-1.5"><p className="flex items-start gap-1.5 text-xs text-slate-300"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-400" />{trip.request?.pickup_address || "Pickup unavailable"}</p><p className="ml-5 text-[10px] text-slate-700">to</p><p className="flex items-start gap-1.5 text-xs text-slate-400"><MapPin size={13} className="mt-0.5 shrink-0 text-red-400" />{trip.request?.destination_address || "Destination unavailable"}</p></div>;
+function Route({ trip, detail }: { trip: any; detail?: any }) {
+  const [showAllStops, setShowAllStops] = useState(false);
+  const stops: any[] = detail?.stops || [];
+  const isPartLoad = stops.length > 0 || detail?.trip_type === "PART_LOAD";
+
+  if (isPartLoad && stops.length > 0) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-purple-500/20 px-2 py-0.5 text-[10px] font-bold text-purple-300 border border-purple-500/30">
+              Part Load Consolidated Route ({stops.length} Stops)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllStops(!showAllStops)}
+            className="text-xs font-bold text-blue-400 hover:text-blue-300 underline cursor-pointer"
+          >
+            {showAllStops ? "Collapse Stops" : "View All Part Load Addresses"}
+          </button>
+        </div>
+
+        {/* First Stop & Last Stop summary preview */}
+        {!showAllStops ? (
+          <div className="space-y-2 rounded-xl bg-slate-950/60 p-3 border border-slate-800">
+            <div className="flex items-start gap-2 text-xs text-slate-300">
+              <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
+              <div>
+                <span className="text-[10px] font-bold text-blue-400 uppercase">First Pickup: {stops[0]?.company_name}</span>
+                <p className="text-slate-300 mt-0.5">{stops[0]?.address}</p>
+              </div>
+            </div>
+            <div className="ml-2.5 border-l-2 border-dashed border-slate-700 h-3"></div>
+            <div className="flex items-start gap-2 text-xs text-slate-300">
+              <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold shrink-0">{stops.length}</span>
+              <div>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">Final Drop: {stops[stops.length - 1]?.company_name}</span>
+                <p className="text-slate-300 mt-0.5">{stops[stops.length - 1]?.address}</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 pt-1 text-center font-semibold">
+              + {stops.length - 2} intermediate stops along this corridor
+            </p>
+          </div>
+        ) : (
+          /* Full expanded manifest of all stops */
+          <div className="space-y-2 max-h-60 overflow-y-auto rounded-xl bg-slate-950/80 p-3 border border-slate-800 divide-y divide-slate-800/80">
+            {stops.map((s, idx) => (
+              <div key={idx} className="pt-2 first:pt-0 flex items-start justify-between gap-3 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <span
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${
+                      s.stop_type === "PICKUP"
+                        ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                        : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    }`}
+                  >
+                    {s.stop_sequence || idx + 1}
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-white">{s.company_name}</span>
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                        s.stop_type === "PICKUP" ? "bg-blue-900/60 text-blue-300" : "bg-emerald-900/60 text-emerald-300"
+                      }`}>
+                        {s.stop_type}
+                      </span>
+                      {s.status === "COMPLETED" && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">
+                          DONE
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-400 text-[11px] mt-0.5">{s.address}</p>
+                    {s.contact_phone && (
+                      <p className="text-slate-500 text-[10px] mt-0.5">Contact: {s.contact_person || 'Consignee'} ({s.contact_phone})</p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-mono text-purple-300 font-bold">{s.cargo_weight_kg} kg</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p className="flex items-start gap-1.5 text-xs text-slate-300">
+        <MapPin size={13} className="mt-0.5 shrink-0 text-emerald-400" />
+        {trip.request?.pickup_address || "Pickup unavailable"}
+      </p>
+      <p className="ml-5 text-[10px] text-slate-700">to</p>
+      <p className="flex items-start gap-1.5 text-xs text-slate-400">
+        <MapPin size={13} className="mt-0.5 shrink-0 text-red-400" />
+        {trip.request?.destination_address || "Destination unavailable"}
+      </p>
+    </div>
+  );
 }
 
 function Coordinates({ trip }: { trip: any }) {
@@ -292,7 +394,7 @@ function DetailPanel({ trip, vehicles, drivers, detail, locations, loading, erro
 
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-600">Route</p>
-            <Route trip={trip} />
+            <Route trip={trip} detail={detail} />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

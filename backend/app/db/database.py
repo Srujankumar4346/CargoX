@@ -28,7 +28,7 @@ async def init_db():
     from app.models.user import User
     from app.models.fleet import Vehicle, Driver, VehicleAssignment
     from app.models.pricing import PricingConfig, Quotation
-    from app.models.delivery import DeliveryRequest, Trip, ProofOfDelivery, LocationHistory
+    from app.models.delivery import DeliveryRequest, Trip, TripStop, ProofOfDelivery, LocationHistory
     from app.models.delivery_otp import DeliveryOTP
     from app.models.finance import Invoice, Payment, DriverSettlement
     from app.models.notifications import Notification
@@ -43,7 +43,7 @@ async def init_db():
             User,
             Vehicle, Driver, VehicleAssignment,
             PricingConfig, Quotation,
-            DeliveryRequest, Trip, ProofOfDelivery, LocationHistory, DeliveryOTP,
+            DeliveryRequest, Trip, TripStop, ProofOfDelivery, LocationHistory, DeliveryOTP,
             Invoice, Payment, DriverSettlement,
             Notification,
             TripExpense, VehicleMaintenance, SystemSettings,

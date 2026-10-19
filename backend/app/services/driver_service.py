@@ -4,7 +4,7 @@ from decimal import Decimal
 import uuid
 from typing import Dict, Any, List, Optional
 
-from app.models.delivery import DeliveryRequest, Trip, LocationHistory
+from app.models.delivery import DeliveryRequest, Trip, LocationHistory, TripStop
 from app.models.fleet import Vehicle, Driver, VehicleAssignment
 from app.models.finance import Invoice, Payment
 from app.models.user import User
@@ -268,6 +268,9 @@ class DriverService:
                 Decimal(str(inv_total * Decimal("0.10"))).quantize(Decimal("0.01")) if inv_total else None
             ),
             "service_fee_percentage": Decimal(str(quotation.service_fee_percentage)) if quotation and quotation.service_fee_percentage else Decimal("10.00"),
+            # Multi-Stop Consolidated Manifest
+            "trip_type": getattr(trip, "trip_type", "FULL_TRUCK") or "FULL_TRUCK",
+            "total_weight_tons": getattr(trip, "total_weight_tons", None) or float(request.weight_tons or 0.0),
         }
 
     @staticmethod
@@ -291,7 +294,35 @@ class DriverService:
         request = await DeliveryRequest.find_one(DeliveryRequest.id == trip.request_id)
         vehicle = await Vehicle.find_one(Vehicle.id == assignment.vehicle_id)
 
-        return await DriverService._build_driver_trip_read(trip, request, vehicle, assignment)
+        res = await DriverService._build_driver_trip_read(trip, request, vehicle, assignment)
+
+        # Populate stops for consolidated trip
+        stops = await TripStop.find(TripStop.trip_id == trip.id).sort("stop_sequence").to_list()
+        if stops:
+            res["stops"] = [
+                {
+                    "id": str(s.id),
+                    "request_id": str(s.request_id),
+                    "stop_sequence": s.stop_sequence,
+                    "stop_type": s.stop_type,
+                    "company_name": s.company_name,
+                    "address": s.address,
+                    "lat": s.lat,
+                    "lng": s.lng,
+                    "contact_person": s.contact_person,
+                    "contact_phone": s.contact_phone,
+                    "cargo_summary": s.cargo_summary,
+                    "cargo_weight_kg": s.cargo_weight_kg,
+                    "status": s.status,
+                    "otp_verified": s.otp_verified,
+                }
+                for s in stops
+            ]
+            # Active stop is the first PENDING stop
+            first_pending = next((s.stop_sequence for s in stops if s.status == "PENDING"), None)
+            res["active_stop_sequence"] = first_pending
+
+        return res
 
     @staticmethod
     async def list_trip_history(driver_user: User) -> List[Dict[str, Any]]:

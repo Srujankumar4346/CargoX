@@ -22,6 +22,13 @@ class PricingConfig(Document):
     base_flat_fare: DecimalType = Decimal("500.00")
     base_distance_km: DecimalType = Decimal("0.00")
     
+    # Part Load (LTL) Tariff Configuration
+    part_load_min_freight: DecimalType = Decimal("350.00")
+    part_load_base_weight_kg: DecimalType = Decimal("250.00")
+    part_load_rate_per_kg: DecimalType = Decimal("7.00")
+    part_load_rate_per_km: DecimalType = Decimal("12.00")
+    part_load_volumetric_ratio: DecimalType = Decimal("5000.00")
+    
     # Capacity Surcharge Rules
     capacity_surcharge_enabled: bool = True
     capacity_utilization_threshold_percent: DecimalType = Decimal("85.00")
@@ -53,6 +60,8 @@ class Quotation(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
     request_id: uuid.UUID # type: ignore
     pricing_config_id: uuid.UUID
+    load_type: str = "PART_LOAD" # "PART_LOAD" or "FULL_TRUCK"
+    billable_weight_kg: Optional[DecimalType] = None
     distance_km: DecimalType
     base_rate_per_km: DecimalType
     internal_base_cost: DecimalType
@@ -62,6 +71,9 @@ class Quotation(Document):
     capacity_surcharge: Optional[DecimalType] = Decimal("0.00")
     handling_surcharge: Optional[DecimalType] = Decimal("0.00")
     customer_total_charge: DecimalType
+    gst_percentage: Optional[DecimalType] = Decimal("5.00")
+    gst_amount: Optional[DecimalType] = Decimal("0.00")
+    final_total_with_tax: Optional[DecimalType] = None
     service_fee_percentage: Optional[DecimalType] = None
     service_fee_amount: Optional[DecimalType] = None
     driver_payable_amount: Optional[DecimalType] = None

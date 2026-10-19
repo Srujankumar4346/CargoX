@@ -10,8 +10,6 @@ import {
   CheckCircle2,
   AlertCircle,
   KeyRound,
-  Banknote,
-  QrCode,
   FileCheck,
   RotateCw,
   Copy,
@@ -19,6 +17,12 @@ import {
   ShieldCheck,
   Compass,
   X,
+  Truck,
+  Package,
+  Layers,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  ExternalLink
 } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Polyline } from 'react-leaflet';
 import { api } from '../services/api';
@@ -56,10 +60,9 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
   const [pickupOtpError, setPickupOtpError] = useState<string | null>(null);
   const [pickupOtpSuccessMsg, setPickupOtpSuccessMsg] = useState<string | null>(null);
 
-  // Cash payment collection state
-  const [recordingCash, setRecordingCash] = useState(false);
-  const [cashReference, setCashReference] = useState('');
-  const [cashSuccessMsg, setCashSuccessMsg] = useState<string | null>(null);
+  // Multi-stop completion state
+  const [completingStopId, setCompletingStopId] = useState<string | null>(null);
+  const [stopSuccessMsg, setStopSuccessMsg] = useState<string | null>(null);
 
   // Derive status
   const rawStatus = (activeTrip?.status || '').toUpperCase().replace(/ /g, '_');
@@ -68,15 +71,14 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
   const isArrived = rawStatus === 'ARRIVED';
   const isPodSubmitted = rawStatus === 'POD_SUBMITTED';
   const isCompleted = ['COMPLETED', 'DELIVERED'].includes(rawStatus);
-  const isDeliveryOtpVerified = Boolean(
-    activeTrip?.delivery_otp_verified ||
-    activeTrip?.otp_verified ||
-    otpSuccessMsg
-  );
+
+  const isConsolidated = activeTrip?.trip_type === 'CONSOLIDATED_PART_LOAD' || Boolean(activeTrip?.stops && activeTrip.stops.length > 0);
+  const stops: any[] = activeTrip?.stops || [];
+  const activeStopSequence = activeTrip?.active_stop_sequence || 1;
 
   // Fallback defaults matching Hyderabad -> Vijayawada
-  const pickupCity = (activeTrip?.pickup_address || 'Qutubullapur, Hyderabad').split(',')[0].trim();
-  const destCity = (activeTrip?.destination_address || 'Vijayawada, Andhra Pradesh').split(',')[0].trim();
+  const pickupCity = (activeTrip?.pickup_address || 'Hyderabad').split(',')[0].trim();
+  const destCity = (activeTrip?.destination_address || 'Vijayawada').split(',')[0].trim();
   const pickupLat = activeTrip?.pickup_lat || 17.5097;
   const pickupLng = activeTrip?.pickup_lng || 78.4727;
   const destLat = activeTrip?.destination_lat || 16.5062;
@@ -87,29 +89,28 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
 
   const routeWaypoints: [number, number][] = [
     [pickupLat, pickupLng],
-    [17.0500, 79.2700], // Nalgonda
+    [17.0500, 79.2700],
     [destLat, destLng],
   ];
 
   const targetTripId = activeTrip?.trip_id || activeTrip?.id;
 
-  // 1. Google Maps Navigation
-  const handleStartGoogleNavigation = () => {
+  // Navigation to specific stop or destination
+  const handleStartGoogleNavigation = (destAddress?: string, lat?: number, lng?: number) => {
     setNavigating(true);
-    const destinationQuery = encodeURIComponent(activeTrip?.destination_address || `${destLat},${destLng}`);
-    const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
+    let navUrl = '';
+    if (lat && lng) {
+      navUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+    } else {
+      const destinationQuery = encodeURIComponent(destAddress || activeTrip?.destination_address || `${destLat},${destLng}`);
+      navUrl = `https://www.google.com/maps/dir/?api=1&destination=${destinationQuery}&travelmode=driving`;
+    }
     window.open(navUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const handleCallCustomer = () => {
-    const phone = activeTrip?.destination_phone || activeTrip?.pickup_phone || '9876543210';
-    window.location.href = `tel:${phone}`;
-  };
-
-  const handleMessageCustomer = () => {
-    const phone = activeTrip?.destination_phone || activeTrip?.pickup_phone || '9876543210';
-    const text = encodeURIComponent(`Hello, I am your CargoExpress driver for trip #${activeTrip?.request_number || 'ASSIGNED'}.`);
-    window.location.href = `sms:${phone}?body=${text}`;
+  const handleCallCustomer = (phone?: string) => {
+    const ph = phone || activeTrip?.destination_phone || activeTrip?.pickup_phone || '9876543210';
+    window.location.href = `tel:${ph}`;
   };
 
   const handleSOS = () => {
@@ -122,6 +123,27 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
       if (confirmSOS) {
         window.location.href = 'tel:18002660000';
       }
+    }
+  };
+
+  // Complete an individual stop in multi-stop Part Load manifest
+  const handleCompleteStop = async (stop: any) => {
+    if (!targetTripId || completingStopId) return;
+    const confirmStop = window.confirm(
+      `Confirm completion of Stop #${stop.stop_sequence}: ${stop.stop_type} at ${stop.company_name || stop.address}?`
+    );
+    if (!confirmStop) return;
+
+    setCompletingStopId(stop.id);
+    setStopSuccessMsg(null);
+    try {
+      await api.completeTripStop(targetTripId, stop.id);
+      setStopSuccessMsg(`Stop #${stop.stop_sequence} (${stop.stop_type}) completed successfully!`);
+      await onRefreshTrip();
+    } catch (err: any) {
+      alert(`Could not complete stop: ${err?.message || 'Error completing stop'}`);
+    } finally {
+      setCompletingStopId(null);
     }
   };
 
@@ -149,7 +171,6 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
     } catch (err: any) {
       const errMsg = String(err?.message || "");
       if (errMsg.toLowerCase().includes("pickup") || errMsg.toLowerCase().includes("otp")) {
-        // Automatically open the Pickup OTP Verification Modal
         setPickupOtpModalOpen(true);
       } else {
         alert(`Start transit failed: ${err?.message || "Could not start transit"}`);
@@ -175,7 +196,6 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
       const res = await api.verifyDeliveryOTP(targetTripId, cleanOtp, "PICKUP");
       setPickupOtpSuccessMsg(res.message || "Pickup verified successfully! Starting transit now...");
       setPickupOtpInput("");
-      // Now start transit immediately
       await api.driverStartTransit(targetTripId);
       await onRefreshTrip();
       setTimeout(() => {
@@ -188,7 +208,7 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
     }
   };
 
-  // 2. Mark Arrival Action
+  // Mark Arrival Action
   const handleConfirmArrival = async () => {
     if (!targetTripId || arriving) return;
     setArriving(true);
@@ -202,7 +222,7 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
     }
   };
 
-  // 3. Verify Handover Delivery OTP
+  // Verify Handover Delivery OTP
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setOtpError(null);
@@ -227,37 +247,6 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
     }
   };
 
-  // 4. Record Cash on Delivery
-  const dueAmount = parseFloat(activeTrip?.amount_due_for_collection || '0');
-  const isPrepaid = dueAmount <= 0;
-
-  const handleRecordCashCollection = async () => {
-    if (!targetTripId || recordingCash) return;
-    if (dueAmount <= 0) {
-      alert('No outstanding amount due for collection.');
-      return;
-    }
-    const confirmColl = window.confirm(
-      `Confirm Cash Collection of ₹${dueAmount.toLocaleString()} from recipient?`
-    );
-    if (!confirmColl) return;
-
-    setRecordingCash(true);
-    try {
-      await api.driverRecordCollection(targetTripId, {
-        amount: dueAmount,
-        payment_method: 'CASH',
-        reference_notes: cashReference.trim() || 'Cash received by driver at delivery destination',
-      });
-      setCashSuccessMsg(`Cash payment of ₹${dueAmount.toLocaleString()} recorded successfully.`);
-      await onRefreshTrip();
-    } catch (err: any) {
-      alert(`Failed to record cash: ${err.message || 'Error recording payment'}`);
-    } finally {
-      setRecordingCash(false);
-    }
-  };
-
   return (
     <div className="w-full max-w-md mx-auto pb-24 px-4 pt-3 flex flex-col gap-3 text-slate-900 bg-white min-h-screen">
       {/* 1. Header (Back button, Active Order, Red SOS Button) */}
@@ -272,9 +261,16 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
             <ArrowLeft size={22} className="stroke-[2.5]" />
           </button>
           <div>
-            <h1 className="text-xl font-black text-slate-950 tracking-tight">Active Order</h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-xl font-black text-slate-950 tracking-tight">Active Trip</h1>
+              {isConsolidated && (
+                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-extrabold uppercase tracking-wide">
+                  Part Load
+                </span>
+              )}
+            </div>
             <p className="text-[11px] font-bold text-emerald-700">
-              Trip #{activeTrip?.request_number || 'TRIP-2026-00456'}
+              Trip #{activeTrip?.request_number || 'TRIP-ASSIGNED'}
             </p>
           </div>
         </div>
@@ -289,33 +285,142 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
         </button>
       </div>
 
-      {/* 2. Route Summary Strip (Pickup & Drop) */}
-      <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-xs space-y-2">
-        <div className="flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-          <span className="text-xs font-bold text-slate-800 truncate">
-            {activeTrip?.pickup_address || 'Qutubullapur, Hyderabad'}
-          </span>
+      {/* Success banner if any stop completed */}
+      {stopSuccessMsg && (
+        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 font-medium">
+          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+          <span>{stopSuccessMsg}</span>
         </div>
-        <div className="flex items-center gap-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-          <span className="text-xs font-bold text-slate-800 truncate">
-            {activeTrip?.destination_address || 'Vijayawada, Andhra Pradesh'}
-          </span>
+      )}
+
+      {/* 2. Consolidated Multi-Stop Manifest OR Single Route Summary Strip */}
+      {isConsolidated && stops.length > 0 ? (
+        <div className="rounded-2xl border border-purple-200/90 bg-gradient-to-br from-purple-50/40 to-slate-50 p-4 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-purple-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                <Layers size={15} />
+              </div>
+              <div>
+                <span className="text-xs font-black text-slate-900 block leading-tight">Consolidated Route Manifest</span>
+                <span className="text-[10px] text-slate-500 font-bold">{stops.length} Stops ({stops.filter(s => s.status === 'COMPLETED').length} Completed)</span>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-black text-purple-700 bg-purple-100/80 px-2 py-1 rounded-lg">
+              {activeTrip?.total_weight_tons ? `${(activeTrip.total_weight_tons * 1000).toFixed(0)} kg` : 'Shared Payload'}
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {stops.map((stop: any, idx: number) => {
+              const isPickup = stop.stop_type === 'PICKUP';
+              const isStopCompleted = stop.status === 'COMPLETED';
+              const isCurrentActive = !isStopCompleted && (stop.stop_sequence === activeStopSequence || (!stops.some(s => s.status === 'PENDING' && s.stop_sequence < stop.stop_sequence)));
+
+              return (
+                <div
+                  key={stop.id || idx}
+                  className={`p-3 rounded-xl border transition-all ${
+                    isStopCompleted
+                      ? 'bg-slate-100/70 border-slate-200 opacity-60'
+                      : isCurrentActive
+                      ? 'bg-white border-purple-500 shadow-md ring-2 ring-purple-500/20'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-bold text-xs mt-0.5 ${
+                        isStopCompleted
+                          ? 'bg-emerald-500 text-white'
+                          : isPickup
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-rose-500 text-white'
+                      }`}>
+                        {isStopCompleted ? '✓' : stop.stop_sequence}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                            isPickup ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'
+                          }`}>
+                            {stop.stop_type}
+                          </span>
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {stop.company_name || (isPickup ? 'Sender Pickup' : 'Consignee Drop')}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 leading-snug">
+                          {stop.address}
+                        </p>
+
+                        {stop.cargo_summary && (
+                          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 font-medium">
+                            <Package size={11} className="text-slate-400" />
+                            <span>{stop.cargo_summary} ({stop.cargo_weight_kg || 0} kg)</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions per stop */}
+                    <div className="flex flex-col gap-1.5 shrink-0 items-end">
+                      <button
+                        type="button"
+                        onClick={() => handleStartGoogleNavigation(stop.address, stop.lat, stop.lng)}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                        title="Navigate to Stop"
+                      >
+                        <Navigation size={13} className="text-purple-600" />
+                      </button>
+
+                      {isCurrentActive && !isStopCompleted && (
+                        <button
+                          type="button"
+                          disabled={completingStopId === stop.id}
+                          onClick={() => handleCompleteStop(stop)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs transition disabled:opacity-50"
+                        >
+                          {completingStopId === stop.id ? 'Saving...' : 'Complete'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        
-        {/* Status Stage Pill */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Phase</span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            {rawStatus.replace(/_/g, ' ') || 'IN TRANSIT'}
-          </span>
+      ) : (
+        /* Standard Single Route Summary Strip */
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-xs space-y-2">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            <span className="text-xs font-bold text-slate-800 truncate">
+              {activeTrip?.pickup_address || 'Hyderabad, Telangana'}
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+            <span className="text-xs font-bold text-slate-800 truncate">
+              {activeTrip?.destination_address || 'Vijayawada, Andhra Pradesh'}
+            </span>
+          </div>
+          
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Phase</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {rawStatus.replace(/_/g, ' ') || 'IN TRANSIT'}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 3. Interactive Route Map Container */}
-      <div className="relative h-[36vh] min-h-[260px] w-full rounded-2xl overflow-hidden border border-slate-200 shadow-xs z-0">
+      <div className="relative h-[32vh] min-h-[240px] w-full rounded-2xl overflow-hidden border border-slate-200 shadow-xs z-0">
         <MapContainer
           center={[16.9, 79.5]}
           zoom={8}
@@ -328,35 +433,30 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Pickup Marker */}
           <CircleMarker
             center={[pickupLat, pickupLng]}
             radius={7}
             pathOptions={{ color: '#10B981', fillColor: '#10B981', fillOpacity: 1 }}
           />
 
-          {/* Destination Marker */}
           <CircleMarker
             center={[destLat, destLng]}
             radius={7}
             pathOptions={{ color: '#EF4444', fillColor: '#EF4444', fillOpacity: 1 }}
           />
 
-          {/* Driver Live Current Location Marker */}
           <CircleMarker
             center={[currentLat, currentLng]}
             radius={9}
             pathOptions={{ color: '#2563EB', fillColor: '#3B82F6', fillOpacity: 1, weight: 3 }}
           />
 
-          {/* Blue Route Polyline */}
           <Polyline
             positions={routeWaypoints}
             pathOptions={{ color: '#2563EB', weight: 4, opacity: 0.85 }}
           />
         </MapContainer>
 
-        {/* Floating map controls */}
         <div className="absolute top-3 right-3 flex flex-col gap-2 z-[400]">
           <button
             type="button"
@@ -369,7 +469,7 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
           <button
             type="button"
             className="w-9 h-9 rounded-full bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-700 hover:text-black transition cursor-pointer"
-            onClick={handleStartGoogleNavigation}
+            onClick={() => handleStartGoogleNavigation()}
             aria-label="Navigate"
           >
             <Navigation size={18} className="text-emerald-600" />
@@ -378,21 +478,19 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
       </div>
 
       {/* 4. Context-Sensitive Action Stages */}
-
-      {/* STAGE A: While Traveling / In Transit -> Start Navigation & Arrived Button */}
       {(!isArrived && !isPodSubmitted && !isCompleted) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3.5">
           <div className="flex items-center justify-between">
             <div className="flex flex-col">
               <span className="text-2xl font-black text-slate-950 leading-tight">
-                {activeTrip?.distance_km ? `${activeTrip.distance_km} km` : '312 km'}
+                {activeTrip?.distance_km ? `${activeTrip.distance_km} km` : 'Active Route'}
               </span>
-              <span className="text-xs text-slate-400 font-medium">Estimated 4h 50m</span>
+              <span className="text-xs text-slate-400 font-medium">GPS Active</span>
             </div>
 
             <button
               type="button"
-              onClick={handleStartGoogleNavigation}
+              onClick={() => handleStartGoogleNavigation()}
               className="py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-black active:scale-95 text-white font-extrabold text-xs shadow-md flex items-center gap-2 transition cursor-pointer"
             >
               <Navigation size={15} className="fill-white" />
@@ -452,24 +550,17 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
                   <button
                     type="submit"
                     disabled={verifyingPickupOtp || pickupOtpInput.trim().length !== 6}
-                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    className="py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition disabled:opacity-50"
                   >
-                    {verifyingPickupOtp ? <RotateCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                    <span>{verifyingPickupOtp ? "Verifying..." : "Verify"}</span>
+                    {verifyingPickupOtp ? <RotateCw size={14} className="animate-spin" /> : "Verify"}
                   </button>
                 </form>
 
                 {pickupOtpError && (
-                  <p className="text-[11px] font-semibold text-rose-600 flex items-center gap-1">
-                    <AlertCircle size={13} className="shrink-0" />
-                    {pickupOtpError}
-                  </p>
+                  <p className="text-[11px] text-rose-600 font-medium">{pickupOtpError}</p>
                 )}
                 {pickupOtpSuccessMsg && (
-                  <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
-                    <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
-                    {pickupOtpSuccessMsg}
-                  </p>
+                  <p className="text-[11px] text-emerald-600 font-bold">{pickupOtpSuccessMsg}</p>
                 )}
               </div>
 
@@ -482,218 +573,96 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
                 {startingTransit ? (
                   <>
                     <RotateCw size={18} className="animate-spin" />
-                    <span>Starting Transit...</span>
+                    <span>Departing Pickup...</span>
                   </>
                 ) : (
                   <>
                     <Navigation size={18} className="fill-white" />
-                    <span>Goods Loaded · Start Transit</span>
+                    <span>Depart Pickup & Start Transit</span>
                   </>
                 )}
               </button>
             </div>
           )}
 
-          {/* Phase 3: Arrived at Destination (when IN_TRANSIT) */}
-          {rawStatus === 'IN_TRANSIT' && (
+          {/* Phase 3: Arrived Action (if in IN_TRANSIT) */}
+          {isInTransit && (
             <button
               type="button"
               disabled={arriving}
               onClick={handleConfirmArrival}
-              className="w-full py-3.5 px-4 rounded-xl bg-[#10B981] hover:bg-emerald-600 active:scale-98 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+              className="w-full py-3.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-98 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
             >
               {arriving ? (
                 <>
                   <RotateCw size={18} className="animate-spin" />
-                  <span>Submitting Arrival...</span>
+                  <span>Confirming Destination Arrival...</span>
                 </>
               ) : (
                 <>
-                  <MapPin size={18} className="fill-white" />
-                  <span>Arrived at Destination</span>
+                  <MapPin size={18} />
+                  <span>Confirm Arrival at Destination</span>
                 </>
               )}
             </button>
           )}
-
-          {/* Contact buttons */}
-          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={handleCallCustomer}
-              className="py-2.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2 text-xs font-bold text-slate-800 transition cursor-pointer"
-            >
-              <Phone size={15} className="text-slate-600" />
-              <span>Call Customer</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleMessageCustomer}
-              className="py-2.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2 text-xs font-bold text-slate-800 transition cursor-pointer"
-            >
-              <MessageSquare size={15} className="text-slate-600" />
-              <span>Message</span>
-            </button>
-          </div>
         </div>
       )}
 
-      {/* STAGE B: On Arrival -> OTP Verification & Handover */}
+      {/* STAGE B: Arrived at Destination -> Handover OTP Verification & POD */}
       {isArrived && (
-        <div className="rounded-2xl border-2 border-emerald-500/30 bg-emerald-50/20 p-4 shadow-sm space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
-                Arrival Confirmed
-              </span>
-              <h3 className="text-base font-black text-slate-950 mt-1">
-                Recipient Handover Verification
-              </h3>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Ask the recipient at destination for their secure delivery verification code.
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+        <div className="rounded-2xl border border-purple-200 bg-white p-4 shadow-sm space-y-4">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shadow-xs">
               <KeyRound size={20} />
             </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">Arrived at Destination</h3>
+              <p className="text-[11px] text-slate-500">Collect handover delivery OTP from the consignee</p>
+            </div>
           </div>
 
-          {/* Handover OTP Status: Verified Banner or Form */}
-          {isDeliveryOtpVerified ? (
-            <div className="p-3.5 rounded-xl bg-emerald-500/15 border-2 border-emerald-500/40 text-emerald-950 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                  <CheckCircle2 size={18} />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-emerald-950">
-                    Handover OTP Verified
-                  </h4>
-                  <p className="text-[11px] text-emerald-800 font-medium">
-                    {otpSuccessMsg || 'Delivery verification code confirmed. Recipient handover approved.'}
-                  </p>
-                </div>
+          <form onSubmit={handleVerifyOtp} className="space-y-3">
+            {otpError && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0" />
+                <span>{otpError}</span>
               </div>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider border border-emerald-300">
-                Verified
-              </span>
-            </div>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-3 pt-1">
-              {otpError && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
-                  <span>{otpError}</span>
-                </div>
-              )}
-              {otpSuccessMsg && (
-                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 font-medium">
-                  <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
-                  <span>{otpSuccessMsg}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Enter Handover OTP Code
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
-                    placeholder="e.g. 542198"
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-bold tracking-widest text-center text-base focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
-                  />
-                  <button
-                    type="submit"
-                    disabled={verifyingOtp || !otpInput.trim()}
-                    className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
-                  >
-                    {verifyingOtp ? <RotateCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                    <span>Verify OTP</span>
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
-
-          {/* Payment Status & Collection Box */}
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2.5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600">Settlement Status</span>
-              {isPrepaid ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-extrabold">
-                  <CheckCircle2 size={12} /> Prepaid / Settled
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px] font-extrabold">
-                  Pay on Delivery Due
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-baseline justify-between pt-1">
-              <span className="text-xs text-slate-500">Amount Due for Collection</span>
-              <span className="text-xl font-black text-slate-950">
-                ₹{dueAmount.toLocaleString()}
-              </span>
-            </div>
-
-            {/* Driver Payout & Commission Breakdown */}
-            {activeTrip?.driver_payable_amount && (
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>Customer Total Fare:</span>
-                  <span className="font-bold text-slate-900">₹{parseFloat(activeTrip?.invoice_total_amount || dueAmount || 0).toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-500 text-[11px]">
-                  <span>CargoX Platform Commission ({activeTrip?.service_fee_percentage || 10}%):</span>
-                  <span className="font-bold text-amber-700">-₹{parseFloat(activeTrip?.cargox_service_fee || 0).toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-emerald-700 font-extrabold">
-                  <span>Your Net Trip Earnings:</span>
-                  <span className="text-sm">₹{parseFloat(activeTrip.driver_payable_amount).toLocaleString()}</span>
-                </div>
+            )}
+            {otpSuccessMsg && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 font-medium">
+                <CheckCircle2 size={15} className="shrink-0 text-emerald-600" />
+                <span>{otpSuccessMsg}</span>
               </div>
             )}
 
-            {!isPrepaid && (
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                {cashSuccessMsg ? (
-                  <p className="text-xs text-emerald-700 font-bold">{cashSuccessMsg}</p>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={recordingCash}
-                      onClick={handleRecordCashCollection}
-                      className="flex-1 py-2 px-3 rounded-lg bg-slate-900 hover:bg-black text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-                    >
-                      <Banknote size={15} />
-                      <span>Record Cash Collection</span>
-                    </button>
-                    {onOpenPaymentModal && (
-                      <button
-                        type="button"
-                        onClick={onOpenPaymentModal}
-                        className="p-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 transition cursor-pointer"
-                        title="Show UPI QR Code"
-                      >
-                        <QrCode size={18} />
-                      </button>
-                    )}
-                  </div>
-                )}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Enter Handover OTP Code
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={otpInput}
+                  onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="e.g. 542198"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-bold tracking-widest text-center text-base focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
+                />
+                <button
+                  type="submit"
+                  disabled={verifyingOtp || !otpInput.trim()}
+                  className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {verifyingOtp ? <RotateCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                  <span>Verify OTP</span>
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          </form>
 
-          {/* Next Action: Submit Proof of Delivery */}
           {onOpenPODModal && (
             <button
               type="button"
@@ -707,7 +676,7 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
         </div>
       )}
 
-      {/* STAGE C: POD Submitted -> Awaiting Admin Verification */}
+      {/* STAGE C: POD Submitted */}
       {isPodSubmitted && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 shadow-xs space-y-3 text-center">
           <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-xs">
@@ -751,6 +720,7 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
           </button>
         </div>
       )}
+
       {/* Pickup OTP Verification Modal */}
       {pickupOtpModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">

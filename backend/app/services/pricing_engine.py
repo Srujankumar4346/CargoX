@@ -148,10 +148,17 @@ class PricingEngineService:
         capacity_surcharge = Decimal("0.00")
         handling_surcharge = Decimal("0.00")
 
-        # 1. Capacity surcharge (Rule: Admin configured threshold & enabled flag)
+        # Determine load type: either explicitly defined on request or based on selected vehicle/weight
+        is_part_load = (
+            getattr(request, "load_type", None) == "PART_LOAD" or
+            getattr(request, "selected_vehicle_id", None) == "part-load" or
+            (req_weight <= 3.0 and getattr(request, "load_type", None) != "FULL_TRUCK")
+        )
+
+        # 1. Capacity surcharge (Rule: Admin configured threshold & enabled flag, applicable to dedicated trucks)
         cap_enabled = getattr(active_config, "capacity_surcharge_enabled", True)
         cap_threshold_pct = float(getattr(active_config, "capacity_utilization_threshold_percent", Decimal("85.00")))
-        if cap_enabled and veh_cap > 0 and (req_weight / veh_cap * 100.0) >= cap_threshold_pct:
+        if not is_part_load and cap_enabled and veh_cap > 0 and (req_weight / veh_cap * 100.0) >= cap_threshold_pct:
             capacity_surcharge = Decimal(str(getattr(active_config, "vehicle_max_capacity_surcharge", Decimal("600.00"))))
 
         # 2. Delicate / Fragile / Handling Care surcharge (Checked once without double counting)
@@ -163,7 +170,40 @@ class PricingEngineService:
         elif getattr(active_config, "refrigerated_surcharge_enabled", True) and ("refrigerated" in special_str or "cold" in special_str):
             handling_surcharge += Decimal(str(getattr(active_config, "refrigerated_surcharge", Decimal("800.00"))))
 
-        customer_total_charge = base_flat + distance_charge + capacity_surcharge + handling_surcharge
+        # 3. Calculate Freight based on load_type
+        billable_weight_kg = None
+        if is_part_load:
+            # Volumetric calculation: (L * W * H in cm) / 5000
+            actual_kg = Decimal(str(round(req_weight * 1000.0, 2)))
+            vol_divisor = Decimal(str(getattr(active_config, "part_load_volumetric_ratio", Decimal("5000.00"))))
+            vol_kg = Decimal("0.00")
+            if getattr(request, "length_cm", None) and getattr(request, "width_cm", None) and getattr(request, "height_cm", None):
+                vol_kg = Decimal(str(round((request.length_cm * request.width_cm * request.height_cm) / float(vol_divisor), 2)))
+            billable_weight_kg = max(actual_kg, vol_kg)
+
+            pl_min_freight = Decimal(str(getattr(active_config, "part_load_min_freight", Decimal("350.00"))))
+            pl_base_weight = Decimal(str(getattr(active_config, "part_load_base_weight_kg", Decimal("250.00"))))
+            pl_rate_per_kg = Decimal(str(getattr(active_config, "part_load_rate_per_kg", Decimal("7.00"))))
+            pl_rate_per_km = Decimal(str(getattr(active_config, "part_load_rate_per_km", Decimal("12.00"))))
+
+            # Weight charge above base weight
+            extra_weight = max(Decimal("0.00"), billable_weight_kg - pl_base_weight)
+            weight_charge = (extra_weight * pl_rate_per_kg).quantize(Decimal("0.01"))
+            
+            # Distance charge for shared freight
+            part_dist_charge = (distance * pl_rate_per_km).quantize(Decimal("0.01"))
+            distance_charge = part_dist_charge
+            base_flat = pl_min_freight
+
+            freight_total = max(pl_min_freight, pl_min_freight + weight_charge + distance_charge)
+            customer_total_charge = freight_total + capacity_surcharge + handling_surcharge
+        else:
+            customer_total_charge = base_flat + distance_charge + capacity_surcharge + handling_surcharge
+
+        # GST Calculation (5% freight transport GST)
+        gst_pct = Decimal("5.00")
+        gst_amount = (customer_total_charge * gst_pct / Decimal("100")).quantize(Decimal("0.01"))
+        final_total_with_tax = customer_total_charge + gst_amount
 
         fee_pct = system_settings.cargox_service_fee_percentage
         service_fee = (customer_total_charge * fee_pct / Decimal("100")).quantize(Decimal("0.01"))
@@ -175,6 +215,8 @@ class PricingEngineService:
         quotation = Quotation(
             request_id=request_id,
             pricing_config_id=active_config.id,
+            load_type="PART_LOAD" if is_part_load else "FULL_TRUCK",
+            billable_weight_kg=billable_weight_kg,
             distance_km=distance,
             base_rate_per_km=base_rate,
             internal_base_cost=internal_base_cost,
@@ -184,6 +226,9 @@ class PricingEngineService:
             capacity_surcharge=capacity_surcharge,
             handling_surcharge=handling_surcharge,
             customer_total_charge=customer_total_charge,
+            gst_percentage=gst_pct,
+            gst_amount=gst_amount,
+            final_total_with_tax=final_total_with_tax,
             service_fee_percentage=fee_pct,
             service_fee_amount=service_fee,
             driver_payable_amount=driver_payable,

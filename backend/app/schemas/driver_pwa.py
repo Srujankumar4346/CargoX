@@ -77,6 +77,12 @@ class DriverTripRead(BaseModel):
     cargox_service_fee: Optional[Decimal] = None
     service_fee_percentage: Optional[Decimal] = None
 
+    # Multi-Stop Consolidated Manifest
+    trip_type: Optional[str] = "FULL_TRUCK"
+    total_weight_tons: Optional[float] = None
+    stops: Optional[list[dict]] = None
+    active_stop_sequence: Optional[int] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

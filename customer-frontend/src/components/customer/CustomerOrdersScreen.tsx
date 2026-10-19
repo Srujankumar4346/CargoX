@@ -119,8 +119,14 @@ export default function CustomerOrdersScreen({
                             #{order.ref || order.id?.slice(0, 8)}
                           </span>
                         </div>
-                        <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
-                          In Transit <ChevronRight className="w-3 h-3" />
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 shrink-0 ${
+                          order.status === "Completed"
+                            ? "text-emerald-700 bg-emerald-50"
+                            : order.status === "Cancelled"
+                            ? "text-red-700 bg-red-50"
+                            : "text-blue-700 bg-blue-50"
+                        }`}>
+                          {order.status === "Ongoing" ? "Driver Assigned" : order.status} <ChevronRight className="w-3 h-3" />
                         </span>
                       </div>
                       <p className="text-[11px] font-bold text-slate-700 mt-1 flex items-center gap-1 truncate">

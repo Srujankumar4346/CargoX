@@ -21,6 +21,11 @@ class QuotationBase(BaseModel):
     capacity_surcharge: Optional[Decimal] = Decimal("0.00")
     handling_surcharge: Optional[Decimal] = Decimal("0.00")
     customer_total_charge: Decimal
+    load_type: Optional[str] = "PART_LOAD"
+    billable_weight_kg: Optional[Decimal] = None
+    gst_percentage: Optional[Decimal] = Decimal("5.00")
+    gst_amount: Optional[Decimal] = Decimal("0.00")
+    final_total_with_tax: Optional[Decimal] = None
     status: QuotationStatus
     created_at: datetime
     accepted_at: Optional[datetime] = None

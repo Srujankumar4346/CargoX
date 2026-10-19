@@ -127,6 +127,22 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+  unassignBooking: async (id: string) => {
+    const res = await authFetch(`${API_URL}/admin/requests/${id}/unassign`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      let err = "Failed to unassign request";
+      try {
+        const body = await res.json();
+        err = body.detail || err;
+      } catch (_) {
+        err = await res.text();
+      }
+      throw new Error(err);
+    }
+    return res.json();
+  },
 
   // Vehicles
   getVehicles: async () => {
@@ -197,6 +213,29 @@ export const api = {
     // The backend dispatch route expects request_id in path and dispatch payload in body
     const requestId = data.booking_id || data.request_id;
     const res = await authFetch(`${API_URL}/admin/requests/${requestId}/dispatch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  dispatchConsolidatedTrips: async (data: { request_ids: string[]; vehicle_id: string; driver_id: string; commission_percentage?: number }) => {
+    const res = await authFetch(`${API_URL}/admin/dispatch/consolidated`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  getSmartConsolidationGroups: async () => {
+    const res = await authFetch(`${API_URL}/admin/consolidation/smart-groups`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  previewConsolidatedRoute: async (data: { request_ids: string[]; vehicle_id?: string }) => {
+    const res = await authFetch(`${API_URL}/admin/consolidation/preview-route`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),

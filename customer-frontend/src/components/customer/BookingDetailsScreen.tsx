@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import type { FleetVehicleItem } from "./VehicleSelectionWithPartLoadScreen";
 
@@ -22,13 +22,13 @@ interface BookingDetailsScreenProps {
 export default function BookingDetailsScreen({
   onBack,
   selectedVehicle,
-  goodsWeightKg = 200,
+  goodsWeightKg = 0,
   onChangeWeightKg,
   onProceedBooking,
   totalPrice = 2811,
   isSubmitting = false,
 }: BookingDetailsScreenProps) {
-  const [weight, setWeight] = useState<string>(goodsWeightKg.toString());
+  const [weight, setWeight] = useState<string>(goodsWeightKg > 0 ? goodsWeightKg.toString() : "");
   const [selectedDate, setSelectedDate] = useState<"Today" | "Tomorrow">("Today");
   const [selectedSlot, setSelectedSlot] = useState<string>("9 AM - 11:30 AM");
   const [goodsType, setGoodsType] = useState<string>("Industrial Goods & Machinery");
@@ -36,6 +36,13 @@ export default function BookingDetailsScreen({
   const [paymentMethod] = useState<string>("Cash");
   const [showGoodsTypeModal, setShowGoodsTypeModal] = useState<boolean>(false);
   const [showBreakupModal, setShowBreakupModal] = useState<boolean>(false);
+
+  // Sync weight if goodsWeightKg prop changes from parent
+  useEffect(() => {
+    if (goodsWeightKg > 0) {
+      setWeight(goodsWeightKg.toString());
+    }
+  }, [goodsWeightKg]);
 
   const availableSlots = [
     "9 AM - 11:30 AM",
@@ -68,6 +75,11 @@ export default function BookingDetailsScreen({
     const numWeight = parseInt(weight, 10);
     if (isNaN(numWeight) || numWeight <= 0) {
       alert("Please enter a valid goods weight in kg.");
+      return;
+    }
+    const maxPayload = selectedVehicle.maxPayloadKg || Math.round((selectedVehicle.maxPayloadTons || 0.75) * 1000);
+    if (maxPayload > 0 && numWeight > maxPayload) {
+      alert(`Cargo weight (${numWeight} kg) exceeds vehicle maximum capacity (${maxPayload} kg for ${selectedVehicle.name}). Please reduce cargo weight or choose a higher capacity vehicle.`);
       return;
     }
     onProceedBooking({

@@ -219,7 +219,7 @@ export default function VehicleSelectionWithPartLoadScreen({
             {fullTruckFleet.map((v) => {
               const isSelected = selectedVehicleId === v.id;
               const dynamicPrice = vehiclePrices[v.id] || v.price;
-              const isOverloaded = cargoWeightKg > v.maxPayloadKg;
+              const isOverloaded = (cargoWeightKg || 0) > 0 && (cargoWeightKg || 0) > v.maxPayloadKg;
 
               return (
                 <div

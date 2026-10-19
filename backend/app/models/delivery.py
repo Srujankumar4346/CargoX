@@ -17,6 +17,11 @@ class DeliveryRequest(Document):
     goods_description: Optional[str] = None
     weight_tons: float
     special_instructions: Optional[str] = None
+    load_type: str = "PART_LOAD" # "PART_LOAD" or "FULL_TRUCK"
+    length_cm: Optional[float] = None
+    width_cm: Optional[float] = None
+    height_cm: Optional[float] = None
+    package_count: Optional[int] = None
     
     # Pickup Snapshot
     pickup_company_name: str
@@ -50,11 +55,47 @@ class DeliveryRequest(Document):
             pymongo.IndexModel([("customer_company_id", pymongo.ASCENDING), ("created_at", pymongo.DESCENDING)]),
             pymongo.IndexModel([("created_at", pymongo.DESCENDING)]),
             pymongo.IndexModel("status"),
+            pymongo.IndexModel("load_type"),
             pymongo.IndexModel("request_number", unique=True),
         ]
+
+class TripStop(Document):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    trip_id: uuid.UUID
+    request_id: uuid.UUID
+    stop_sequence: int # 1, 2, 3...
+    stop_type: str # "PICKUP" or "DROP"
+    company_name: str
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    contact_person: Optional[str] = None
+    contact_phone: Optional[str] = None
+    cargo_summary: Optional[str] = None
+    cargo_weight_kg: Optional[float] = None
+    status: str = "PENDING" # "PENDING", "ARRIVED", "COMPLETED", "FAILED"
+    otp_verified: bool = False
+    otp_verified_at: Optional[datetime] = None
+    arrived_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+    class Settings:
+        name = "trip_stops"
+        indexes = [
+            pymongo.IndexModel([("trip_id", pymongo.ASCENDING), ("stop_sequence", pymongo.ASCENDING)]),
+            pymongo.IndexModel("request_id"),
+            pymongo.IndexModel("status"),
+        ]
+
 class Trip(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, alias="_id")
+    # For single-request / legacy trips, request_id is retained.
+    # For consolidated Part Load trips, request_id points to primary request and request_ids holds all requests.
     request_id: uuid.UUID # type: ignore
+    request_ids: List[uuid.UUID] = Field(default_factory=list)
+    trip_type: str = "FULL_TRUCK" # "FULL_TRUCK" or "CONSOLIDATED_PART_LOAD"
+    total_weight_tons: Optional[float] = None
     
     # Execution Timestamps
     assigned_at: datetime
@@ -79,6 +120,8 @@ class Trip(Document):
         name = "trips"
         indexes = [
             pymongo.IndexModel("request_id"),
+            pymongo.IndexModel("request_ids"),
+            pymongo.IndexModel("trip_type"),
             pymongo.IndexModel("settlement_id", sparse=True),
         ]
 class ProofOfDelivery(Document):

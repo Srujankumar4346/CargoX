@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings, ExternalLink, Globe } from "lucide-react";
+import { LogOut, Map as MapIcon, Download, Bot, Sparkles, ShieldCheck, RefreshCw, AlertCircle, Users, Eye, UserPlus, UserMinus, Menu, X, AlertTriangle, Activity, Truck, UserRound, ClipboardList, IndianRupee, Search, ArrowUpRight, MapPin, CircleCheck, Package, Radio, ChevronRight, Settings, ExternalLink, Globe, Layers } from "lucide-react";
 import { useAuth, UserButton, useUser, SignInButton } from "@clerk/react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { api, setTokenGetter } from "../../services/api";
@@ -7,6 +7,7 @@ import NotificationDropdown from "../../components/NotificationDropdown";
 import { generateInvoicePDF } from "../../utils/invoicePDF";
 import ThemeToggle from "../../components/ThemeToggle";
 import DispatchBoard from "../../components/DispatchBoard";
+import PartLoadConsolidationPanel from "../../components/PartLoadConsolidationPanel";
 import FleetManagementPanel from "../../components/FleetManagementPanel";
 import ActiveTripsPanel from "../../components/ActiveTripsPanel";
 import AdminSettingsPanel from "../../components/AdminSettingsPanel";
@@ -117,6 +118,8 @@ export default function AdminDashboard() {
     dashboard: "dashboard",
     bookings: "bookings",
     dispatch: "bookings",
+    consolidation: "consolidation",
+    "part-load": "consolidation",
     fleet: "vehicles",
     vehicles: "vehicles",
     drivers: "drivers",
@@ -611,6 +614,13 @@ export default function AdminDashboard() {
              )}
           </button>
           <button 
+            onClick={() => { setActiveTab('consolidation'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center justify-between transition ${activeTab === 'consolidation' ? 'bg-purple-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+             <div className="flex items-center gap-3"><Layers size={18} /> <span>Part Load (LTL)</span></div>
+             <span className="bg-purple-500/30 border border-purple-500/40 text-purple-200 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">Shared</span>
+          </button>
+          <button 
             onClick={() => { setActiveTab('vehicles'); setIsMobileSidebarOpen(false); }} 
             className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
           >
@@ -803,7 +813,25 @@ export default function AdminDashboard() {
                 }
               }}
               onCancel={handleCancelBooking}
+              onUnassign={async (bookingId: string) => {
+                await api.unassignBooking(bookingId);
+                alert("Assignment revoked successfully! Booking is now back in ACCEPTED status.");
+                await loadData();
+              }}
               onGetAiRec={handleGetTripRecommendation}
+            />
+          </div>
+        )}
+
+        {activeTab === 'consolidation' && (
+          <div className="space-y-6">
+            <PartLoadConsolidationPanel
+              bookings={bookings}
+              vehicles={vehicles}
+              drivers={drivers}
+              onDispatchSuccess={async () => {
+                await loadData();
+              }}
             />
           </div>
         )}

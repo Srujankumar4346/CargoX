@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Compass,
+  X,
 } from 'lucide-react';
 import { MapContainer, TileLayer, CircleMarker, Polyline } from 'react-leaflet';
 import { api } from '../services/api';
@@ -47,6 +48,13 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccessMsg, setOtpSuccessMsg] = useState<string | null>(null);
+
+  // Pickup OTP State
+  const [pickupOtpModalOpen, setPickupOtpModalOpen] = useState(false);
+  const [pickupOtpInput, setPickupOtpInput] = useState('');
+  const [verifyingPickupOtp, setVerifyingPickupOtp] = useState(false);
+  const [pickupOtpError, setPickupOtpError] = useState<string | null>(null);
+  const [pickupOtpSuccessMsg, setPickupOtpSuccessMsg] = useState<string | null>(null);
 
   // Cash payment collection state
   const [recordingCash, setRecordingCash] = useState(false);
@@ -134,9 +142,44 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
       await api.driverStartTransit(targetTripId);
       await onRefreshTrip();
     } catch (err: any) {
-      alert(`Start transit failed: ${err?.message || "Could not start transit"}`);
+      const errMsg = String(err?.message || "");
+      if (errMsg.toLowerCase().includes("pickup") || errMsg.toLowerCase().includes("otp")) {
+        // Automatically open the Pickup OTP Verification Modal
+        setPickupOtpModalOpen(true);
+      } else {
+        alert(`Start transit failed: ${err?.message || "Could not start transit"}`);
+      }
     } finally {
       setStartingTransit(false);
+    }
+  };
+
+  const handleVerifyPickupOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPickupOtpError(null);
+    setPickupOtpSuccessMsg(null);
+
+    const cleanOtp = pickupOtpInput.trim();
+    if (cleanOtp.length !== 6) {
+      setPickupOtpError("Please enter the 6-digit Pickup OTP.");
+      return;
+    }
+
+    setVerifyingPickupOtp(true);
+    try {
+      const res = await api.verifyDeliveryOTP(targetTripId, cleanOtp, "PICKUP");
+      setPickupOtpSuccessMsg(res.message || "Pickup verified successfully! Starting transit now...");
+      setPickupOtpInput("");
+      // Now start transit immediately
+      await api.driverStartTransit(targetTripId);
+      await onRefreshTrip();
+      setTimeout(() => {
+        setPickupOtpModalOpen(false);
+      }, 1000);
+    } catch (err: any) {
+      setPickupOtpError(err.message || "Invalid Pickup OTP. Please ask customer to read the OTP from their tracking screen.");
+    } finally {
+      setVerifyingPickupOtp(false);
     }
   };
 
@@ -374,26 +417,76 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
             </button>
           )}
 
-          {/* Phase 2: Start Transit (if in PICKUP_IN_PROGRESS) */}
+          {/* Phase 2: Pickup Verification & Start Transit (if in PICKUP_IN_PROGRESS) */}
           {rawStatus === 'PICKUP_IN_PROGRESS' && (
-            <button
-              type="button"
-              disabled={startingTransit}
-              onClick={handleStartTransit}
-              className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
-            >
-              {startingTransit ? (
-                <>
-                  <RotateCw size={18} className="animate-spin" />
-                  <span>Starting Transit...</span>
-                </>
-              ) : (
-                <>
-                  <Navigation size={18} className="fill-white" />
-                  <span>Goods Loaded · Start Transit</span>
-                </>
-              )}
-            </button>
+            <div className="space-y-3 pt-1">
+              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/70 space-y-2.5">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <KeyRound size={16} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-black text-slate-900">Step 1: Verify Customer Pickup OTP</p>
+                    <p className="text-[11px] text-slate-600 mt-0.5">
+                      Ask customer at pickup location to read the 6-digit code on their screen before goods depart.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleVerifyPickupOtp} className="flex gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={pickupOtpInput}
+                    onChange={(e) => setPickupOtpInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 6-digit Pickup OTP"
+                    className="flex-1 px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 font-mono text-center tracking-[0.2em] font-bold text-sm focus:outline-none focus:border-blue-600 shadow-inner"
+                  />
+                  <button
+                    type="submit"
+                    disabled={verifyingPickupOtp || pickupOtpInput.trim().length !== 6}
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  >
+                    {verifyingPickupOtp ? <RotateCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                    <span>{verifyingPickupOtp ? "Verifying..." : "Verify"}</span>
+                  </button>
+                </form>
+
+                {pickupOtpError && (
+                  <p className="text-[11px] font-semibold text-rose-600 flex items-center gap-1">
+                    <AlertCircle size={13} className="shrink-0" />
+                    {pickupOtpError}
+                  </p>
+                )}
+                {pickupOtpSuccessMsg && (
+                  <p className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
+                    {pickupOtpSuccessMsg}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={startingTransit}
+                onClick={handleStartTransit}
+                className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+              >
+                {startingTransit ? (
+                  <>
+                    <RotateCw size={18} className="animate-spin" />
+                    <span>Starting Transit...</span>
+                  </>
+                ) : (
+                  <>
+                    <Navigation size={18} className="fill-white" />
+                    <span>Goods Loaded · Start Transit</span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
 
           {/* Phase 3: Arrived at Destination (when IN_TRANSIT) */}
@@ -612,6 +705,72 @@ export const DriverActiveOrderScreen: React.FC<DriverActiveOrderScreenProps> = (
           >
             Return to Dashboard
           </button>
+        </div>
+      )}
+      {/* Pickup OTP Verification Modal */}
+      {pickupOtpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                  <KeyRound size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">Pickup OTP Verification</h3>
+                  <p className="text-[11px] text-slate-500">Ask sender for the 6-digit code</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickupOtpModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleVerifyPickupOtp} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Customer Pickup OTP
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={pickupOtpInput}
+                  onChange={(e) => setPickupOtpInput(e.target.value.replace(/\D/g, ''))}
+                  placeholder="• • • • • •"
+                  className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-center tracking-[0.3em] font-black text-xl focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              {pickupOtpError && (
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-1.5">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{pickupOtpError}</span>
+                </div>
+              )}
+
+              {pickupOtpSuccessMsg && (
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className="shrink-0" />
+                  <span>{pickupOtpSuccessMsg}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={verifyingPickupOtp || pickupOtpInput.trim().length !== 6}
+                className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                {verifyingPickupOtp ? <RotateCw size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                <span>{verifyingPickupOtp ? "Verifying..." : "Verify & Start Transit"}</span>
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>

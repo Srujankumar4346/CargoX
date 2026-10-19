@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import UUID4, BaseModel
 from app.api.deps import get_current_user

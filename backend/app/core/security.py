@@ -25,12 +25,15 @@ def get_password_hash(password: str) -> str:
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8')[:72], salt).decode('utf-8')
 
-def create_driver_token(data: dict) -> str:
+def create_local_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=60*24*7) # 7 days
     to_encode.update({"exp": expire, "iss": "cargox_local"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
+
+def create_driver_token(data: dict) -> str:
+    return create_local_token(data)
 
 def decode_token(token: str) -> dict:
     """

@@ -5,7 +5,7 @@ from app.api.deps import get_current_user
 from app.models.enums import UserRole
 from app.models.user import User
 from app.models.fleet import Driver
-from app.core.security import verify_password, create_driver_token
+from app.core.security import verify_password, create_driver_token, create_local_token
 
 router = APIRouter()
 
@@ -118,3 +118,50 @@ async def driver_login(req: DriverLoginRequest):
         
     token = create_driver_token(data={"sub": str(driver.user_id), "role": "DRIVER"})
     return {"access_token": token}
+
+
+class CustomerGuestSessionRequest(BaseModel):
+    name: Optional[str] = "Customer Guest"
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.post("/customer-guest-session")
+async def create_customer_guest_session(req: CustomerGuestSessionRequest):
+    """
+    Creates or retrieves a guest customer session with local JWT token,
+    ensuring seamless booking exploration and immediate order placement without friction.
+    """
+    import uuid
+    from app.models.company import CustomerCompany
+    from app.models.enums import CompanyStatus
+    
+    email = req.email.strip().lower() if req.email else f"guest_{uuid.uuid4().hex[:8]}@cargox.guest"
+    user = await User.find_one(User.email == email)
+    if not user:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            role=UserRole.CUSTOMER_USER,
+            is_active=True
+        )
+        await user.insert()
+        
+    if not user.customer_company_id:
+        company_name = req.name or f"Guest {email.split('@')[0].title()} Express"
+        company = CustomerCompany(
+            name=company_name,
+            billing_address="Address Pending",
+            status=CompanyStatus.ACTIVE
+        )
+        await company.insert()
+        user.customer_company_id = company.id
+        await user.save()
+
+    token = create_local_token(data={"sub": str(user.id), "role": "CUSTOMER_USER"})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": str(user.id),
+        "email": user.email,
+        "customer_company_id": str(user.customer_company_id)
+    }

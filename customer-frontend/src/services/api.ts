@@ -37,6 +37,27 @@ async function authFetch(url: string, options: RequestInit = {}) {
     token = localStorage.getItem('access_token');
   }
 
+  // 3. If still no token, automatically acquire a guest customer session to prevent "Not authenticated" 401 errors
+  if (!token) {
+    try {
+      const guestRes = await fetch(`${API_URL}/auth/customer-guest-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Valued Customer" }),
+      });
+      if (guestRes.ok) {
+        const guestData = await guestRes.json();
+        if (guestData?.access_token) {
+          token = guestData.access_token;
+          localStorage.setItem('access_token', token);
+          if (guestData.email) localStorage.setItem('user_email', guestData.email);
+        }
+      }
+    } catch (err) {
+      console.warn("[authFetch] Failed to create guest session fallback:", err);
+    }
+  }
+
   // Extract user email
   let userEmail: string | null = null;
   if (userEmailGetter) {

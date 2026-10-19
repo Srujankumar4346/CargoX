@@ -45,14 +45,18 @@ export function getVehicleImage(vehicle: any): string {
   const tons = Number(vehicle?.capacity_tons) || 1;
   const type = String(vehicle?.type || "").toUpperCase();
 
-  if (type === "TATA_ACE" || tons <= 1.2) return "/images/vehicles/card_ref_tata_ace.png";
-  if (type === "BOLERO_PICKUP" || (tons > 1.2 && tons <= 3.5)) return "/images/vehicles/card_ref_bolero.png";
-  if (type === "REFRIGERATED" || (tons > 1.2 && tons <= 2.2)) return "/images/vehicles/card_ref_dost.png";
-  if (type === "CONTAINER") return "/images/vehicles/card_ref_intra.png";
+  if (type === "TATA_ACE") return "/images/vehicles/tata-ace-gold.png";
+  if (type === "BOLERO_PICKUP") return "/images/vehicles/mahindra-bolero-pikup.png";
+  if (type === "CONTAINER") return "/images/vehicles/screen6_full.png";
+  if (type === "REFRIGERATED") return "/images/vehicles/ashok-leyland-dost.png";
   if (type === "TRUCK_14FT") return "/images/vehicles/screen2_trucks.png";
-  if (type === "TRAILER") return "/images/vehicles/bolero_crop.png";
+  if (type === "TRAILER") return "/images/vehicles/col5_full.png";
 
-  return "/images/vehicles/card_ref_bolero.png";
+  if (tons <= 1.2) return "/images/vehicles/tata-ace-gold.png";
+  if (tons <= 2.2) return "/images/vehicles/ashok-leyland-dost.png";
+  if (tons <= 3.5) return "/images/vehicles/mahindra-bolero-pikup.png";
+  if (type === "CONTAINER") return "/images/vehicles/screen6_full.png";
+  return "/images/vehicles/col5_full.png";
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -197,9 +201,27 @@ function DriverForm({ onDone }: { onDone: () => void }) {
           e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 12);
         }}
       />
-      <input name="username" placeholder="Login Username (Optional)" className="fleet-input" />
-      <input name="password" type="text" placeholder="Login Password (Optional)" className="fleet-input" />
+      <div className="space-y-1">
+        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Driver Login Username *</label>
+        <input 
+          name="username" 
+          required 
+          placeholder="e.g. driver_pandu" 
+          className="fleet-input font-mono" 
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Driver Login Password *</label>
+        <input 
+          name="password" 
+          type="text" 
+          required 
+          placeholder="Set driver portal password" 
+          className="fleet-input font-mono" 
+        />
+      </div>
     </div>
+    <p className="text-[11px] text-slate-500">The driver will use this unique username and password to log in to the Driver App (without Gmail).</p>
     <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50"><Plus size={16} />{saving ? "Adding driver..." : "Add driver"}</button>
   </form>;
 }
@@ -545,14 +567,12 @@ export default function FleetManagementPanel({
                     {/* Vehicle Preview Image & Name */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-16 h-12 rounded-lg bg-slate-800/60 border border-slate-700/60 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                        <div className="w-16 h-12 rounded-lg bg-slate-950 border border-slate-800 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
                           <img 
                             src={getVehicleImage(vehicle)} 
                             alt={vehicle.registration_number} 
-                            loading="eager"
-                            decoding="async"
                             className="w-full h-full object-contain"
-                            onError={(e: any) => { e.currentTarget.src = "/images/vehicles/card_ref_bolero.png"; }}
+                            onError={(e: any) => { e.currentTarget.src = "/images/vehicles/col5_full.png"; }}
                           />
                         </div>
                         <div>
@@ -714,7 +734,14 @@ export default function FleetManagementPanel({
                           <p className="text-sm font-bold text-white flex items-center gap-1.5">
                             {driver.name}
                           </p>
-                          <p className="text-xs text-slate-500">Age: {driver.age || "—"} yrs {driver.username ? `• @${driver.username}` : ""}</p>
+                          <p className="text-xs text-slate-500">Age: {driver.age || "—"} yrs</p>
+                          {driver.username ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-1.5 py-0.5 rounded mt-0.5">
+                              User ID: @{driver.username}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-amber-400">No login username set</span>
+                          )}
                         </div>
                       </div>
                     </td>

@@ -82,25 +82,29 @@ export default function DriverLogin() {
             </div>
           )}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Username or Email</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Unique Username or User ID
+            </label>
             <input 
               required 
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm" 
-              placeholder="Username or registered email" 
+              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm font-medium" 
+              placeholder="e.g. pandu or driver ID" 
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Password</label>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Admin-Assigned Password
+            </label>
             <input 
               required 
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm" 
-              placeholder="Enter your password" 
+              placeholder="Enter password provided by admin" 
             />
           </div>
           <button 
@@ -108,24 +112,13 @@ export default function DriverLogin() {
             disabled={loading}
             className="w-full rounded-xl bg-slate-900 hover:bg-black px-4 py-3 font-extrabold text-white text-sm transition disabled:opacity-50 mt-4 cursor-pointer shadow-md"
           >
-            {loading ? "Signing in..." : "Sign In with Credentials"}
+            {loading ? "Signing in..." : "Sign In to Driver Workspace"}
           </button>
         </form>
 
-        <div className="relative my-5 text-center">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div>
-          <span className="relative bg-white px-3 text-xs uppercase text-slate-400 tracking-wider">or sign in with email</span>
-        </div>
-
-        <SignInButton mode="modal">
-          <button
-            type="button"
-            className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-800 transition hover:bg-slate-100 cursor-pointer"
-          >
-            <Mail size={16} className="text-blue-600" />
-            Sign in with Email / Google
-          </button>
-        </SignInButton>
+        <p className="mt-4 text-center text-[11px] text-slate-500">
+          Driver credentials are administered by CargoX Dispatch Operations. If you forgot your password, contact your fleet administrator.
+        </p>
 
         <div className="mt-5 text-center flex flex-col gap-2">
           <button

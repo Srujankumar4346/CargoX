@@ -7,6 +7,8 @@ class CustomerActiveOTPResponse(BaseModel):
     has_active_otp: bool
     purpose: Optional[str] = None  # "PICKUP" or "DELIVERY"
     code: Optional[str] = None     # 6-digit code shown ONLY to authorized customer
+    recipient_name: Optional[str] = None
+    recipient_phone_masked: Optional[str] = None
     expires_at: Optional[datetime] = None
     expires_in_seconds: int = 0
     is_verified: bool = False

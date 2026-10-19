@@ -119,6 +119,7 @@ export default function AdminDashboard() {
     dispatch: "bookings",
     fleet: "vehicles",
     vehicles: "vehicles",
+    drivers: "drivers",
     trips: "trips",
     financials: "financials",
     finance: "financials",
@@ -612,7 +613,13 @@ export default function AdminDashboard() {
             onClick={() => { setActiveTab('vehicles'); setIsMobileSidebarOpen(false); }} 
             className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'vehicles' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
           >
-             <MapIcon size={18}/> <span>Fleet Status</span>
+             <Truck size={18}/> <span>Vehicles Fleet</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('drivers'); setIsMobileSidebarOpen(false); }} 
+            className={`w-full text-left py-2.5 px-4 rounded flex items-center gap-3 transition ${activeTab === 'drivers' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-300'}`}
+          >
+             <UserRound size={18}/> <span>Driver Directory</span>
           </button>
           <button 
             onClick={() => { setActiveTab('trips'); setIsMobileSidebarOpen(false); }} 
@@ -817,8 +824,17 @@ export default function AdminDashboard() {
           <ActiveTripsPanel trips={trips} vehicles={vehicles} drivers={drivers} isRefreshing={isRefreshing} loadData={loadData} onMarkInTransit={handleMarkInTransit} onForceComplete={handleForceComplete} />
         )}
 
-        {activeTab === 'vehicles' && (
-          <FleetManagementPanel vehicles={vehicles} drivers={drivers} trips={trips} isRefreshing={isRefreshing} loadData={loadData} showConfirm={showConfirm} />
+        {(activeTab === 'vehicles' || activeTab === 'drivers') && (
+          <FleetManagementPanel 
+            vehicles={vehicles} 
+            drivers={drivers} 
+            trips={trips} 
+            isRefreshing={isRefreshing} 
+            loadData={loadData} 
+            showConfirm={showConfirm}
+            initialTab={activeTab === 'drivers' ? 'drivers' : 'vehicles'}
+            onTabChange={(tab: 'vehicles' | 'drivers') => setActiveTab(tab)}
+          />
         )}
 
         {activeTab === 'settings' && (

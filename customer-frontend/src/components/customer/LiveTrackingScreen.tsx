@@ -538,15 +538,25 @@ export default function LiveTrackingScreen({
                   Verified
                 </span>
               </div>
-            ) : otpData.has_active_otp && otpData.code && operationalStatus !== "IN_TRANSIT" ? (
-              <div className="bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200/90 rounded-2xl p-3 shadow-xs">
+            ) : otpData.has_active_otp && operationalStatus !== "IN_TRANSIT" ? (
+              <div className={`border rounded-2xl p-3.5 shadow-xs ${
+                otpData.purpose === "DELIVERY" 
+                  ? "bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border-emerald-200/90"
+                  : "bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border-blue-200/90"
+              }`}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-lg bg-[#1e60ff]/10 text-[#1e60ff] flex items-center justify-center">
+                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${
+                      otpData.purpose === "DELIVERY"
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "bg-[#1e60ff]/10 text-[#1e60ff]"
+                    }`}>
                       <KeyRound className="w-3.5 h-3.5" />
                     </div>
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#1e60ff]">
-                      {otpData.purpose === "PICKUP" ? "PICKUP VERIFICATION OTP" : "DELIVERY VERIFICATION OTP"}
+                    <span className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                      otpData.purpose === "DELIVERY" ? "text-emerald-700" : "text-[#1e60ff]"
+                    }`}>
+                      {otpData.purpose === "PICKUP" ? "PICKUP VERIFICATION OTP" : "RECEIVER DELIVERY OTP"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -567,18 +577,38 @@ export default function LiveTrackingScreen({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 mt-2">
-                  <p className="text-xs text-slate-600 font-medium leading-snug">
-                    {otpData.purpose === "PICKUP"
-                      ? "Share this code with your driver at pickup."
-                      : "Share this code with your driver to confirm delivery."}
-                  </p>
-                  <div className="bg-white border-2 border-[#1e60ff]/50 rounded-xl px-3.5 py-1.5 shadow-sm shrink-0">
-                    <span className="font-mono text-xl font-black tracking-[0.25em] text-[#1e60ff] pl-1">
-                      {otpData.code}
-                    </span>
+                {otpData.purpose === "DELIVERY" ? (
+                  <div className="mt-2 space-y-2">
+                    <div className="bg-white/80 border border-emerald-200/70 rounded-xl p-2.5">
+                      <p className="text-xs text-emerald-950 font-bold flex items-center gap-1.5">
+                        <span>📲</span>
+                        <span>Sent via SMS to Receiver</span>
+                      </p>
+                      <p className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                        {otpData.instruction || `Delivery OTP was sent to receiver (${otpData.recipient_name || 'Receiver'} at ${otpData.recipient_phone_masked || 'destination mobile'}).`}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pt-0.5">
+                      <span className="text-[10px] text-slate-500 font-medium">Backup receiver handover code:</span>
+                      <div className="bg-white border-2 border-emerald-500/50 rounded-xl px-3 py-1 shadow-sm shrink-0">
+                        <span className="font-mono text-lg font-black tracking-[0.25em] text-emerald-700 pl-1">
+                          {otpData.code}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 mt-2">
+                    <p className="text-xs text-slate-600 font-medium leading-snug">
+                      Share this code with your driver at pickup to begin the journey.
+                    </p>
+                    <div className="bg-white border-2 border-[#1e60ff]/50 rounded-xl px-3.5 py-1.5 shadow-sm shrink-0">
+                      <span className="font-mono text-xl font-black tracking-[0.25em] text-[#1e60ff] pl-1">
+                        {otpData.code}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
           </div>

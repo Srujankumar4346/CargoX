@@ -223,17 +223,42 @@ class DeliveryOTPService:
             code_to_display = fresh_code
             expires_in_seconds = expiry_secs
 
-        stage_title = "Pickup Verification Code" if purpose == "PICKUP" else "Delivery Verification Code"
+            # When stage is DELIVERY, actively dispatch SMS to recipient's phone number
+            if purpose == "DELIVERY" and request.destination_phone:
+                try:
+                    from app.services.sms_service import SMSService
+                    await SMSService.send_delivery_otp_sms(
+                        phone=request.destination_phone,
+                        otp_code=fresh_code,
+                        request_number=request.request_number,
+                        driver_name="CargoX Driver"
+                    )
+                except Exception as sms_err:
+                    logger.warning(f"Failed to dispatch SMS to recipient {request.destination_phone}: {sms_err}")
+
+        rec_name = request.destination_contact_person or request.destination_company_name or "Receiver"
+        rec_phone = request.destination_phone or ""
+        masked_rec_phone = ""
+        if rec_phone:
+            try:
+                from app.services.sms_service import SMSService
+                masked_rec_phone = SMSService.mask_phone(rec_phone)
+            except Exception:
+                masked_rec_phone = rec_phone[-4:].rjust(len(rec_phone), "*") if len(rec_phone) > 4 else rec_phone
+
+        stage_title = "Pickup Verification Code" if purpose == "PICKUP" else "Delivery Verification Code (Sent to Receiver)"
         instruction = (
             "Share this 6-digit code with your CargoX driver upon freight handover at pickup."
             if purpose == "PICKUP"
-            else "Share this 6-digit code with your driver to confirm delivery handover."
+            else f"Delivery OTP has been sent to the receiver ({rec_name} at {masked_rec_phone or 'destination mobile'}). The receiver will share this code with the driver upon delivery."
         )
 
         return {
             "has_active_otp": True,
             "purpose": purpose,
             "code": code_to_display,
+            "recipient_name": rec_name if purpose == "DELIVERY" else (request.pickup_contact_person or "Sender"),
+            "recipient_phone_masked": masked_rec_phone if purpose == "DELIVERY" else (request.pickup_phone or ""),
             "expires_at": expires_at,
             "expires_in_seconds": expires_in_seconds,
             "is_verified": False,

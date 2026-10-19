@@ -312,6 +312,8 @@ export default function MasterCustomerApp() {
         pickup_lat: pickupCoords?.lat ?? 17.3850,
         pickup_lng: pickupCoords?.lng ?? 78.4867,
         destination_company_name: recipientDetails.receiverName || "Receiver Site",
+        destination_contact_person: recipientDetails.receiverName || "Receiver",
+        destination_phone: recipientDetails.receiverPhone || "",
         destination_address: dropAddress || "Destination Point",
         destination_lat: dropCoords?.lat ?? 17.3850,
         destination_lng: dropCoords?.lng ?? 78.4867,

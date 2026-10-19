@@ -1785,7 +1785,7 @@ export default function DriverWorkspace() {
             setCurrentTab('home');
           }}
           driverName={user?.fullName || user?.firstName || profile?.name || 'Ramesh Kumar'}
-          driverAvatar={user?.imageUrl}
+          driverAvatar={profile?.avatar_url || user?.imageUrl}
           driverEmail={user?.primaryEmailAddress?.emailAddress || profile?.email || 'driver@cargoexpress.in'}
           driverPhone={profile?.phone || '+91 98765 43210'}
           rating={4.8}

@@ -22,7 +22,8 @@ class FleetService:
             registration_number=vehicle_in.registration_number,
             type=vehicle_in.type,
             capacity_tons=float(vehicle_in.capacity_tons),
-            status=VehicleStatus.AVAILABLE
+            status=VehicleStatus.AVAILABLE,
+            image_url=vehicle_in.image_url
         )
         await vehicle.insert()
         return vehicle
@@ -43,6 +44,7 @@ class FleetService:
                 type=v.type,
                 capacity_tons=Decimal(str(v.capacity_tons)),
                 status=v.status,
+                image_url=v.image_url,
                 is_deletable=(assignment is None)
             ))
         return results
@@ -72,6 +74,8 @@ class FleetService:
             vehicle.capacity_tons = float(vehicle_in.capacity_tons)
         if vehicle_in.status is not None:
             vehicle.status = vehicle_in.status
+        if vehicle_in.image_url is not None:
+            vehicle.image_url = vehicle_in.image_url
 
         await vehicle.save()
         return vehicle
@@ -157,7 +161,8 @@ class FleetService:
             phone=driver_in.phone,
             license_number=driver_in.license_number,
             username=driver_in.username,
-            status=DriverStatus.AVAILABLE
+            status=DriverStatus.AVAILABLE,
+            avatar_url=driver_in.avatar_url
         )
         
         if driver_in.password:
@@ -204,6 +209,8 @@ class FleetService:
             driver.phone = driver_in.phone
         if driver_in.status is not None:
             driver.status = driver_in.status
+        if driver_in.avatar_url is not None:
+            driver.avatar_url = driver_in.avatar_url
             
         if driver_in.username is not None and driver_in.username != driver.username:
             existing_username = await Driver.find_one(Driver.username == driver_in.username)

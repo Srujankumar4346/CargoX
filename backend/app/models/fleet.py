@@ -12,6 +12,7 @@ class Vehicle(Document):
     type: VehicleType
     capacity_tons: float
     status: VehicleStatus = VehicleStatus.AVAILABLE
+    image_url: Optional[str] = None
     
     class Settings:
         name = "vehicles"
@@ -32,6 +33,7 @@ class Driver(Document):
     phone: str
     license_number: str # type: ignore
     status: DriverStatus = DriverStatus.AVAILABLE
+    avatar_url: Optional[str] = None
     
     class Settings:
         name = "drivers"

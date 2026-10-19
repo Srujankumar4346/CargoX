@@ -8,12 +8,14 @@ class VehicleCreate(BaseModel):
     registration_number: str = Field(..., min_length=1, description="Registration number of the vehicle")
     type: VehicleType
     capacity_tons: Decimal = Field(..., gt=Decimal("0"), description="Capacity of the vehicle in tons")
+    image_url: Optional[str] = None
 
 class VehicleUpdate(BaseModel):
     registration_number: Optional[str] = None
     type: Optional[VehicleType] = None
     capacity_tons: Optional[Decimal] = Field(default=None, gt=Decimal("0"))
     status: Optional[VehicleStatus] = None
+    image_url: Optional[str] = None
 
 class VehicleRead(BaseModel):
     id: uuid.UUID
@@ -21,6 +23,7 @@ class VehicleRead(BaseModel):
     type: VehicleType
     capacity_tons: Decimal
     status: VehicleStatus
+    image_url: Optional[str] = None
     is_deletable: bool = True
 
     model_config = ConfigDict(from_attributes=True)
@@ -34,6 +37,7 @@ class DriverCreate(BaseModel):
     name: str = Field(..., min_length=1)
     phone: str = Field(..., min_length=1)
     license_number: str = Field(..., min_length=1)
+    avatar_url: Optional[str] = None
 
 class DriverUpdate(BaseModel):
     email: Optional[str] = None
@@ -45,6 +49,7 @@ class DriverUpdate(BaseModel):
     phone: Optional[str] = None
     license_number: Optional[str] = None
     status: Optional[DriverStatus] = None
+    avatar_url: Optional[str] = None
 
 class DriverRead(BaseModel):
     id: uuid.UUID
@@ -57,5 +62,6 @@ class DriverRead(BaseModel):
     phone: str
     license_number: str
     status: DriverStatus
+    avatar_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

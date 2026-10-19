@@ -13,6 +13,7 @@ import CustomerRewardsScreen from "./CustomerRewardsScreen";
 import AddMoneyScreen from "./AddMoneyScreen";
 import BookingConfirmationScreen from "./BookingConfirmationScreen";
 import LiveTrackingScreen from "./LiveTrackingScreen";
+import SelectDropLocationScreen from "./SelectDropLocationScreen";
 import MobileBottomNav, { type TabType } from "./MobileBottomNav";
 import QuickPriceCalculatorModal from "./QuickPriceCalculatorModal";
 import { api } from "../../services/api";
@@ -21,6 +22,7 @@ export type CustomerFlowScreen =
   | "welcome"           // Screen 1: Splash / Welcome
   | "home"              // Screen 2: Dashboard
   | "search"            // Screen 3: Pickup & Drop Search
+  | "select-drop-map"   // Interactive Leaflet Map picker for Drop Location
   | "map-recipient"     // Screen 4: Map Drop & Recipient Details
   | "vehicle"           // Screen 5: Vehicle Selection with Part Load
   | "booking-details"   // Screen 6: Booking Details
@@ -75,9 +77,46 @@ export default function MasterCustomerApp() {
   const [ordersList, setOrdersList] = useState<CustomerOrderRecord[]>([]);
   const [isOrdersLoading, setIsOrdersLoading] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number>(0);
-  const [isDetectingLocation] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isPriceCalculatorOpen, setIsPriceCalculatorOpen] = useState(false);
   const [activeTrackingId, setActiveTrackingId] = useState<string | null>(null);
+
+  const handleDetectCurrentLocation = () => {
+    if (navigator.geolocation) {
+      setIsDetectingLocation(true);
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setPickupCoords({ lat, lng });
+          try {
+            const resp = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
+              { headers: { "Accept-Language": "en" } }
+            );
+            if (resp.ok) {
+              const data = await resp.json();
+              const formatted = data.display_name || `Current Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+              setPickupAddress(formatted);
+            } else {
+              setPickupAddress(`Current Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+            }
+          } catch {
+            setPickupAddress(`Current Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+          } finally {
+            setIsDetectingLocation(false);
+          }
+        },
+        (_err) => {
+          setIsDetectingLocation(false);
+          alert("Could not detect location. Please grant location permissions or enter address manually.");
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    } else {
+      alert("Geolocation is not supported by your browser.");
+    }
+  };
 
   // Check if welcome preview is requested via URL or skip if completed
   useEffect(() => {
@@ -240,6 +279,7 @@ export default function MasterCustomerApp() {
             onChangeCity={(city) => setSelectedCity(city)}
             onOpenPickup={() => setCurrentScreen("search")}
             onOpenDrop={() => setCurrentScreen("search")}
+            onUseCurrentLocation={handleDetectCurrentLocation}
             onSwapLocations={handleSwapLocations}
             onGetQuote={() => setCurrentScreen("search")}
             onQuickTrack={() => {
@@ -286,7 +326,24 @@ export default function MasterCustomerApp() {
               setDropAddress(fullAddr);
               if (coords) setDropCoords(coords);
             }}
+            onChooseOnMap={() => setCurrentScreen("select-drop-map")}
             onContinue={() => setCurrentScreen("map-recipient")}
+          />
+        )}
+
+        {/* Screen 3B: In-App Interactive Map Location Picker */}
+        {currentScreen === "select-drop-map" && (
+          <SelectDropLocationScreen
+            onBack={() => setCurrentScreen("search")}
+            pickupAddress={pickupAddress}
+            pickupCoords={pickupCoords || { lat: 17.5375, lng: 78.4735 }}
+            initialDropAddress={dropAddress}
+            onConfirm={(address, coords, distKm) => {
+              setDropAddress(address);
+              setDropCoords(coords);
+              if (distKm > 0) setDistanceKm(distKm);
+              setCurrentScreen("map-recipient");
+            }}
           />
         )}
 

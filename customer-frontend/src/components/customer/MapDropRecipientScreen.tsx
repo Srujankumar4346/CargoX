@@ -47,6 +47,11 @@ export default function MapDropRecipientScreen({
   };
 
   const handleContinue = () => {
+    if (!dropAddress || !dropAddress.trim()) {
+      alert("Please set a destination drop location before proceeding.");
+      onChangeLocation();
+      return;
+    }
     if (!receiverName.trim()) {
       alert("Please enter the receiver's name");
       return;

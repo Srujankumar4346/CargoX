@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Plus, MapPin, X } from "lucide-react";
+import { ArrowLeft, Plus, MapPin, X, Map } from "lucide-react";
 
 interface PickupDropSearchScreenProps {
   onBack: () => void;
@@ -9,6 +9,7 @@ interface PickupDropSearchScreenProps {
   onChangeDropAddress: (addr: string) => void;
   onContinue: () => void;
   onSelectSuggestion?: (address: string, coords?: { lat: number; lng: number }) => void;
+  onChooseOnMap?: () => void;
 }
 
 export default function PickupDropSearchScreen({
@@ -19,6 +20,7 @@ export default function PickupDropSearchScreen({
   onChangeDropAddress,
   onContinue,
   onSelectSuggestion,
+  onChooseOnMap,
 }: PickupDropSearchScreenProps) {
   const [activeField, setActiveField] = useState<"pickup" | "drop">("drop");
   const [query, setQuery] = useState(dropAddress || "");
@@ -32,7 +34,7 @@ export default function PickupDropSearchScreen({
     }
   });
 
-  // Dynamic search with India bias & live Photon/OSM geocoding
+  // Dynamic search with India geo-bias, smart deduplication, and Google Maps-style hierarchical suggestions
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) {
@@ -40,37 +42,138 @@ export default function PickupDropSearchScreen({
       return;
     }
 
+    const abortController = new AbortController();
+
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&limit=6`
-        );
-        const data = await res.json();
-        if (data && data.features) {
-          const mapped = data.features
-            .filter((f: any) => {
-              const country = f.properties.country || "";
-              return country.toLowerCase().includes("india") || !country;
-            })
-            .map((f: any) => {
-              const p = f.properties;
-              const title = p.name || p.city || p.district || trimmed;
-              const subtitleParts = [p.district, p.state, p.country || "India"].filter(Boolean);
-              return {
-                title,
-                subtitle: subtitleParts.join(", "),
-                lat: f.geometry.coordinates[1],
-                lng: f.geometry.coordinates[0],
-              };
-            });
-          setSuggestions(mapped);
-        }
-      } catch (err) {
-        console.warn("Location autocomplete error:", err);
-      }
-    }, 280);
+        const seenKeys = new Set<string>();
+        const mappedList: Array<{ title: string; subtitle: string; lat: number; lng: number }> = [];
 
-    return () => clearTimeout(timer);
+        // 1. Fetch Photon with India / Hyderabad coordinate bias (lat=17.3850, lon=78.4867)
+        // Fetch up to 25 results from local coordinate bias + countrywide matches
+        const searchUrls = [
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&lat=17.3850&lon=78.4867&limit=25`,
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed + " India")}&limit=25`
+        ];
+
+        for (const url of searchUrls) {
+          if (mappedList.length >= 25 || abortController.signal.aborted) break;
+          try {
+            const resp = await fetch(url, { signal: abortController.signal });
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data && Array.isArray(data.features)) {
+                for (const f of data.features) {
+                  const p = f.properties || {};
+                  const code = (p.countrycode || "").toUpperCase();
+                  const countryName = (p.country || "").toLowerCase();
+                  if (code && code !== "IN" && countryName && !countryName.includes("india")) continue;
+
+                  // Skip railway platform duplicates and low-level stops like "platform 9"
+                  if (p.osm_value === "stop" || (p.street && p.street.toLowerCase().startsWith("platform"))) {
+                    continue;
+                  }
+
+                  const mainTitle = p.name || p.city || p.district || trimmed;
+                  const localityOrStreet = p.street || p.locality || p.district || "";
+                  const cityOrCounty = p.city || p.county || "";
+                  const state = p.state || "";
+
+                  const subtitleParts = [localityOrStreet, cityOrCounty, state, "India"]
+                    .filter(Boolean)
+                    .filter((x) => x.toLowerCase() !== mainTitle.toLowerCase());
+                  const uniqueSubParts = Array.from(new Set(subtitleParts));
+
+                  // Deduplication key
+                  const normKey = `${mainTitle}|${localityOrStreet || cityOrCounty}`.toLowerCase().replace(/\s+/g, "");
+                  if (!seenKeys.has(normKey)) {
+                    seenKeys.add(normKey);
+                    mappedList.push({
+                      title: mainTitle,
+                      subtitle: uniqueSubParts.join(", "),
+                      lat: f.geometry?.coordinates?.[1] ?? 17.385,
+                      lng: f.geometry?.coordinates?.[0] ?? 78.4867,
+                    });
+                  }
+                  if (mappedList.length >= 25) break;
+                }
+              }
+            }
+          } catch (e: any) {
+            if (e?.name !== "AbortError") {
+              console.warn("Photon lookup error:", e);
+            }
+          }
+        }
+
+        // 2. Safe Nominatim fallback (only if photon produced fewer than 6 results)
+        if (mappedList.length < 6 && !abortController.signal.aborted) {
+          try {
+            const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+              trimmed
+            )}&format=json&addressdetails=1&limit=10&countrycodes=in`;
+            const nResp = await fetch(nomUrl, {
+              headers: { "Accept-Language": "en" },
+              signal: abortController.signal,
+            });
+            if (nResp.ok) {
+              const nData = await nResp.json();
+              if (Array.isArray(nData)) {
+                for (const item of nData) {
+                  const addr = item.address || {};
+                  if (item.type === "stop") continue;
+
+                  const mainTitle = item.name || addr.railway || addr.building || addr.road || addr.city || trimmed;
+                  const area = addr.suburb || addr.neighbourhood || addr.road || "";
+                  const city = addr.city || addr.town || addr.county || "";
+                  const state = addr.state || "";
+
+                  const subtitleParts = [area, city, state, "India"]
+                    .filter(Boolean)
+                    .filter((x) => x.toLowerCase() !== mainTitle.toLowerCase());
+                  const uniqueSubParts = Array.from(new Set(subtitleParts));
+
+                  const normKey = `${mainTitle}|${area || city}`.toLowerCase().replace(/\s+/g, "");
+                  if (!seenKeys.has(normKey)) {
+                    seenKeys.add(normKey);
+                    mappedList.push({
+                      title: mainTitle,
+                      subtitle: uniqueSubParts.join(", "),
+                      lat: parseFloat(item.lat),
+                      lng: parseFloat(item.lon),
+                    });
+                  }
+                  if (mappedList.length >= 25) break;
+                }
+              }
+            }
+          } catch {
+            // Silently ignore if blocked/offline
+          }
+        }
+
+        // 3. Strictly prioritize Telangana locations first, then all other locations
+        const prioritized = [...mappedList].sort((a, b) => {
+          const aIsTelangana = a.subtitle.toLowerCase().includes("telangana") || a.title.toLowerCase().includes("telangana");
+          const bIsTelangana = b.subtitle.toLowerCase().includes("telangana") || b.title.toLowerCase().includes("telangana");
+          if (aIsTelangana && !bIsTelangana) return -1;
+          if (!aIsTelangana && bIsTelangana) return 1;
+          return 0;
+        });
+
+        // Set full list for smooth scrollable suggestions (up to 20 locations)
+        setSuggestions(prioritized.slice(0, 20));
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.warn("Location autocomplete error:", err);
+        }
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+      abortController.abort();
+    };
   }, [query]);
 
   const handleSelectPlace = (place: { title: string; subtitle: string; lat: number; lng: number }) => {
@@ -181,6 +284,20 @@ export default function PickupDropSearchScreen({
               </button>
             </div>
           </div>
+
+          {/* Quick Option: Choose on Map */}
+          {onChooseOnMap && (
+            <div className="flex justify-end pt-0.5">
+              <button
+                type="button"
+                onClick={onChooseOnMap}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/80 hover:bg-blue-100/80 active:scale-95 text-[#0866F5] text-[11px] font-bold border border-blue-200/70 transition-all cursor-pointer shadow-2xs"
+              >
+                <Map className="w-3.5 h-3.5" />
+                <span>Choose on map</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Location List: Live Search Results OR Recent Locations */}
@@ -248,10 +365,29 @@ export default function PickupDropSearchScreen({
       {/* Prominent Sticky Continue Button matching Screen 3 */}
       <div className="p-4 bg-white border-t border-slate-100 sticky bottom-0 z-20">
         <button
-          onClick={onContinue}
-          className="w-full bg-[#0866F5] hover:bg-[#0652c5] active:scale-[0.98] text-white py-3.5 px-6 rounded-2xl font-bold text-sm shadow-md shadow-blue-500/25 transition-all flex items-center justify-center"
+          onClick={() => {
+            const hasPickup = Boolean(pickupAddress?.trim());
+            const hasDrop = Boolean(dropAddress?.trim() || query?.trim());
+            if (!hasPickup) {
+              setActiveField("pickup");
+              alert("Please enter a pickup location to continue.");
+              return;
+            }
+            if (!hasDrop) {
+              setActiveField("drop");
+              alert("Please enter or select a destination drop location to continue.");
+              return;
+            }
+            onContinue();
+          }}
+          disabled={!dropAddress?.trim() && !query?.trim()}
+          className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm transition-all flex items-center justify-center ${
+            dropAddress?.trim() || query?.trim()
+              ? "bg-[#0866F5] hover:bg-[#0652c5] text-white shadow-md shadow-blue-500/25 active:scale-[0.98] cursor-pointer"
+              : "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+          }`}
         >
-          Continue
+          {dropAddress?.trim() || query?.trim() ? "Continue" : "Enter Drop Location"}
         </button>
       </div>
     </div>

@@ -7,7 +7,9 @@ import {
   Navigation,
   Calendar,
   Calculator,
-  Headphones
+  Headphones,
+  Crosshair,
+  Loader2
 } from "lucide-react";
 
 interface CustomerHomeScreenProps {
@@ -22,7 +24,7 @@ interface CustomerHomeScreenProps {
   onQuickBookings: () => void;
   onQuickCalculator: () => void;
   onQuickSupport: () => void;
-  onSelectService: (serviceName: "Trucks" | "Part Load" | "2 Wheeler" | "Packers & Movers") => void;
+  onSelectService: (serviceName: "Trucks" | "Part Load" | "Packers & Movers") => void;
   onSwapLocations?: () => void;
   selectedCity?: string;
   onChangeCity?: (city: string) => void;
@@ -34,6 +36,7 @@ export default function CustomerHomeScreen({
   isDetectingLocation = false,
   onOpenPickup,
   onOpenDrop,
+  onUseCurrentLocation,
   onGetQuote,
   onQuickTrack,
   onQuickBookings,
@@ -124,7 +127,7 @@ export default function CustomerHomeScreen({
           Send Anything,<br />Anywhere
         </h1>
         <p className="text-xs font-semibold text-slate-500 mt-1">
-          Trucks • Part Load • 2 Wheeler • Packers & Movers
+          Trucks • Part Load • Packers & Movers
         </p>
 
         {/* Pickup & Drop Cards Container matching Screen 2 */}
@@ -134,17 +137,36 @@ export default function CustomerHomeScreen({
             onClick={onOpenPickup}
             role="button"
             tabIndex={0}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors"
+            className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors relative"
           >
             <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
               <span className="text-xs font-black">↑</span>
             </div>
-            <div className="flex-1 min-w-0 pr-8">
+            <div className="flex-1 min-w-0 pr-16">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pickup Location</p>
               <p className="text-xs font-bold text-slate-800 truncate mt-0.5">
                 {isDetectingLocation ? "Detecting location..." : (pickupAddress || "Enter pickup location")}
               </p>
             </div>
+            {onUseCurrentLocation && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUseCurrentLocation();
+                }}
+                disabled={isDetectingLocation}
+                title="Detect current location"
+                aria-label="Detect current location"
+                className="absolute right-2 w-7 h-7 rounded-full bg-blue-50 hover:bg-blue-100 active:scale-95 text-[#0866F5] flex items-center justify-center transition-all border border-blue-100 shadow-2xs"
+              >
+                {isDetectingLocation ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Crosshair className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
           </div>
 
           {/* Divider with swap locations button */}
@@ -251,31 +273,12 @@ export default function CustomerHomeScreen({
             </div>
           </div>
 
-          {/* Service 3: 2 Wheeler (Quick Delivery) */}
-          <div
-            onClick={() => onSelectService("2 Wheeler")}
-            role="button"
-            tabIndex={0}
-            className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
-          >
-            <div className="w-full flex items-center justify-center h-20 mb-1 text-4xl">
-              🛵
-            </div>
-            <div className="pt-2 border-t border-slate-50 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-black text-slate-900 leading-tight">2 Wheeler</p>
-                <p className="text-[10px] text-slate-400 font-medium">Quick Delivery</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#0866F5] transition-colors" />
-            </div>
-          </div>
-
-          {/* Service 4: Packers & Movers (House Shifting) */}
+          {/* Service 3: Packers & Movers (House Shifting) */}
           <div
             onClick={() => onSelectService("Packers & Movers")}
             role="button"
             tabIndex={0}
-            className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+            className="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group col-span-2 sm:col-span-1"
           >
             <div className="w-full flex items-center justify-center h-20 mb-1 text-4xl">
               📦
@@ -283,7 +286,7 @@ export default function CustomerHomeScreen({
             <div className="pt-2 border-t border-slate-50 flex items-center justify-between">
               <div>
                 <p className="text-xs font-black text-slate-900 leading-tight">Packers & Movers</p>
-                <p className="text-[10px] text-slate-400 font-medium">House Shifting</p>
+                <p className="text-[10px] text-slate-400 font-medium">House Shifting & Heavy Transport</p>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#0866F5] transition-colors" />
             </div>

@@ -23,8 +23,8 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Root URL http://localhost:5173/ opens with the 5-second Welcome preview, then transitions to /customer */}
-        <Route path="/" element={<WelcomePreview />} />
+        {/* Main Customer Portal routes */}
+        <Route path="/" element={<MasterCustomerApp />} />
         <Route path="/welcome" element={<WelcomePreview />} />
         <Route path="/login" element={<MasterCustomerApp />} />
         <Route path="/register" element={<MasterCustomerApp />} />

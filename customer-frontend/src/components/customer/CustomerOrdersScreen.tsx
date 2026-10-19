@@ -111,14 +111,19 @@ export default function CustomerOrdersScreen({
                         className="max-h-10 max-w-full object-contain"
                       />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs font-black text-slate-900">{order.serviceType}</p>
-                        <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-black text-slate-900">{order.serviceType}</p>
+                          <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200/80">
+                            #{order.ref || order.id?.slice(0, 8)}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
                           In Transit <ChevronRight className="w-3 h-3" />
                         </span>
                       </div>
-                      <p className="text-[11px] font-bold text-slate-700 mt-1 flex items-center gap-1">
+                      <p className="text-[11px] font-bold text-slate-700 mt-1 flex items-center gap-1 truncate">
                         <span className="text-emerald-600">●</span> {order.routeFrom} <span className="text-slate-400">→</span> {order.routeTo}
                       </p>
                       <p className="text-[10px] text-slate-400 font-medium mt-0.5">

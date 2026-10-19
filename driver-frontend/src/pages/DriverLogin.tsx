@@ -91,7 +91,7 @@ export default function DriverLogin() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden text-sm font-medium" 
-              placeholder="e.g. DRV-101 or pandu" 
+              placeholder="e.g. CGRX-10001 or pandu" 
             />
           </div>
           <div>

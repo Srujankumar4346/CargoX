@@ -45,18 +45,14 @@ export function getVehicleImage(vehicle: any): string {
   const tons = Number(vehicle?.capacity_tons) || 1;
   const type = String(vehicle?.type || "").toUpperCase();
 
-  if (type === "TATA_ACE") return "/images/vehicles/tata-ace-gold.png";
-  if (type === "BOLERO_PICKUP") return "/images/vehicles/mahindra-bolero-pikup.png";
-  if (type === "CONTAINER") return "/images/vehicles/screen6_full.png";
-  if (type === "REFRIGERATED") return "/images/vehicles/ashok-leyland-dost.png";
+  if (type === "TATA_ACE" || tons <= 1.2) return "/images/vehicles/card_ref_tata_ace.png";
+  if (type === "BOLERO_PICKUP" || (tons > 1.2 && tons <= 3.5)) return "/images/vehicles/card_ref_bolero.png";
+  if (type === "REFRIGERATED" || (tons > 1.2 && tons <= 2.2)) return "/images/vehicles/card_ref_dost.png";
+  if (type === "CONTAINER") return "/images/vehicles/card_ref_intra.png";
   if (type === "TRUCK_14FT") return "/images/vehicles/screen2_trucks.png";
-  if (type === "TRAILER") return "/images/vehicles/col5_full.png";
+  if (type === "TRAILER") return "/images/vehicles/bolero_crop.png";
 
-  if (tons <= 1.2) return "/images/vehicles/tata-ace-gold.png";
-  if (tons <= 2.2) return "/images/vehicles/ashok-leyland-dost.png";
-  if (tons <= 3.5) return "/images/vehicles/mahindra-bolero-pikup.png";
-  if (type === "CONTAINER") return "/images/vehicles/screen6_full.png";
-  return "/images/vehicles/col5_full.png";
+  return "/images/vehicles/card_ref_bolero.png";
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -549,12 +545,14 @@ export default function FleetManagementPanel({
                     {/* Vehicle Preview Image & Name */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-16 h-12 rounded-lg bg-slate-950 border border-slate-800 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                        <div className="w-16 h-12 rounded-lg bg-slate-800/60 border border-slate-700/60 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
                           <img 
                             src={getVehicleImage(vehicle)} 
                             alt={vehicle.registration_number} 
+                            loading="eager"
+                            decoding="async"
                             className="w-full h-full object-contain"
-                            onError={(e: any) => { e.currentTarget.src = "/images/vehicles/col5_full.png"; }}
+                            onError={(e: any) => { e.currentTarget.src = "/images/vehicles/card_ref_bolero.png"; }}
                           />
                         </div>
                         <div>

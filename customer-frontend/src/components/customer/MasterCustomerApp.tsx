@@ -61,7 +61,7 @@ export default function MasterCustomerApp() {
     maxPayloadKg: 3000,
     maxPayloadTons: 3.0,
     etaText: "Today, 9:00 AM",
-    price: 2811,
+    price: 350,
     image: "/images/vehicles/ashok-leyland-dost.png",
     isPartLoad: true,
   });
@@ -212,27 +212,49 @@ export default function MasterCustomerApp() {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const straightKm = R * c;
     // Apply standard urban road detour factor (~1.32x straight line)
-    return Math.max(3, Math.round(straightKm * 1.32));
+    return Math.max(1, Math.round(straightKm * 1.32));
   };
 
   // Compute actual road trip distance via backend OSRM routing engine with fallback
   const computeTripDistance = async (
     pCoords: { lat: number; lng: number } | null,
-    dCoords: { lat: number; lng: number } | null
+    dCoords: { lat: number; lng: number } | null,
+    dText?: string
   ) => {
-    // Default fallback coordinates if one is not yet geocoded
-    const effectivePickup = pCoords || { lat: 17.5375, lng: 78.4735 }; // Default Hyderabad Jeedimetla/North
-    const effectiveDrop = dCoords || { lat: 17.3850, lng: 78.4867 }; // Default Hyderabad Central
+    // If coordinates are missing, try to resolve via text geocoding
+    let effectiveDrop = dCoords;
+    if (!effectiveDrop && dText && dText.trim()) {
+      try {
+        const query = dText.trim();
+        const nomUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`;
+        const resp = await fetch(nomUrl);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.features && data.features.length > 0) {
+            const coords = data.features[0].geometry.coordinates;
+            effectiveDrop = { lat: coords[1], lng: coords[0] };
+            setDropCoords(effectiveDrop);
+          }
+        }
+      } catch (e) {
+        console.warn("Fast geocoding failed:", e);
+      }
+    }
+
+    // Default fallback coordinates: if drop is still unknown, default to a close 3 km local trip
+    const effectivePickup = pCoords || { lat: 17.5375, lng: 78.4735 };
+    // If no drop coords, default to nearby location (~3 km away instead of intercity 23 km)
+    const finalDrop = effectiveDrop || { lat: effectivePickup.lat + 0.022, lng: effectivePickup.lng + 0.015 };
 
     try {
       const res = await api.calculateRoute({
         pickup_lat: effectivePickup.lat,
         pickup_lng: effectivePickup.lng,
-        destination_lat: effectiveDrop.lat,
-        destination_lng: effectiveDrop.lng,
+        destination_lat: finalDrop.lat,
+        destination_lng: finalDrop.lng,
       });
       if (res && res.distance_km) {
-        const d = Math.round(Number(res.distance_km));
+        const d = Math.max(1, Math.round(Number(res.distance_km)));
         if (d > 0) {
           setDistanceKm(d);
           return d;
@@ -243,12 +265,12 @@ export default function MasterCustomerApp() {
     }
 
     // High accuracy fallback via Haversine
-    const fallbackDist = calculateHaversineKm(
+    const fallbackDist = Math.max(1, calculateHaversineKm(
       effectivePickup.lat,
       effectivePickup.lng,
-      effectiveDrop.lat,
-      effectiveDrop.lng
-    );
+      finalDrop.lat,
+      finalDrop.lng
+    ));
     setDistanceKm(fallbackDist);
     return fallbackDist;
   };
@@ -403,7 +425,7 @@ export default function MasterCustomerApp() {
             isDetectingLocation={isDetectingLocation}
             onChooseOnMap={() => setCurrentScreen("select-drop-map")}
             onContinue={async () => {
-              await computeTripDistance(pickupCoords, dropCoords);
+              await computeTripDistance(pickupCoords, dropCoords, dropAddress);
               setCurrentScreen("map-recipient");
             }}
           />
@@ -422,7 +444,7 @@ export default function MasterCustomerApp() {
               if (distKm > 0) {
                 setDistanceKm(distKm);
               } else {
-                computeTripDistance(pickupCoords, coords);
+                computeTripDistance(pickupCoords, coords, address);
               }
               setCurrentScreen("map-recipient");
             }}
@@ -448,7 +470,7 @@ export default function MasterCustomerApp() {
         {currentScreen === "vehicle" && (
           <VehicleSelectionWithPartLoadScreen
             onBack={() => setCurrentScreen("map-recipient")}
-            calculatedDistanceKm={distanceKm ?? 15}
+            calculatedDistanceKm={distanceKm ?? 3}
             cargoWeightKg={cargoWeightKg}
             onSelectVehicle={(veh) => {
               setSelectedVehicle(veh);

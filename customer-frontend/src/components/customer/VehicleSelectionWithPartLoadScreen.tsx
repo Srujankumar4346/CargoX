@@ -24,17 +24,20 @@ interface VehicleSelectionWithPartLoadProps {
 export default function VehicleSelectionWithPartLoadScreen({
   onBack,
   onSelectVehicle,
-  calculatedDistanceKm = 275,
+  calculatedDistanceKm = 3,
   cargoWeightKg = 200,
 }: VehicleSelectionWithPartLoadProps) {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("part-load");
   const [vehiclePrices, setVehiclePrices] = useState<Record<string, number>>({});
 
+  // Ensure effectiveKm reflects the actual trip distance (minimum 1 km, default 3 km)
+  const effectiveKm = Math.max(1, Number(calculatedDistanceKm) || 3);
+
   // 1. Recommended Part Load (Shared Truck) card with dynamic distance-based pricing
   // Base rate ~₹250 flat + ₹14/km + weight factor, ensuring high accuracy for both local & intercity
   const partLoadDynamicPrice = Math.max(
     320,
-    Math.round(250 + (calculatedDistanceKm * 14) + ((cargoWeightKg || 200) * 0.45))
+    Math.round(250 + (effectiveKm * 14) + ((cargoWeightKg || 200) * 0.45))
   );
 
   const partLoadVehicle: FleetVehicleItem = {
@@ -50,7 +53,7 @@ export default function VehicleSelectionWithPartLoadScreen({
   };
 
   // 2. Full Truck Fleet matching Screen 5 in reference with realistic per-km scaling
-  // Tata Ace: ~₹250 base + ₹25/km
+  // Tata Ace: ~₹250 base + ₹25/km -> 3 km = ~₹350
   const fullTruckFleet: FleetVehicleItem[] = [
     {
       id: "tata-ace",
@@ -59,7 +62,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 750,
       maxPayloadTons: 0.75,
       etaText: "8 mins",
-      price: Math.max(350, Math.round(250 + calculatedDistanceKm * 25)),
+      price: Math.max(350, Math.round(250 + effectiveKm * 25)),
       image: "/images/vehicles/tata-ace-gold.png",
     },
     {
@@ -69,7 +72,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 1200,
       maxPayloadTons: 1.2,
       etaText: "4 mins",
-      price: Math.max(450, Math.round(300 + calculatedDistanceKm * 28)),
+      price: Math.max(450, Math.round(300 + effectiveKm * 28)),
       image: "/images/vehicles/card_ref_dost.png",
     },
     {
@@ -79,7 +82,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 1700,
       maxPayloadTons: 1.7,
       etaText: "5 mins",
-      price: Math.max(550, Math.round(350 + calculatedDistanceKm * 30)),
+      price: Math.max(550, Math.round(350 + effectiveKm * 30)),
       image: "/images/vehicles/mahindra-bolero-pikup.png",
     },
     {
@@ -89,7 +92,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 3500,
       maxPayloadTons: 3.5,
       etaText: "5 mins",
-      price: Math.max(900, Math.round(500 + calculatedDistanceKm * 45)),
+      price: Math.max(900, Math.round(500 + effectiveKm * 45)),
       image: "/images/vehicles/col5_full.png",
     },
     {
@@ -99,7 +102,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 3500,
       maxPayloadTons: 3.5,
       etaText: "3 mins",
-      price: Math.max(950, Math.round(520 + calculatedDistanceKm * 46)),
+      price: Math.max(950, Math.round(520 + effectiveKm * 46)),
       image: "/images/vehicles/col5_full.png",
     },
     {
@@ -109,7 +112,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 6000,
       maxPayloadTons: 6.0,
       etaText: "30 mins",
-      price: Math.max(1200, Math.round(650 + calculatedDistanceKm * 58)),
+      price: Math.max(1200, Math.round(650 + effectiveKm * 58)),
       image: "/images/vehicles/screen6_full.png",
     },
   ];
@@ -118,7 +121,7 @@ export default function VehicleSelectionWithPartLoadScreen({
   useEffect(() => {
     let isMounted = true;
     fullTruckFleet.forEach((v) => {
-      api.getPricingEstimate(calculatedDistanceKm, {
+      api.getPricingEstimate(effectiveKm, {
         weight_tons: (cargoWeightKg || 200) / 1000,
         vehicle_capacity_tons: v.maxPayloadTons,
       })
@@ -134,7 +137,7 @@ export default function VehicleSelectionWithPartLoadScreen({
     });
 
     return () => { isMounted = false; };
-  }, [calculatedDistanceKm, cargoWeightKg]);
+  }, [effectiveKm, cargoWeightKg]);
 
   const allList = [partLoadVehicle, ...fullTruckFleet];
   const activeSelected = allList.find((v) => v.id === selectedVehicleId) || partLoadVehicle;

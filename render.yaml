@@ -65,3 +65,23 @@ services:
           envVarKey: RENDER_EXTERNAL_URL
       - key: VITE_CLERK_PUBLISHABLE_KEY
         sync: false
+
+  # 4. Driver Frontend (Static Site / PWA)
+  - type: web
+    name: cargox-driver-frontend
+    env: static
+    rootDir: driver-frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "./dist"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: cargox-backend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false

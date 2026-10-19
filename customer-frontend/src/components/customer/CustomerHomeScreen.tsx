@@ -9,7 +9,9 @@ import {
   Calculator,
   Headphones,
   Crosshair,
-  Loader2
+  Loader2,
+  X,
+  Check
 } from "lucide-react";
 
 interface CustomerHomeScreenProps {
@@ -48,6 +50,8 @@ export default function CustomerHomeScreen({
   onChangeCity,
 }: CustomerHomeScreenProps) {
   const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [showRewardsModal, setShowRewardsModal] = useState(false);
 
   const indianCities = [
     "Hyderabad, Telangana",
@@ -111,7 +115,7 @@ export default function CustomerHomeScreen({
         {/* Right actions: Notification */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => alert("CargoExpress Notifications:\n• Part Load linehaul routes available with flat starter pricing\n• Express intercity delivery network operational")}
+            onClick={() => setShowNotificationsModal(true)}
             className="relative p-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors"
             title="Notifications"
           >
@@ -297,7 +301,7 @@ export default function CustomerHomeScreen({
       {/* Rewards Banner matching Screen 2 reference */}
       <section className="px-4 mt-4">
         <div
-          onClick={() => alert("CargoExpress Rewards: Earn 2 cargo coins for every ₹100 spent. Redeemable on any future trip!")}
+          onClick={() => setShowRewardsModal(true)}
           role="button"
           tabIndex={0}
           className="bg-gradient-to-r from-amber-50 via-white to-orange-50 border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-2xs cursor-pointer hover:border-amber-300 transition-all"
@@ -359,6 +363,119 @@ export default function CustomerHomeScreen({
           </button>
         </div>
       </section>
+
+      {/* Clean CSS In-App Notifications Modal */}
+      {showNotificationsModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowNotificationsModal(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100 relative animate-in slide-in-from-bottom duration-250"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#0866F5] flex items-center justify-center">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm font-black text-slate-900">Notifications</h3>
+              </div>
+              <button
+                onClick={() => setShowNotificationsModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 py-4">
+              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-100/80 flex items-start gap-3">
+                <div className="w-2 h-2 rounded-full bg-[#0866F5] mt-1.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Part Load Flat Starter Rates</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed font-medium">
+                    Part Load linehaul routes available with flat starter pricing across Hyderabad, Secunderabad, and regional corridors.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-emerald-50/60 border border-emerald-100/80 flex items-start gap-3">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-slate-900">Express Delivery Operational</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed font-medium">
+                    Express intercity delivery network is live with verified commercial fleets and live GPS tracking.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowNotificationsModal(false)}
+              className="w-full bg-[#0866F5] hover:bg-[#0652c5] text-white py-3 rounded-2xl font-bold text-xs shadow-md shadow-blue-500/25 active:scale-98 transition-all"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Clean CSS In-App Rewards Modal */}
+      {showRewardsModal && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
+          onClick={() => setShowRewardsModal(false)}
+        >
+          <div 
+            className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-slate-100 relative animate-in slide-in-from-bottom duration-250"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center text-lg">
+                  🪙
+                </div>
+                <h3 className="text-sm font-black text-slate-900">CargoExpress Rewards</h3>
+              </div>
+              <button
+                onClick={() => setShowRewardsModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="py-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-100 to-amber-200 text-amber-600 text-3xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+                🪙
+              </div>
+              <h4 className="text-base font-black text-slate-900">Earn 2 Coins per ₹100</h4>
+              <p className="text-xs text-slate-500 font-medium max-w-xs mx-auto mt-1 leading-relaxed">
+                Every booking rewards you with CargoCoins directly to your wallet. Redeem anytime for instant discounts on future trips!
+              </p>
+
+              <div className="mt-4 p-3 rounded-2xl bg-slate-50 border border-slate-100 text-left space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Automatic coin credit upon delivery</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>No expiry date on earned points</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowRewardsModal(false)}
+              className="w-full bg-[#0866F5] hover:bg-[#0652c5] text-white py-3 rounded-2xl font-bold text-xs shadow-md shadow-blue-500/25 active:scale-98 transition-all"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

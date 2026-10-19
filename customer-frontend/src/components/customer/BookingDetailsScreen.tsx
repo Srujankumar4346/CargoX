@@ -35,6 +35,7 @@ export default function BookingDetailsScreen({
   const [needGST, setNeedGST] = useState<boolean>(false);
   const [paymentMethod] = useState<string>("Cash");
   const [showGoodsTypeModal, setShowGoodsTypeModal] = useState<boolean>(false);
+  const [showBreakupModal, setShowBreakupModal] = useState<boolean>(false);
 
   const availableSlots = [
     "9 AM - 11:30 AM",
@@ -244,13 +245,59 @@ export default function BookingDetailsScreen({
               ₹{totalPrice.toLocaleString("en-IN")}
             </p>
             <button
-              onClick={() => alert(`Fare Breakdown:\n• Base Flat Haulage: ₹2,811\n• Weight: ${weight} kg\n• Platform & GST: As per configured rate`)}
-              className="text-[10px] font-bold text-[#0866F5] hover:underline"
+              type="button"
+              onClick={() => setShowBreakupModal(true)}
+              className="text-[10px] font-bold text-[#0866F5] hover:underline cursor-pointer"
             >
               View Breakup
             </button>
           </div>
         </div>
+
+        {/* Clean In-App CSS Fare Breakup Modal */}
+        {showBreakupModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-sm p-5 shadow-2xl border border-slate-100 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-sm font-black text-slate-900">Fare Breakdown</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowBreakupModal(false)}
+                  className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-2.5 text-xs">
+                <div className="flex justify-between py-1 text-slate-600">
+                  <span>Base Haulage Fare</span>
+                  <span className="font-bold text-slate-900">₹{Math.max(250, Math.round(totalPrice * 0.45))}</span>
+                </div>
+                <div className="flex justify-between py-1 text-slate-600">
+                  <span>Distance & Fuel Surcharge</span>
+                  <span className="font-bold text-slate-900">₹{Math.round(totalPrice * 0.40)}</span>
+                </div>
+                <div className="flex justify-between py-1 text-slate-600">
+                  <span>Payload Cargo Fee ({weight} kg)</span>
+                  <span className="font-bold text-slate-900">₹{Math.round(totalPrice * 0.15)}</span>
+                </div>
+                <div className="border-t border-slate-200 pt-2 flex justify-between font-black text-sm text-slate-900">
+                  <span>Total Estimated Fare</span>
+                  <span className="text-[#0866F5]">₹{totalPrice.toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowBreakupModal(false)}
+                className="w-full py-2.5 rounded-xl bg-[#0866F5] text-white text-xs font-bold shadow-sm hover:bg-[#0652c5] transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sticky "Book Part Load" Button */}
         <button

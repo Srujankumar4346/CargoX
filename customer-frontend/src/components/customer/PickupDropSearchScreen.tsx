@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Plus, MapPin, X, Map } from "lucide-react";
+import { ArrowLeft, Plus, MapPin, X, Map, Crosshair, Loader2, AlertCircle } from "lucide-react";
 
 interface PickupDropSearchScreenProps {
   onBack: () => void;
@@ -9,7 +9,10 @@ interface PickupDropSearchScreenProps {
   onChangeDropAddress: (addr: string) => void;
   onContinue: () => void;
   onSelectSuggestion?: (address: string, coords?: { lat: number; lng: number }) => void;
+  onSelectPickupSuggestion?: (address: string, coords?: { lat: number; lng: number }) => void;
   onChooseOnMap?: () => void;
+  onUseCurrentLocation?: () => void;
+  isDetectingLocation?: boolean;
 }
 
 export default function PickupDropSearchScreen({
@@ -20,10 +23,14 @@ export default function PickupDropSearchScreen({
   onChangeDropAddress,
   onContinue,
   onSelectSuggestion,
+  onSelectPickupSuggestion,
   onChooseOnMap,
+  onUseCurrentLocation,
+  isDetectingLocation = false,
 }: PickupDropSearchScreenProps) {
   const [activeField, setActiveField] = useState<"pickup" | "drop">("drop");
   const [query, setQuery] = useState(dropAddress || "");
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Array<{ title: string; subtitle: string; lat: number; lng: number }>>([]);
   const [recentLocations] = useState<Array<{ title: string; subtitle: string; lat: number; lng: number }>>(() => {
     try {
@@ -176,13 +183,31 @@ export default function PickupDropSearchScreen({
     };
   }, [query]);
 
+  // Synchronize query input when switching between pickup and drop
+  const handleFieldChange = (field: "pickup" | "drop") => {
+    setActiveField(field);
+    setValidationMessage(null);
+    if (field === "pickup") {
+      setQuery(pickupAddress ? pickupAddress.split(",")[0] : "");
+    } else {
+      setQuery(dropAddress ? dropAddress.split(",")[0] : "");
+    }
+  };
+
   const handleSelectPlace = (place: { title: string; subtitle: string; lat: number; lng: number }) => {
     const fullText = `${place.title}, ${place.subtitle}`;
+    setValidationMessage(null);
     if (activeField === "drop") {
       onChangeDropAddress(fullText);
       setQuery(place.title);
+      onSelectSuggestion?.(fullText, { lat: place.lat, lng: place.lng });
     } else {
       onChangePickupAddress(fullText);
+      setQuery(place.title);
+      onSelectPickupSuggestion?.(fullText, { lat: place.lat, lng: place.lng });
+      // After selecting pickup, seamlessly switch focus to drop
+      setActiveField("drop");
+      setQuery(dropAddress ? dropAddress.split(",")[0] : "");
     }
     // Save to user history
     try {
@@ -191,8 +216,6 @@ export default function PickupDropSearchScreen({
       const updated = [place, ...list.filter((x: any) => x.title !== place.title)].slice(0, 5);
       localStorage.setItem("cargox_recent_locations", JSON.stringify(updated));
     } catch {}
-
-    onSelectSuggestion?.(fullText, { lat: place.lat, lng: place.lng });
   };
 
   return (
@@ -209,35 +232,73 @@ export default function PickupDropSearchScreen({
           <h1 className="text-base font-extrabold text-slate-900">Pickup & Drop Location</h1>
         </div>
 
+        {/* Clean In-App CSS Validation Message Banner (No native alert popup) */}
+        {validationMessage && (
+          <div className="mx-4 mt-3 p-3 bg-amber-50 border border-amber-200/90 rounded-2xl flex items-center gap-2.5 text-amber-900 text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-200">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="flex-1">{validationMessage}</span>
+            <button
+              onClick={() => setValidationMessage(null)}
+              className="p-1 text-amber-500 hover:text-amber-800 rounded-full"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Input Card with Green Pickup & Red Drop indicators */}
         <div className="p-4 space-y-3">
           <div className="bg-[#f8fafc] rounded-2xl p-3 border border-slate-200/80 space-y-2.5">
             {/* Pickup Field */}
             <div
-              onClick={() => setActiveField("pickup")}
-              className={`flex items-center gap-3 p-2 rounded-xl transition-all ${
+              onClick={() => handleFieldChange("pickup")}
+              className={`flex items-center gap-3 p-2 rounded-xl transition-all relative ${
                 activeField === "pickup" ? "bg-white shadow-2xs border border-blue-200" : ""
               }`}
             >
               <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
                 <span className="text-xs font-black">↑</span>
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 pr-8">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pickup from</p>
                 <input
                   type="text"
-                  value={pickupAddress}
-                  onChange={(e) => onChangePickupAddress(e.target.value)}
-                  onFocus={() => setActiveField("pickup")}
+                  value={activeField === "pickup" ? query : pickupAddress}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    onChangePickupAddress(e.target.value);
+                  }}
+                  onFocus={() => handleFieldChange("pickup")}
                   placeholder="Enter pickup address"
                   className="w-full text-xs font-bold text-slate-800 bg-transparent outline-none truncate"
                 />
               </div>
+
+              {/* Current Location GPS detection button on Pickup field */}
+              {onUseCurrentLocation && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUseCurrentLocation();
+                  }}
+                  disabled={isDetectingLocation}
+                  title="Detect current location"
+                  aria-label="Detect current location"
+                  className="w-7 h-7 rounded-full bg-blue-50 hover:bg-blue-100 active:scale-95 text-[#0866F5] flex items-center justify-center transition-all border border-blue-100 shadow-2xs shrink-0 cursor-pointer"
+                >
+                  {isDetectingLocation ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Crosshair className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
             </div>
 
             {/* Drop Field with Clear & Plus Button */}
             <div
-              onClick={() => setActiveField("drop")}
+              onClick={() => handleFieldChange("drop")}
               className={`flex items-center gap-3 p-2 rounded-xl transition-all ${
                 activeField === "drop" ? "bg-white shadow-2xs border border-blue-200" : ""
               }`}
@@ -250,12 +311,12 @@ export default function PickupDropSearchScreen({
                 <div className="flex items-center gap-1">
                   <input
                     type="text"
-                    value={query}
+                    value={activeField === "drop" ? query : dropAddress}
                     onChange={(e) => {
                       setQuery(e.target.value);
                       onChangeDropAddress(e.target.value);
                     }}
-                    onFocus={() => setActiveField("drop")}
+                    onFocus={() => handleFieldChange("drop")}
                     placeholder="Search destination city or locality..."
                     className="w-full text-xs font-bold text-slate-800 bg-transparent outline-none"
                     autoFocus={activeField === "drop"}
@@ -276,7 +337,8 @@ export default function PickupDropSearchScreen({
 
               {/* Add Stop Button matching Screen 3 */}
               <button
-                onClick={() => alert("Multi-stop linehaul routing enabled for enterprise accounts.")}
+                type="button"
+                onClick={() => setValidationMessage("Multi-stop linehaul routing enabled for enterprise accounts.")}
                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center shrink-0"
                 title="Add multiple stops"
               >
@@ -369,13 +431,13 @@ export default function PickupDropSearchScreen({
             const hasPickup = Boolean(pickupAddress?.trim());
             const hasDrop = Boolean(dropAddress?.trim() || query?.trim());
             if (!hasPickup) {
-              setActiveField("pickup");
-              alert("Please enter a pickup location to continue.");
+              handleFieldChange("pickup");
+              setValidationMessage("Please enter a pickup location to continue.");
               return;
             }
             if (!hasDrop) {
-              setActiveField("drop");
-              alert("Please enter or select a destination drop location to continue.");
+              handleFieldChange("drop");
+              setValidationMessage("Please enter or select a destination drop location to continue.");
               return;
             }
             onContinue();

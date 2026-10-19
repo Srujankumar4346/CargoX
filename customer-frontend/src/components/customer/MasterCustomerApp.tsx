@@ -193,6 +193,66 @@ export default function MasterCustomerApp() {
     else if (tab === "account") setCurrentScreen("account");
   };
 
+  // Haversine formula for fallback distance calculation
+  const calculateHaversineKm = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number => {
+    const R = 6371; // Earth radius in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const straightKm = R * c;
+    // Apply standard urban road detour factor (~1.32x straight line)
+    return Math.max(3, Math.round(straightKm * 1.32));
+  };
+
+  // Compute actual road trip distance via backend OSRM routing engine with fallback
+  const computeTripDistance = async (
+    pCoords: { lat: number; lng: number } | null,
+    dCoords: { lat: number; lng: number } | null
+  ) => {
+    // Default fallback coordinates if one is not yet geocoded
+    const effectivePickup = pCoords || { lat: 17.5375, lng: 78.4735 }; // Default Hyderabad Jeedimetla/North
+    const effectiveDrop = dCoords || { lat: 17.3850, lng: 78.4867 }; // Default Hyderabad Central
+
+    try {
+      const res = await api.calculateRoute({
+        pickup_lat: effectivePickup.lat,
+        pickup_lng: effectivePickup.lng,
+        destination_lat: effectiveDrop.lat,
+        destination_lng: effectiveDrop.lng,
+      });
+      if (res && res.distance_km) {
+        const d = Math.round(Number(res.distance_km));
+        if (d > 0) {
+          setDistanceKm(d);
+          return d;
+        }
+      }
+    } catch (e) {
+      console.warn("Backend route calculation failed, calculating geo distance:", e);
+    }
+
+    // High accuracy fallback via Haversine
+    const fallbackDist = calculateHaversineKm(
+      effectivePickup.lat,
+      effectivePickup.lng,
+      effectiveDrop.lat,
+      effectiveDrop.lng
+    );
+    setDistanceKm(fallbackDist);
+    return fallbackDist;
+  };
+
   // Swap pickup & drop locations
   const handleSwapLocations = () => {
     const prevPickup = pickupAddress;
@@ -201,6 +261,9 @@ export default function MasterCustomerApp() {
     setPickupCoords(dropCoords);
     setDropAddress(prevPickup);
     setDropCoords(prevPickupCoords);
+    if (dropCoords && prevPickupCoords) {
+      computeTripDistance(dropCoords, prevPickupCoords);
+    }
   };
 
   // Submit actual booking to backend
@@ -219,7 +282,7 @@ export default function MasterCustomerApp() {
         goods_description: `${selectedVehicle.name} - Slot: ${bookingMeta.pickupDate} (${bookingMeta.pickupSlot})`,
         special_instructions: `Receiver: ${recipientDetails.receiverName} (${recipientDetails.receiverPhone}). Payment: ${bookingMeta.paymentMethod}. GST Requested: ${bookingMeta.needGST ? "Yes" : "No"}`,
         weight_tons: bookingMeta.weightKg / 1000,
-        distance_km: distanceKm ?? 275,
+        distance_km: distanceKm ?? 15,
         selected_vehicle_id: selectedVehicle.id,
         vehicle_capacity_tons: selectedVehicle.maxPayloadTons,
         pickup_company_name: user?.fullName || "Valued Customer",
@@ -322,12 +385,27 @@ export default function MasterCustomerApp() {
             dropAddress={dropAddress}
             onChangePickupAddress={(addr) => setPickupAddress(addr)}
             onChangeDropAddress={(addr) => setDropAddress(addr)}
+            onSelectPickupSuggestion={(fullAddr, coords) => {
+              setPickupAddress(fullAddr);
+              if (coords) {
+                setPickupCoords(coords);
+                computeTripDistance(coords, dropCoords);
+              }
+            }}
             onSelectSuggestion={(fullAddr, coords) => {
               setDropAddress(fullAddr);
-              if (coords) setDropCoords(coords);
+              if (coords) {
+                setDropCoords(coords);
+                computeTripDistance(pickupCoords, coords);
+              }
             }}
+            onUseCurrentLocation={handleDetectCurrentLocation}
+            isDetectingLocation={isDetectingLocation}
             onChooseOnMap={() => setCurrentScreen("select-drop-map")}
-            onContinue={() => setCurrentScreen("map-recipient")}
+            onContinue={async () => {
+              await computeTripDistance(pickupCoords, dropCoords);
+              setCurrentScreen("map-recipient");
+            }}
           />
         )}
 
@@ -341,7 +419,11 @@ export default function MasterCustomerApp() {
             onConfirm={(address, coords, distKm) => {
               setDropAddress(address);
               setDropCoords(coords);
-              if (distKm > 0) setDistanceKm(distKm);
+              if (distKm > 0) {
+                setDistanceKm(distKm);
+              } else {
+                computeTripDistance(pickupCoords, coords);
+              }
               setCurrentScreen("map-recipient");
             }}
           />
@@ -366,7 +448,7 @@ export default function MasterCustomerApp() {
         {currentScreen === "vehicle" && (
           <VehicleSelectionWithPartLoadScreen
             onBack={() => setCurrentScreen("map-recipient")}
-            calculatedDistanceKm={distanceKm ?? 275}
+            calculatedDistanceKm={distanceKm ?? 15}
             cargoWeightKg={cargoWeightKg}
             onSelectVehicle={(veh) => {
               setSelectedVehicle(veh);

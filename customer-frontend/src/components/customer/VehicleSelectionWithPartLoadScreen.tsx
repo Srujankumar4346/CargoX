@@ -30,7 +30,13 @@ export default function VehicleSelectionWithPartLoadScreen({
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("part-load");
   const [vehiclePrices, setVehiclePrices] = useState<Record<string, number>>({});
 
-  // 1. Recommended Part Load (Shared Truck) card matching Screen 5 in reference
+  // 1. Recommended Part Load (Shared Truck) card with dynamic distance-based pricing
+  // Base rate ~₹250 flat + ₹14/km + weight factor, ensuring high accuracy for both local & intercity
+  const partLoadDynamicPrice = Math.max(
+    320,
+    Math.round(250 + (calculatedDistanceKm * 14) + ((cargoWeightKg || 200) * 0.45))
+  );
+
   const partLoadVehicle: FleetVehicleItem = {
     id: "part-load",
     name: "Part Load (Shared Truck)",
@@ -38,12 +44,13 @@ export default function VehicleSelectionWithPartLoadScreen({
     maxPayloadKg: 3000,
     maxPayloadTons: 3.0,
     etaText: "Today, 9:00 AM",
-    price: 2811,
+    price: partLoadDynamicPrice,
     image: "/images/vehicles/ashok-leyland-dost.png",
     isPartLoad: true,
   };
 
-  // 2. Full Truck Fleet matching Screen 5 in reference
+  // 2. Full Truck Fleet matching Screen 5 in reference with realistic per-km scaling
+  // Tata Ace: ~₹250 base + ₹25/km
   const fullTruckFleet: FleetVehicleItem[] = [
     {
       id: "tata-ace",
@@ -52,7 +59,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 750,
       maxPayloadTons: 0.75,
       etaText: "8 mins",
-      price: 8503,
+      price: Math.max(350, Math.round(250 + calculatedDistanceKm * 25)),
       image: "/images/vehicles/tata-ace-gold.png",
     },
     {
@@ -62,7 +69,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 1200,
       maxPayloadTons: 1.2,
       etaText: "4 mins",
-      price: 9184,
+      price: Math.max(450, Math.round(300 + calculatedDistanceKm * 28)),
       image: "/images/vehicles/card_ref_dost.png",
     },
     {
@@ -72,7 +79,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 1700,
       maxPayloadTons: 1.7,
       etaText: "5 mins",
-      price: 9546,
+      price: Math.max(550, Math.round(350 + calculatedDistanceKm * 30)),
       image: "/images/vehicles/mahindra-bolero-pikup.png",
     },
     {
@@ -82,7 +89,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 3500,
       maxPayloadTons: 3.5,
       etaText: "5 mins",
-      price: 16212,
+      price: Math.max(900, Math.round(500 + calculatedDistanceKm * 45)),
       image: "/images/vehicles/col5_full.png",
     },
     {
@@ -92,7 +99,7 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 3500,
       maxPayloadTons: 3.5,
       etaText: "3 mins",
-      price: 16212,
+      price: Math.max(950, Math.round(520 + calculatedDistanceKm * 46)),
       image: "/images/vehicles/col5_full.png",
     },
     {
@@ -102,12 +109,12 @@ export default function VehicleSelectionWithPartLoadScreen({
       maxPayloadKg: 6000,
       maxPayloadTons: 6.0,
       etaText: "30 mins",
-      price: 19674,
+      price: Math.max(1200, Math.round(650 + calculatedDistanceKm * 58)),
       image: "/images/vehicles/screen6_full.png",
     },
   ];
 
-  // Fetch verified backend pricing dynamically
+  // Fetch verified backend pricing dynamically based on actual trip distance
   useEffect(() => {
     let isMounted = true;
     fullTruckFleet.forEach((v) => {
@@ -133,7 +140,9 @@ export default function VehicleSelectionWithPartLoadScreen({
   const activeSelected = allList.find((v) => v.id === selectedVehicleId) || partLoadVehicle;
 
   const handleProceed = () => {
-    const finalPrice = vehiclePrices[activeSelected.id] || activeSelected.price;
+    const finalPrice = activeSelected.id === "part-load"
+      ? partLoadVehicle.price
+      : (vehiclePrices[activeSelected.id] || activeSelected.price);
     onSelectVehicle({
       ...activeSelected,
       price: finalPrice,

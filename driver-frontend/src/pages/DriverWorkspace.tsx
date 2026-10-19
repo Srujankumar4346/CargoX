@@ -507,19 +507,48 @@ export default function DriverWorkspace() {
   const loadDriverData = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const p = await api.getCurrentUserProfile();
-      setProfile(p);
-      const activeRes = await api.getDriverActiveTrip();
-      const historyRes = await api.getDriverTripsHistory();
-      let settlementsRes: any[] = [];
-      try {
-        settlementsRes = await api.getDriverSettlements();
-      } catch (_) {}
 
-      setActiveTrip(activeRes);
-      setHistory(Array.isArray(historyRes) ? historyRes : []);
-      setSettlements(Array.isArray(settlementsRes) ? settlementsRes : []);
+    // Timeout guard so the screen NEVER gets stuck on "Connecting to CargoExpress Dispatch..."
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 6000);
+
+    try {
+      // 1. Profile
+      try {
+        const p = await api.getCurrentUserProfile();
+        if (p) setProfile(p);
+      } catch (profileErr) {
+        console.warn("Could not fetch driver profile:", profileErr);
+      }
+
+      // 2. Active Trip
+      let activeRes = null;
+      try {
+        activeRes = await api.getDriverActiveTrip();
+        setActiveTrip(activeRes);
+      } catch (tripErr) {
+        console.warn("No active trip or failed to load active trip:", tripErr);
+        setActiveTrip(null);
+      }
+
+      // 3. Trip History
+      try {
+        const historyRes = await api.getDriverTripsHistory();
+        setHistory(Array.isArray(historyRes) ? historyRes : []);
+      } catch (histErr) {
+        console.warn("Failed to load trip history:", histErr);
+        setHistory([]);
+      }
+
+      // 4. Settlements
+      try {
+        const settlementsRes = await api.getDriverSettlements();
+        setSettlements(Array.isArray(settlementsRes) ? settlementsRes : []);
+      } catch (_) {
+        setSettlements([]);
+      }
+
       if (activeRes) {
         const due = parseFloat(activeRes.amount_due_for_collection || "0");
         const total = parseFloat(activeRes.invoice_total_amount || "0");
@@ -532,8 +561,10 @@ export default function DriverWorkspace() {
         }
       }
     } catch (e: any) {
+      console.error("loadDriverData error:", e);
       setError(e?.message || "Failed to load driver workspace");
     } finally {
+      clearTimeout(safetyTimeout);
       setLoading(false);
     }
   };

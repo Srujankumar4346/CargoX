@@ -59,7 +59,8 @@ async function authFetch(url: string, options: RequestInit = {}) {
     console.warn(`[authFetch] No auth token found for ${url}`);
   }
 
-  if (userEmail) {
+  const isLocalDriverToken = !!localStorage.getItem('access_token');
+  if (userEmail && !isLocalDriverToken) {
     headers.set('X-User-Email', userEmail);
   }
   

@@ -15,7 +15,7 @@ import {
   LogOut,
   ShieldCheck,
 } from 'lucide-react';
-import { useClerk } from '@clerk/react';
+import { useClerk, useUser, UserButton } from '@clerk/react';
 import CargoExpressLogo from './CargoExpressLogo';
 
 export type DriverMenuItemKey =
@@ -49,6 +49,7 @@ export const DriverProfileDrawer: React.FC<DriverProfileDrawerProps> = ({
   onSelectMenuItem,
 }) => {
   const { signOut } = useClerk();
+  const { isSignedIn } = useUser();
 
   if (!isOpen) return null;
 
@@ -218,7 +219,10 @@ export const DriverProfileDrawer: React.FC<DriverProfileDrawerProps> = ({
 
         {/* Drawer Footer */}
         <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-          <CargoExpressLogo variant="badge" size="sm" />
+          <div className="flex items-center gap-2">
+            {isSignedIn && <UserButton />}
+            <CargoExpressLogo variant="badge" size="sm" />
+          </div>
           <button
             onClick={handleLogout}
             type="button"

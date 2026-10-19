@@ -15,7 +15,7 @@ import {
   LogOut,
   ChevronRight
 } from 'lucide-react';
-import { useClerk } from '@clerk/react';
+import { useClerk, useUser, UserButton } from '@clerk/react';
 import CargoExpressLogo from './CargoExpressLogo';
 
 interface DriverProfileScreenProps {
@@ -52,6 +52,7 @@ export const DriverProfileScreen: React.FC<DriverProfileScreenProps> = ({
   onNavigateToSupport,
 }) => {
   const { signOut } = useClerk();
+  const { isSignedIn } = useUser();
 
   const handleSignOut = async () => {
     localStorage.removeItem('access_token');
@@ -75,7 +76,9 @@ export const DriverProfileScreen: React.FC<DriverProfileScreenProps> = ({
             <ArrowLeft size={20} />
           </button>
           <h1 className="text-lg font-extrabold tracking-tight">Driver Profile</h1>
-          <div className="w-10" />
+          <div className="w-10 flex items-center justify-center">
+            {isSignedIn && <UserButton />}
+          </div>
         </div>
 
         {/* Profile Info Summary */}

@@ -16,6 +16,10 @@ class User(Document):
     class Settings:
         name = "users"
         indexes = [
-            pymongo.IndexModel("clerk_user_id", unique=True, sparse=True),
+            pymongo.IndexModel(
+                "clerk_user_id",
+                unique=True,
+                partialFilterExpression={"clerk_user_id": {"$type": "string"}}
+            ),
             pymongo.IndexModel("email", unique=True)
         ]

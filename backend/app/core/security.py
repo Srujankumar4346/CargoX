@@ -62,20 +62,25 @@ def decode_token(token: str) -> dict:
         # Otherwise, try Clerk
         signing_key = jwks_client.get_signing_key_from_jwt(token)
         
+        # Accept either variant (with or without trailing slash) to prevent validation failures across environments
+        expected_issuer = settings.CLERK_ISSUER_URL.rstrip("/")
+        valid_issuers = [expected_issuer, f"{expected_issuer}/"]
+        
         payload = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
-            issuer=settings.CLERK_ISSUER_URL,
             leeway=60,
             options={
                 "verify_signature": True,
                 "verify_exp": True,
-                "verify_iss": True,
+                "verify_iss": False, # Verified below against allowed issuer variants
                 "verify_aud": False,  
                 "require": ["exp", "iss", "sub"],
             }
         )
+        if payload.get("iss") not in valid_issuers:
+            raise jwt.InvalidIssuerError(f"Invalid issuer: {payload.get('iss')}, expected one of {valid_issuers}")
         return payload
     except jwt.PyJWTError as e:
         print(f"Token validation failed with error: {e}")

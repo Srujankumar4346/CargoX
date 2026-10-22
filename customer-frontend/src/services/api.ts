@@ -1,4 +1,5 @@
-const API_URL = (import.meta.env.VITE_API_URL || "https://cargox-1.onrender.com") + "/api/v1";
+const RAW_API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "https://cargox-1.onrender.com";
+const API_URL = RAW_API_URL.replace(/\/+$/, "") + (RAW_API_URL.includes("/api/v1") ? "" : "/api/v1");
 
 let tokenGetter: (() => Promise<string | null>) | null = null;
 let userEmailGetter: (() => string | null | undefined) | null = null;
@@ -9,6 +10,29 @@ export function setTokenGetter(getter: () => Promise<string | null>) {
 
 export function setUserEmailGetter(getter: () => string | null | undefined) {
   userEmailGetter = getter;
+}
+
+async function requestGuestSession(): Promise<string | null> {
+  try {
+    const guestRes = await fetch(`${API_URL}/auth/customer-guest-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Valued Customer" }),
+    });
+    if (guestRes.ok) {
+      const guestData = await guestRes.json();
+      if (guestData?.access_token) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('access_token', guestData.access_token);
+          if (guestData.email) localStorage.setItem('user_email', guestData.email);
+        }
+        return guestData.access_token;
+      }
+    }
+  } catch (err) {
+    console.warn("[authFetch] Failed to acquire guest customer session:", err);
+  }
+  return null;
 }
 
 async function authFetch(url: string, options: RequestInit = {}) {
@@ -40,29 +64,13 @@ async function authFetch(url: string, options: RequestInit = {}) {
   }
   
   // Fallback to localStorage (e.g. guest token or local dev token)
-  if (!token) {
+  if (!token && typeof window !== 'undefined') {
     token = localStorage.getItem('access_token');
   }
 
   // 3. If still no token, automatically acquire a guest customer session to prevent "Not authenticated" 401 errors
   if (!token) {
-    try {
-      const guestRes = await fetch(`${API_URL}/auth/customer-guest-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Valued Customer" }),
-      });
-      if (guestRes.ok) {
-        const guestData = await guestRes.json();
-        if (guestData?.access_token) {
-          token = guestData.access_token;
-          localStorage.setItem('access_token', token);
-          if (guestData.email) localStorage.setItem('user_email', guestData.email);
-        }
-      }
-    } catch (err) {
-      console.warn("[authFetch] Failed to create guest session fallback:", err);
-    }
+    token = await requestGuestSession();
   }
 
   // Extract user email
@@ -77,7 +85,7 @@ async function authFetch(url: string, options: RequestInit = {}) {
   if (!userEmail && typeof window !== 'undefined' && (window as any).Clerk?.user?.primaryEmailAddress?.emailAddress) {
     userEmail = (window as any).Clerk.user.primaryEmailAddress.emailAddress;
   }
-  if (!userEmail) {
+  if (!userEmail && typeof window !== 'undefined') {
     userEmail = localStorage.getItem('user_email');
   }
 
@@ -90,7 +98,21 @@ async function authFetch(url: string, options: RequestInit = {}) {
     headers.set('X-User-Email', userEmail);
   }
   
-  return fetch(url, { ...options, headers });
+  let response = await fetch(url, { ...options, headers });
+
+  // 4. If request returns 401 and we aren't calling login/guest-session itself, try refreshing guest token and retry once
+  if (response.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/customer-guest-session')) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('access_token');
+    }
+    const freshToken = await requestGuestSession();
+    if (freshToken) {
+      headers.set('Authorization', `Bearer ${freshToken}`);
+      response = await fetch(url, { ...options, headers });
+    }
+  }
+
+  return response;
 }
 
 

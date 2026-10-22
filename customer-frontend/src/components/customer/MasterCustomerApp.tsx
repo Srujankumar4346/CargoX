@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth, useUser } from "@clerk/react";
+import { useAuth, useUser, useClerk } from "@clerk/react";
 import WelcomeScreen from "./WelcomeScreen";
 import CustomerHomeScreen from "./CustomerHomeScreen";
 import PickupDropSearchScreen from "./PickupDropSearchScreen";
@@ -37,6 +37,7 @@ export type CustomerFlowScreen =
 export default function MasterCustomerApp() {
   const { isSignedIn } = useAuth();
   const { user } = useUser();
+  const { openSignIn } = useClerk();
 
   // Screen & Navigation state
   const [currentScreen, setCurrentScreen] = useState<CustomerFlowScreen>("welcome");
@@ -119,7 +120,7 @@ export default function MasterCustomerApp() {
     }
   };
 
-  // Check if welcome preview is requested via URL or skip if completed
+  // Check if welcome preview is requested via URL or skip if signed in and onboarding was completed
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const forceWelcome = urlParams.has("welcome") || urlParams.has("preview");
@@ -129,11 +130,22 @@ export default function MasterCustomerApp() {
     }
 
     const onboardingDone = localStorage.getItem("cargox_onboarding_completed") === "true";
-    if (onboardingDone && currentScreen === "welcome") {
+    if (isSignedIn && onboardingDone && currentScreen === "welcome") {
       setCurrentScreen("home");
       setActiveTab("home");
     }
-  }, [currentScreen]);
+  }, [currentScreen, isSignedIn]);
+
+  // When user successfully signs in via Clerk while on welcome screen, transition into portal
+  useEffect(() => {
+    if (isSignedIn && currentScreen === "welcome") {
+      try {
+        localStorage.setItem("cargox_onboarding_completed", "true");
+      } catch {}
+      setCurrentScreen("home");
+      setActiveTab("home");
+    }
+  }, [isSignedIn, currentScreen]);
 
   // Load real bookings from backend (works with Clerk auth OR guest customer session)
   const loadCustomerBookings = () => {
@@ -363,15 +375,26 @@ export default function MasterCustomerApp() {
         {currentScreen === "welcome" && (
           <WelcomeScreen
             onGetStarted={() => {
-              try {
-                localStorage.setItem("cargox_onboarding_completed", "true");
-              } catch {}
-              setCurrentScreen("home");
-              setActiveTab("home");
+              if (isSignedIn) {
+                try {
+                  localStorage.setItem("cargox_onboarding_completed", "true");
+                } catch {}
+                setCurrentScreen("home");
+                setActiveTab("home");
+              } else {
+                openSignIn();
+              }
             }}
             onLogin={() => {
-              setCurrentScreen("home");
-              setActiveTab("home");
+              if (isSignedIn) {
+                try {
+                  localStorage.setItem("cargox_onboarding_completed", "true");
+                } catch {}
+                setCurrentScreen("home");
+                setActiveTab("home");
+              } else {
+                openSignIn();
+              }
             }}
           />
         )}

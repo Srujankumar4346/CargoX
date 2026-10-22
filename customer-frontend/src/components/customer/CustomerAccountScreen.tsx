@@ -37,16 +37,6 @@ export default function CustomerAccountScreen({
     ? (user?.primaryEmailAddress?.emailAddress || "Verified Account") 
     : (localStorage.getItem("user_email") ? "Verified Account" : "guest@cargox.com (Guest Session)");
 
-  const handleDemoLogin = async () => {
-    try {
-      localStorage.setItem("user_email", "sangepusrujankumar@gmail.com");
-      localStorage.setItem("cargox_onboarding_completed", "true");
-      alert("Switched to Demo Account (sangepusrujankumar@gmail.com). Refreshing...");
-      window.location.reload();
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const handleSaveGST = () => {
     if (!gstin.trim() || gstin.length < 15) {
@@ -112,11 +102,7 @@ export default function CustomerAccountScreen({
           <button
             onClick={() => {
               if (!isSignedIn) {
-                if (confirm(`Current status: Guest Customer\n\nWould you like to log in to your registered customer account (sangepusrujankumar@gmail.com) with active orders?`)) {
-                  handleDemoLogin();
-                } else {
-                  openSignIn();
-                }
+                openSignIn();
               } else {
                 alert(`CargoExpress Account Details:\n• Name: ${displayName}\n• Email: ${displayEmail}\n• Role: Verified Customer`);
               }
